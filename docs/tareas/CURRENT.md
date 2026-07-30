@@ -2,11 +2,15 @@
 
 _Sin tarea activa._
 
-La última cerrada fue **F1 — Base del proyecto**, archivada en
-`historico/2026-07-30-f1-base.md`.
+Últimas cerradas: **F1 — Base del proyecto** y **F1.1 — La traza pasa a ser un
+corredor**, archivadas en `historico/`.
 
 Siguiente en el roadmap: **F2 — Datos e ingesta**. Bloqueada hasta que F0 esté
 completa (Supabase, Vercel y MapTiler dados de alta).
+
+⚠️ **F2 arranca con una deuda de prioridad Alta ya identificada**: el
+envenenamiento del ancla de progreso desde `/api/track`. Ver `DEBT.md` antes de
+diseñar el endpoint de ingesta.
 
 ---
 

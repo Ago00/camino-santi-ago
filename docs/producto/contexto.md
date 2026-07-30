@@ -36,9 +36,14 @@ importan.
 
 ## Traza
 
-La ruta parte del mojón físico del km 100 del Camino Portugués Central
-(~1,8 km antes de O Porriño) hasta la **Praza do Obradoiro** de Santiago de
-Compostela. Total: **100,210 km** (los últimos ~210 m son geometría manual
-pendiente de validar sobre el terreno — ver `DEBT.md`).
+La traza es un **corredor** que cubre más de 100 km del Camino Portugués
+Central, desde ~3 km al sur de O Porriño hasta la **Praza do Obradoiro** de
+Santiago de Compostela. Total: **~104,97 km** (el corredor tiene margen sur
+para que el mojón físico del km 100 quede siempre dentro, sea cual sea el
+desfase entre nuestra medición y las piedras). El recorrido real lo define
+Santi al pulsar Iniciar — ver DT-005.
+
+Los últimos ~210 m (Quintana → Obradoiro) son geometría manual pendiente
+de validar sobre el terreno — ver `DEBT.md`.
 
 Fuente: Xunta de Galicia (abertos.xunta.gal), CC BY-SA 4.0.
