@@ -34,3 +34,12 @@ export const VELOCIDAD_MAX_KMH = 15;
  * todo (la barra los usa para proyectar), pero no suman al odómetro.
  */
 export const PRECISION_MAX_M = 150;
+
+/**
+ * Filtro de plausibilidad geográfica en `/api/track` (DT-006, capa 1 de la
+ * defensa contra el envenenamiento del ancla de progreso). Un punto a más
+ * de 100 km de la traza se rechaza sin guardar, sin dar pistas al remitente.
+ * Deliberadamente generoso: cubre cualquier situación real (incluido un
+ * coche de apoyo puntual) y solo corta puntos absurdos o maliciosos.
+ */
+export const SEPARACION_TRAZA_MAX_KM = 100;

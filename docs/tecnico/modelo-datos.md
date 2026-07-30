@@ -1,8 +1,17 @@
 # Modelo de datos
 
-Esquema Supabase (PostgreSQL). El schema SQL completo está en
-`docs/tecnico/plan-ejecucion-v1.md`. Este documento describe las entidades,
-sus relaciones y los invariantes críticos que el código debe respetar.
+Esquema Supabase (PostgreSQL). El SQL ejecutable vive en
+`supabase/migrations/0001_esquema_inicial.sql` (F2) — copia literal del
+diseño cerrado en `docs/tecnico/plan-ejecucion-v1.md`. Este documento describe
+las entidades, sus relaciones y los invariantes críticos que el código debe
+respetar.
+
+> **Estado (F2, 2026-07-30):** la migración no se ha ejecutado nunca contra
+> un proyecto Supabase real — no existe todavía (bloqueado por F0, ver
+> `docs/producto/roadmap.md`). Es SQL revisado a mano, pero pendiente de
+> verificación de integración: aplicarla contra una BD viva y confirmar que
+> los índices, constraints y políticas RLS se crean tal como aquí se
+> documentan.
 
 ---
 
@@ -109,3 +118,47 @@ Las demás tablas (`intenciones`, `comentarios`, `textos`) son independientes.
 | `intenciones` | Ninguna política (cero acceso) | ALL |
 | `comentarios` | SELECT `publico AND NOT oculto`; INSERT sin poder fijar `oculto` | ALL |
 | `textos` | SELECT | ALL |
+
+RLS se activa en las 5 tablas en `supabase/migrations/0001_esquema_inicial.sql`.
+El service role bypassa RLS por diseño de Supabase (no necesita políticas
+explícitas); las políticas del fichero son únicamente para el rol `anon`.
+
+---
+
+## Migración
+
+**Ubicación:** `supabase/migrations/0001_esquema_inicial.sql`.
+
+**Convención de carpeta:** `supabase/migrations/NNNN_slug.sql`, numeración
+secuencial de 4 dígitos — la misma que usa la CLI oficial de Supabase
+(`supabase migration new <slug>`), para que aplicar la migración el día que
+exista el proyecto sea tan simple como pegarla en el editor SQL o correr
+`supabase db push`.
+
+**Contenido:** las 5 tablas de este documento, sus índices (incluidos el
+único-activo de `intentos` y el de `posiciones` filtrado por `NOT
+descartado`), y RLS activado con las políticas de la tabla de arriba.
+
+---
+
+## Clientes Supabase tipados
+
+`lib/supabase/admin.ts` (`getSupabaseAdmin()`, service role — bypassa RLS,
+solo server-side) y `lib/supabase/public.ts` (`getSupabasePublic()`, anon key
+— sujeto a RLS). Ambos:
+
+- Comparten el tipo `BaseDeDatos` (definido en `admin.ts`, importado por
+  `public.ts`), espejo tipado de las 5 tablas de este documento.
+- Se construyen de forma perezosa: la primera llamada a `getSupabaseAdmin()`
+  / `getSupabasePublic()` lee las env vars y lanza si faltan. Importar el
+  módulo, o que `pnpm build` recorra el árbol de imports, nunca falla por
+  falta de credenciales — condición necesaria para poder compilar el
+  proyecto antes de que exista el proyecto Supabase (F0).
+- Cada `Row` de `BaseDeDatos` se envuelve en `Pick<T, keyof T>` en vez de usar
+  el `interface` de `lib/types.ts` directamente. Es una particularidad de
+  cómo `@supabase/supabase-js` infiere tipos: exige que `Row` sea
+  estructuralmente asignable a `Record<string, unknown>`, y los `interface`
+  de TypeScript no tienen index signature implícito. Sin el envoltorio,
+  `.insert()`/`.update()` resuelven silenciosamente a `never` sin ningún
+  error hasta que se usan con datos reales — documentado en el comentario de
+  `admin.ts` junto al tipo.

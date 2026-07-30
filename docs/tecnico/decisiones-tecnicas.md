@@ -217,3 +217,61 @@ El día del reto, **la pantalla y las piedras no dirán el mismo número** (~1,5
 km de diferencia). Se aparca deliberadamente hasta F3: cuando Santi ande la ruta
 se podrán anotar mojones reales y calibrar con datos en vez de con estimaciones.
 Registrado en `DEBT.md`.
+
+---
+
+## DT-006 — Defensa en dos capas contra el envenenamiento del ancla de progreso
+
+**Fecha:** 2026-07-30 · **Tarea:** F2 — Datos e ingesta · **Decisión de producto de Santi**
+
+**Contexto.** El Agente de Seguridad detectó en la revisión de F1.1 que el ancla
+del porcentaje (el primer punto no descartado del histórico) determina el
+denominador de todo el cálculo del intento. Si `/api/track` acepta un primer
+punto falso muy adelantado en la traza, la barra queda fijada cerca del 100%
+desde el arranque. Registrado inicialmente en `DEBT.md` como **irreversible sin
+tocar la BD directamente**.
+
+**Corrección de esa premisa.** `calcularProgreso` recalcula el ancla en cada
+llamada como `validas[0]` — el primer punto con `descartado: false`. Si ese
+punto se marca como descartado, el ancla salta automáticamente al siguiente
+punto válido. **Es reversible desde el panel de admin, sin tocar la BD a mano.**
+
+**El matiz real.** La especificación v1 solo prevé "descartar **último**
+punto" (el más reciente), pensado para el caso típico de un salto de GPS que se
+nota al momento. Si el punto envenenado queda enterrado bajo horas de datos
+reales posteriores, ese botón no llega hasta él — aunque el modelo de datos sí
+lo permite (`descartado` es un booleano por fila, sin restricción de cuál).
+
+**Decisión.** Defensa en dos capas, cada una barata por separado:
+
+1. **F2 — filtro de plausibilidad geográfica en `/api/track`.** Se rechaza
+   (sin guardar, sin dar pistas al remitente) cualquier punto a más de **100 km**
+   de la traza de cálculo. Es un margen deliberadamente generoso: cubre
+   cualquier situación real (incluida la de un coche de apoyo puntual), y solo
+   corta puntos verdaderamente absurdos o maliciosos. No debe interferir nunca
+   con un desvío real de Santi.
+2. **F4 — el botón de descartar pasa de "último punto" a "cualquier punto del
+   histórico".** Mejora que además es útil por sí misma (Santi puede querer
+   limpiar un punto raro de hace una hora, no solo el de ahora). Cierra el hueco
+   que deja la capa 1 si algo la esquivara.
+
+**Por qué las dos y no solo una.** Sin la capa 1, el endpoint queda
+desprotegido durante toda la ventana entre que F2 se despliega y F4 existe. Sin
+la capa 2, un punto envenenado que sí burlara el filtro geográfico (por ejemplo,
+alguien con acceso al token insertando un punto dentro de esos 100 km pero muy
+adelantado) seguiría sin tener arreglo si se descubre tarde.
+
+**Alternativas valoradas.**
+- *Umbral de 10 km* (propuesta inicial). Descartado por Santi a favor de más
+  margen: prioriza no rechazar nunca un punto real por encima de un filtro más
+  ajustado.
+- *Solo capa 2, sin filtro en F2.* Descartada: deja el endpoint sin protección
+  hasta que F4 esté construido y desplegado.
+- *Solo capa 1, sin ampliar F4.* Descartada: no cierra el caso límite de un
+  punto envenenado que se descubre después de haberse enterrado en el
+  histórico.
+
+**Actualiza `DEBT.md`**: la entrada de envenenamiento del ancla pasa de
+"irreversible" a "reversible vía admin, con la ampliación de alcance de F4
+descrita aquí"; prioridad se mantiene Alta hasta que ambas capas estén
+implementadas.

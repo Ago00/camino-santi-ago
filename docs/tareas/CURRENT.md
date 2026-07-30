@@ -2,15 +2,20 @@
 
 _Sin tarea activa._
 
-Últimas cerradas: **F1 — Base del proyecto** y **F1.1 — La traza pasa a ser un
-corredor**, archivadas en `historico/`.
+Última cerrada: **F2 — Datos e ingesta** (código completo, sin verificar contra
+Supabase real — bloqueado por F0), archivada en `historico/`.
 
-Siguiente en el roadmap: **F2 — Datos e ingesta**. Bloqueada hasta que F0 esté
-completa (Supabase, Vercel y MapTiler dados de alta).
+⚠️ **Antes de dar F2 por terminada de verdad**, cuando exista el proyecto
+Supabase: aplicar `supabase/migrations/0001_esquema_inicial.sql`, poner las env
+vars, y probar `/api/track` con una petición real (curl u OwnTracks) contra la
+BD viva. El código está testeado con mocks, no con integración real.
 
-⚠️ **F2 arranca con una deuda de prioridad Alta ya identificada**: el
-envenenamiento del ancla de progreso desde `/api/track`. Ver `DEBT.md` antes de
-diseñar el endpoint de ingesta.
+Siguiente en el roadmap: **F3 — Web pública**. También bloqueada por F0
+(necesita Supabase para leer datos reales, MapTiler para el mapa).
+
+⚠️ Deuda de prioridad Media pendiente antes de desplegar: rate limiting en
+`/api/track` (ver `DEBT.md`). Y la capa 2 de DT-006 (botón "descartar
+cualquier punto" en el panel admin) llega en F4.
 
 ---
 

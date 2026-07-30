@@ -105,11 +105,33 @@ pública salga a producción.
 
 ## Envenenamiento del ancla de progreso desde el endpoint de ingesta (F2)
 
+**Fecha:** 2026-07-30 · **Corregida (parcialmente):** 2026-07-30, tarea F2
+**Contexto:** Detectado por el Agente de Seguridad en la revisión de F1.1. El ancla del porcentaje se fija con el primer punto no descartado del histórico y determina el denominador de todo el cálculo del intento. En F2 el histórico se alimenta desde `/api/track`, un endpoint accesible desde internet. Ver **DT-006** en `docs/tecnico/decisiones-tecnicas.md` para el análisis completo y la decisión de defensa en dos capas.
+**Problema (corrección de la premisa original):** Esta entrada decía "irreversible sin tocar la BD directamente". Es incorrecto: `calcularProgreso` recalcula el ancla en cada llamada como `validas[0]` (primer punto con `descartado: false`), así que marcar el punto envenenado como `descartado` desde el panel de admin lo repara sin tocar la BD a mano — **es reversible vía admin**. El problema real y más matizado: la especificación v1 solo prevé un botón de "descartar último punto", que no llega a un punto envenenado si queda enterrado bajo datos posteriores.
+**Impacto:** Si un tercero consigue insertar un primer punto muy adelantado en la traza (p. ej. km 104 con Santi en el km 0), la barra queda fijada cerca del 100% hasta que se descarte ese punto desde el panel. Con el filtro geográfico de F2 (ver más abajo) el vector de "punto absurdamente lejano" queda cerrado; sigue abierto el caso límite de un punto dentro de rango pero adelantado, insertado por alguien con el token, si se descubre tarde y el botón de F4 solo alcanza al último punto.
+**Solución — estado tras F2:**
+- **Capa 1 (F2, implementada):** filtro de plausibilidad geográfica en `/api/track` — se rechaza (sin guardar, sin dar pistas) cualquier punto a más de 100 km de la traza de cálculo. Ver `app/api/track/route.ts`, `lib/traza/umbrales.ts` (`SEPARACION_TRAZA_MAX_KM`) y sus tests en `app/api/track/route.test.ts`.
+- **Capa 2 (F4, pendiente):** el botón de descartar debe ampliarse de "último punto" a "cualquier punto del histórico", para poder llegar a un punto envenenado aunque quede enterrado bajo horas de datos posteriores. Registrado en `docs/producto/roadmap.md`, sección F4.
+**Prioridad:** Alta — se mantiene hasta que la capa 2 (F4) esté implementada. La capa 1 ya reduce drásticamente la superficie de ataque, pero el caso límite descrito arriba sigue sin cerrarse del todo.
+
+---
+
+## `/api/track` no valida el rango físico de `lat`/`lon`/`tst` en el schema Zod
+
+**Fecha:** 2026-07-30 · **Resuelta:** 2026-07-30, ronda final de limpieza F2
+**Contexto:** Detectado por el Reviewer en la revisión de F2. El schema `payloadOwnTracks` en `app/api/track/route.ts` validaba `lat`/`lon`/`tst` solo como `z.number()`, sin rango físico.
+**Resolución:** `payloadOwnTracks` ahora exige `lat: z.number().min(-90).max(90)`, `lon: z.number().min(-180).max(180)` y `tst: z.number().positive()` (sin cota superior, para no mantener una fecha mágica). Sigue siendo el filtro geográfico de 100 km (DT-006) la defensa real contra el envenenamiento del ancla — esto es defensa adicional explícita por contrato, no un sustituto.
+**Prioridad:** Cerrada.
+
+---
+
+## Sin rate limiting en `/api/track`
+
 **Fecha:** 2026-07-30
-**Contexto:** Detectado por el Agente de Seguridad en la revisión de F1.1. El ancla del porcentaje se fija con el primer punto no descartado del histórico y determina el denominador de todo el cálculo del intento. En F2 el histórico se alimentará desde `/api/track`, un endpoint accesible desde internet.
-**Problema:** Si el token de ingesta no se valida correctamente en servidor, o si no se comprueba que los puntos son geográficamente plausibles, un tercero podría insertar un primer punto en el km 104 de la traza: el denominador quedaría en ~1 km y la barra marcaría 100% desde el arranque, de forma permanente e irreversible sin tocar la BD.
-**Impacto:** La barra de progreso quedaría fijada al 100% permanentemente desde el inicio del reto, haciendo el seguimiento en directo inútil. Irreversible sin intervención directa en BD. Vector activo en producción desde el momento en que F2 despliegue el endpoint.
-**Solución propuesta:** En F2, validación estricta del token de ingesta (comparación en tiempo constante, no igualdad de cadenas) más rechazo de puntos cuya separación de la traza supere un umbral generoso (p. ej. 500 m). El umbral debe ser suficientemente amplio para no rechazar GPS con deriva, pero suficientemente estrecho para descartar puntos en el km 104 si Santi está en el km 0.
-**Prioridad:** Alta — hay que resolverlo dentro de F2, no después.
+**Contexto:** Detectado por el Agente de Seguridad en la revisión de F2 (auditoría OWASP Top 10, A04).
+**Problema:** El endpoint de ingesta no tiene ningún límite de peticiones. No es bloqueante mientras el proyecto no esté desplegado (F0/Vercel pendiente), pero es condición explícita antes de exponer el endpoint a internet: un token filtrado sin límite permite spam de inserciones en `posiciones`, degradando el rendimiento y ensuciando el histórico (con impacto directo en el cálculo de progreso).
+**Impacto:** No compromete la integridad del ancla (eso ya lo cubre DT-006), pero permite agotar cuota de BD y ensuciar el histórico visible en el panel de admin si el token se filtra (captura de la config de OwnTracks en el móvil, logs de Vercel, etc.).
+**Solución propuesta:** Rate limiting a nivel de IP o de token en el propio route handler (o mediante la capa de Vercel/Edge si se dispone de ella), antes de F5 (cierre y deploy a producción).
+**Prioridad:** Media — no bloquea F2, sí bloquea el despliegue real.
 
 ---

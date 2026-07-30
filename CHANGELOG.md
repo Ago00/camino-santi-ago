@@ -2,6 +2,43 @@
 
 ---
 
+## 2026-07-30 — F2: Ronda final de endurecimiento tras revisión
+
+**Tipo:** Fix
+
+Últimos ajustes de F2 tras la aprobación de Reviewer y Seguridad: el endpoint
+de ingesta ahora rechaza explícitamente coordenadas y marcas de tiempo
+físicamente imposibles antes de procesarlas, y se añaden tests que confirman
+que una petición vacía o con datos corruptos no se guarda nunca. Queda
+también anotada como pendiente, antes de exponer el sistema a internet, la
+protección frente a un abuso masivo de peticiones al endpoint.
+
+---
+
+## 2026-07-30 — F2: Datos e ingesta (código listo, verificación con cuentas reales pendiente)
+
+**Tipo:** Feature
+
+Queda escrita la capa de datos del proyecto: el esquema completo de las 5
+tablas (intentos, posiciones, intenciones, comentarios, textos) con sus
+políticas de privacidad, y el endpoint que recibe la posición GPS de Santi
+desde el móvil durante el reto.
+
+El endpoint de ingesta incorpora dos protecciones nuevas frente a manipulación:
+compara el token de acceso de forma que no se pueda adivinar cronometrando
+las respuestas del servidor, y rechaza cualquier punto que aparezca a más de
+100 km del recorrido previsto — así un dato falso o corrupto no puede
+adelantar artificialmente la barra de progreso.
+
+**Importante:** no hay todavía cuentas de Supabase ni Vercel dadas de alta
+(pendiente de F0), así que nada de esto se ha probado contra una base de
+datos real. El código está completo y cubierto con tests que simulan la base
+de datos, pero falta la verificación de extremo a extremo — aplicar el
+esquema, cargar las claves de acceso y comprobar que todo funciona con datos
+reales — en cuanto las cuentas existan.
+
+---
+
 ## 2026-07-30 — F1.1: Limpieza final post-revisión (aserciones, documentación, deuda de seguridad)
 
 **Tipo:** Mejora
