@@ -8,9 +8,9 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 
 | Fase | Descripción | Estado |
 |---|---|---|
-| F0 | Infraestructura (repo, Supabase, Vercel, MapTiler, env vars) | **en curso** |
+| F0 | Infraestructura (repo, Supabase, Vercel, MapTiler, env vars) | **en curso** (Supabase hecho; Vercel y MapTiler pendientes) |
 | F1 | Base (scaffolding, traza, dominio de progreso, tipos, docs) | **hecho** |
-| F2 | Datos e ingesta (esquema SQL, RLS, `/api/track`, clientes Supabase) | **código hecho, verificación con cuentas reales pendiente (bloqueada por F0)** |
+| F2 | Datos e ingesta (esquema SQL, RLS, `/api/track`, clientes Supabase) | **hecho y verificado contra Supabase real** |
 | F3 | Web pública (mapa, progreso, stats, formularios, textos) | definido |
 | F4 | Panel admin (login, middleware, secciones) | definido |
 | F5 | Cierre (Reviewer, Seguridad OWASP/RLS, deploy producción, prueba real) | definido |
@@ -23,19 +23,20 @@ Las altas de cuentas las hace Santi; el código no las necesitó en F1 pero F2 n
 puede empezar sin ellas.
 
 - [x] Repo GitHub `Ago00/camino-santi-ago` (público, por el límite de Vercel Hobby)
-- [ ] Proyecto Supabase nuevo (anotar URL, anon key y service role key)
+- [x] Proyecto Supabase nuevo (región eu-west-1, URL/anon/service role
+      configuradas en `.env.local`) — 2026-07-30
 - [ ] Proyecto Vercel nuevo conectado al repo
 - [ ] Cuenta MapTiler (free tier) y su API key
-- [ ] Env vars cargadas en Vercel: `NEXT_PUBLIC_SUPABASE_URL`,
-      `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`,
-      `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, `NEXT_PUBLIC_MAPTILER_KEY`
+- [ ] Env vars cargadas en **Vercel** (ya están en `.env.local` local, faltan
+      en producción): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+      `SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`, `ADMIN_PASSWORD`,
+      `ADMIN_SESSION_SECRET`, `NEXT_PUBLIC_MAPTILER_KEY`
 
 ## F2 — Datos e ingesta
 
-**Código completo (2026-07-30). Verificación con Supabase real pendiente de F0.**
+**Hecha y verificada contra Supabase real (2026-07-30).**
 
 - [x] Escribir migración SQL (`supabase/migrations/0001_esquema_inicial.sql`)
-      — no ejecutada todavía contra un proyecto real
 - [x] Políticas RLS según la tabla del plan, incluidas en la migración
 - [x] Route handler `/api/track` (ingesta OwnTracks con token +
       `timingSafeEqual` + filtro de plausibilidad geográfica de 100 km,
@@ -43,11 +44,16 @@ puede empezar sin ellas.
 - [x] Cliente Supabase admin (`lib/supabase/admin.ts`) — construcción
       perezosa, no falla el build sin env vars
 - [x] Cliente Supabase público (`lib/supabase/public.ts`) — ídem
-- [x] Tests unitarios del endpoint con Supabase mockado
-- [ ] Aplicar la migración contra un Supabase real (bloqueado por F0)
-- [ ] Verificar `/api/track` con una petición real (curl u OwnTracks) contra
-      una BD viva (bloqueado por F0)
-- [ ] Verificar con OwnTracks real desde el móvil (bloqueado por F0)
+- [x] Tests unitarios del endpoint con Supabase mockado (36 tests)
+- [x] Aplicar la migración contra Supabase real — 5 tablas, RLS activo en
+      las 5, verificado que `intenciones` es inaccesible para `anon` incluso
+      con filas reales insertadas
+- [x] Verificar `/api/track` con peticiones reales contra la BD viva: token
+      incorrecto → 401, punto fuera de rango → descartado sin guardar, punto
+      válido → guardado correctamente. Encontrado y corregido un bug real en
+      el proceso (`admin.ts` leía una env var inexistente — ver `BUGS.md`)
+- [ ] Verificar con OwnTracks real desde el móvil (pendiente de Vercel — hace
+      falta una URL pública para que el teléfono pueda mandar peticiones)
 
 ## F3 — Web pública
 
