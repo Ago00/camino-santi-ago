@@ -24,6 +24,39 @@ para que el handler de `move` no capture una versión stale.
 
 ---
 
+## @supabase/supabase-js: los `Row` del tipo `Database` deben ser mapped types, no interfaces directas
+
+**Registrada:** 2026-07-30 (F2 — Datos e ingesta)
+**Por quién:** Implementador
+
+Al tipar `BaseDeDatos` (el genérico `Database` de `createClient<Database>()`)
+usando directamente los `interface` de `lib/types.ts` como `Row` de cada
+tabla (`Row: Posicion`, `Row: Intento`...), `.from(tabla).insert(...)` y
+`.update(...)` resuelven silenciosamente a `never` — sin ningún error hasta
+que se llama con datos reales, y de forma inconsistente entre `tsc
+--noEmit` (a veces no lo detecta, especialmente con caché incremental) y
+`next build` (sí lo detecta siempre). Nada avisa de que el `Database extends
+GenericSchema` interno de la librería falló.
+
+**Causa raíz:** `@supabase/postgrest-js` exige que `Row` sea estructuralmente
+asignable a `Record<string, unknown>` (necesita index signature). Un
+`interface` de TypeScript no tiene index signature implícito, así que no es
+asignable a `Record<string, unknown>` aunque tenga exactamente los mismos
+campos. La condición `Schema extends GenericSchema ? Schema : never` de la
+librería falla en silencio y cae al `never` por defecto.
+
+**Solución validada:** envolver cada `Row` en `Pick<T, keyof T>` (o
+equivalente: cualquier mapped type que reconstruya el interface). Eso sí
+tiene index signature estructural y preserva los mismos campos.
+`Insert`/`Update` no tienen este problema porque ya suelen construirse con
+`Omit`/`Partial` (mapped types por definición).
+
+**Aplica a:** cualquier tabla nueva que se añada al tipo `BaseDeDatos` de
+`lib/supabase/admin.ts` en F3/F4 (comentarios, intenciones si se tipan
+inserts, etc.) — seguir el mismo patrón `Row: Pick<T, keyof T>`.
+
+---
+
 <!-- Formato de nueva entrada:
 ## [Título]
 **Registrada:** YYYY-MM-DD

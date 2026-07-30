@@ -1,0 +1,3 @@
+# pnpm siempre escribe el lockfile con LF. Sin esto, Windows lo marca como
+# modificado en cada `pnpm install` solo por el fin de línea, sin cambio real.
+pnpm-lock.yaml text eol=lf

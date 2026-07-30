@@ -92,6 +92,31 @@ export function prepararTraza(
 }
 
 // ---------------------------------------------------------------------------
+// separacionDeTrazaM
+// ---------------------------------------------------------------------------
+
+/**
+ * Distancia perpendicular en metros de un punto (lat/lon) a la traza.
+ *
+ * Reutilizada por el filtro de plausibilidad geográfica de `/api/track`
+ * (DT-006): un punto a más de 100 km de la traza se rechaza en la ingesta,
+ * antes de guardarse en BD. Comparte la misma proyección con Turf que usa
+ * `calcularProgreso`, para no mantener dos implementaciones de "distancia a
+ * la traza" que puedan divergir.
+ */
+export function separacionDeTrazaM(
+  lat: number,
+  lon: number,
+  traza: TrazaPreparada
+): number {
+  const trazaTurf = buildTrazaTurf(traza);
+  const snap = nearestPointOnLine(trazaTurf, point([lon, lat]), {
+    units: "kilometers",
+  });
+  return (snap.properties.dist ?? 0) * 1000;
+}
+
+// ---------------------------------------------------------------------------
 // calcularProgreso
 // ---------------------------------------------------------------------------
 
