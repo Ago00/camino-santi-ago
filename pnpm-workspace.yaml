@@ -1,0 +1,10 @@
+allowBuilds:
+  # Los tres descargan binarios precompilados por plataforma en su postinstall.
+  # Sin ese script el ejecutable no llega a disco y el paquete queda inoperable.
+  esbuild: true       # binario nativo de esbuild (vía Vite/Vitest)
+  sharp: true         # libvips precompilada (vía Next.js para next/image)
+  unrs-resolver: true # resolver nativo de ESLint (vía eslint-config-next)
+
+overrides:
+  sharp: ">=0.35.0"
+  postcss: ">=8.5.18"

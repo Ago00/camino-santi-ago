@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+:root {
+  --color-granito: #F4F3EF;
+  --color-tinta: #1B211D;
+  --color-violeta: #3B357A;
+  --color-eucalipto: #2F5D50;
+  --color-ambar: #D9773B;
+  --color-oro: #C9A24B;
+  --color-atleti: #CE2029;
+}
+
+body {
+  background-color: var(--color-granito);
+  color: var(--color-tinta);
+  font-family: system-ui, sans-serif;
+}
