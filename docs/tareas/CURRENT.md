@@ -1,6 +1,43 @@
 # Tarea en curso
 
-_Sin tarea activa._
+## Fix: `getSupabaseAdmin()` leía `SUPABASE_URL` en vez de `NEXT_PUBLIC_SUPABASE_URL`
+
+**Origen:** Debugger — fix simple, causa raíz confirmada por verificación de
+integración manual real contra Supabase (fuera de los tests con mocks).
+
+**Causa raíz:** `lib/supabase/admin.ts` leía `process.env.SUPABASE_URL`, una
+variable que nunca existió en el proyecto — el plan (`docs/tecnico/plan-ejecucion-v1.md`)
+solo define `NEXT_PUBLIC_SUPABASE_URL`. Con `.env.local` correctamente
+configurado, `getSupabaseAdmin()` lanzaba en el primer uso real y
+`/api/track` devolvía 500.
+
+**Solución aplicada:** `admin.ts` ahora lee `process.env.NEXT_PUBLIC_SUPABASE_URL`
+(misma variable que `public.ts`), con comentarios actualizados explicando por
+qué la URL no es secreta y no necesita variable de servidor separada.
+
+**Archivos modificados:**
+- `lib/supabase/admin.ts` — variable de entorno corregida + comentarios actualizados.
+- `lib/supabase/admin.test.ts` (nuevo) — 4 tests con `vi.stubEnv()`: construye
+  sin lanzar con las vars correctas, lanza si falta `NEXT_PUBLIC_SUPABASE_URL`,
+  lanza si falta `SUPABASE_SERVICE_ROLE_KEY`, y no se confunde si existe una
+  variable `SUPABASE_URL` (sin prefijo) suelta — regresión directa del bug.
+- `docs/LESSONS.md` — nueva entrada sobre tests con mocks no verificando
+  nombres reales de env vars.
+- `CHANGELOG.md` — entrada del fix.
+
+**Quality gates (todas en verde):**
+- `pnpm typecheck` — 0 errores.
+- `pnpm lint` — 0 errores/warnings.
+- `pnpm test` — 36/36 tests pasan (32 previos + 4 nuevos de `admin.test.ts`).
+- `pnpm build` — build de producción completa sin errores.
+
+**No se ha tocado:** `DEBT.md` no requiere cambios — la deuda existente sobre
+"verificación contra Supabase real pendiente" sigue siendo válida en general
+(este fix resuelve un síntoma concreto encontrado durante esa verificación,
+no cierra la verificación completa). `docs/bugs/BUGS.md` no se ha tocado —
+esa entrada la escribe el Debugger, no el Implementador.
+
+---
 
 Última cerrada: **F2 — Datos e ingesta** (código completo, sin verificar contra
 Supabase real — bloqueado por F0), archivada en `historico/`.
