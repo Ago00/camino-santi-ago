@@ -8,7 +8,15 @@
  *   prepararTraza(geojson) → TrazaPreparada  (ejecutar una vez, cachear)
  *   calcularProgreso(historico, traza) → Progreso  (en cada petición)
  *
- * Ver docs/tecnico/decisiones-tecnicas.md DT-003 para el razonamiento.
+ * ANCLAJE DEL PROGRESO (DT-005):
+ * El porcentaje se mide desde la proyección del primer punto válido del
+ * histórico hasta el final de la traza, no desde el origen de la traza.
+ * Esto evita que la barra empiece en ~4,5% antes de dar un paso cuando
+ * Santi arranca en el km 4,7 del corredor.
+ *   porcentaje = (avanceActual − avancePrimerPunto) / (longitudTotal − avancePrimerPunto) × 100
+ * Con histórico vacío o un solo punto el porcentaje es 0.
+ *
+ * Ver docs/tecnico/decisiones-tecnicas.md DT-003 y DT-005 para el razonamiento.
  */
 
 import nearestPointOnLine from "@turf/nearest-point-on-line";
@@ -112,7 +120,22 @@ export function calcularProgreso(
 
   const trazaTurf = buildTrazaTurf(traza);
 
-  let maxKmAvanzados = 0;
+  // Primer punto válido: ancla el origen del porcentaje (DT-005).
+  // La proyección del primer punto determina desde dónde se mide el 0%.
+  const kmPrimerPunto = (() => {
+    const snap = nearestPointOnLine(
+      trazaTurf,
+      point([validas[0].lon, validas[0].lat]),
+      { units: "kilometers" }
+    );
+    return snap.properties.location ?? 0;
+  })();
+
+  // Con un solo punto el avance desde el ancla es 0: porcentaje = 0.
+  // La fórmula da (kmPrimerPunto - kmPrimerPunto) / denominador = 0, que es correcto.
+
+  // maxKmAvanzados arranca en el primer punto (la barra no puede bajar de su posición inicial).
+  let maxKmAvanzados = kmPrimerPunto;
   let odometroKm = 0;
   let puntosDescartados = 0;
   let ultimaPosicionValida: Posicion | null = null;
@@ -189,10 +212,15 @@ export function calcularProgreso(
   );
   const separacionM = (snapFinal.properties.dist ?? 0) * 1000;
 
-  const porcentaje = Math.min(
-    100,
-    (maxKmAvanzados / traza.longitudTotalKm) * 100
-  );
+  // Porcentaje anclado al primer punto del intento (DT-005):
+  //   porcentaje = (avanceActual − avancePrimerPunto) / (longitudTotal − avancePrimerPunto) × 100
+  // Si el primer punto ya está al final (arranque tardío extremo), denominador → 0.
+  // Usamos Math.max para evitar división por cero y clampeamos a [0, 100].
+  const denominador = Math.max(0, traza.longitudTotalKm - kmPrimerPunto);
+  const numerador = Math.max(0, maxKmAvanzados - kmPrimerPunto);
+  const porcentaje = denominador > 0
+    ? Math.min(100, (numerador / denominador) * 100)
+    : 100; // si el ancla ya está en el final, el reto empieza en 100%
 
   // km restantes return-aware: separación a la traza + tramo de plan que queda
   const planRestanteKm = Math.max(

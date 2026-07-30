@@ -17,7 +17,7 @@ distintas. Mezclarlos es el bug más caro posible del proyecto.
 
 | Fichero | Para qué | Longitud válida |
 |---|---|---|
-| `lib/traza/traza.geojson` | CÁLCULO (solo servidor) | SÍ — 100,2103 km |
+| `lib/traza/traza.geojson` | CÁLCULO (solo servidor) | SÍ — ~104,97 km (corredor DT-005) |
 | `lib/traza/traza-mapa.geojson` | PINTADO (se envía al cliente) | NO — acortada por DP |
 
 `proyeccion.ts` **siempre** usa `traza.geojson`. El cliente **nunca** recibe

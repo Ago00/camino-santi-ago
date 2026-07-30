@@ -27,6 +27,45 @@ Pendiente validar sobre el terreno. Ver `DEBT.md`.
 
 ---
 
+## La traza es un corredor: el recorrido real empieza donde Santi pulse Iniciar
+
+**Fecha:** 2026-07-30
+**Decidido por:** Santi
+
+**Decisión.** La traza deja de representar el recorrido exacto y pasa a ser un
+**corredor previsto** que comienza varios kilómetros antes del punto de salida
+real. La barra de progreso arranca en 0% en el momento en que Santi pulsa
+Iniciar, sea cual sea el punto de la traza donde se encuentre en ese momento.
+
+Lo que experimenta Santi (y los espectadores): la barra empieza en 0% cuando
+él dice "empiezo", avanza según se mueve, y llega al 100% al pisar el
+Obradoiro. El corredor extendido por el sur es invisible para el usuario: solo
+importa que el sistema tenga traza suficiente para cubrir cualquier punto de
+arranque razonable.
+
+**Por qué.** El inicio actual de la traza estaba 1,7 km al norte de O Porriño,
+lo que equivale aproximadamente a la escala del mojón 98,7. El criterio de Santi
+era arrancar junto a un mojón que grabara ≥ 100 km. No era posible localizar ese
+mojón con precisión suficiente (las coordenadas de los mojones físicos no están
+en ningún dataset público). La solución fue ensanchar el margen sur de la traza
+hasta que cualquier mojón con cifra ≥ 100 quede dentro del corredor, y dejar que
+el recorrido real lo defina el momento del Iniciar.
+
+**Alternativas valoradas:**
+- Localizar el mojón del km 100 con datos de campo (Wikiloc, Street View, fotos
+  geolocalizadas) → descartado por Santi a favor de estimar, más rápido y
+  suficiente dado el diseño de corredor.
+- Estimar a partir del mojón 99,408 (único documentado cerca) contando ~500 m
+  hacia atrás → encadena dos estimaciones (posición del cruce, espaciado regular)
+  para ganar una precisión que el diseño de corredor hace innecesaria.
+
+**Consecuencia técnica:** la traza pasa de 100,21 km a ~105 km (7.121 puntos).
+El porcentaje se calcula desde la proyección del primer punto del intento, no
+desde el origen del corredor. Ver `docs/tecnico/decisiones-tecnicas.md` → DT-005
+para el detalle de implementación.
+
+---
+
 ## Repo nuevo, no reutilizar la POC
 
 **Fecha:** 2026-07-30

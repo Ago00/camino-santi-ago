@@ -14,13 +14,14 @@ alternativas se valoraron, por qué se eligió, fecha.
 | | Cálculo | Pintado |
 |---|---|---|
 | Fichero | `lib/traza/traza.geojson` | `lib/traza/traza-mapa.geojson` |
-| Puntos | 6.911 (sin simplificar) + tramo final | ~1.700 (Douglas-Peucker, 3 m) |
-| Peso | ~147 KB | ~37 KB (~15 KB gzip) |
+| Puntos | 7.121 (sin simplificar, traza extendida DT-005) | ~2.011 (Douglas-Peucker, 3 m) |
+| Peso | ~147 KB | ~42 KB (~16 KB gzip) |
 | Dónde se usa | Solo servidor (`proyeccion.ts`) | Se envía al navegador (mapa, F3) |
 | Exactitud | Longitud real, intocable | ±3 m, estética |
 
 **Por qué.** Douglas-Peucker corta esquinas y por tanto **siempre acorta la
-línea**. Medido sobre nuestra traza real:
+línea**. Medido sobre nuestra traza real **antes de la extensión sur de F1.1**
+(6.911 puntos, 100 km) — el análisis sigue siendo válido, las cifras son históricas:
 
 | Tolerancia | Puntos | Longitud | Pérdida |
 |---|---|---|---|
@@ -48,6 +49,10 @@ arriesgar fidelidad visual en el elemento central del producto.
 ---
 
 ## DT-002 — La meta es la Praza do Obradoiro; la traza mide 100,21 km
+
+> ⚠️ **DEROGADA parcialmente por DT-005** (2026-07-30). La meta en el Obradoiro
+> y el tramo final manual siguen vigentes. Lo que decae es el punto de inicio y
+> el objetivo de longitud: la traza ya no persigue una cifra, es un corredor.
 
 **Fecha:** 2026-07-30 · **Tarea:** F1 — Base · **Decisión de producto de Santi**
 
@@ -109,8 +114,9 @@ Sin I/O, sin lectura de ficheros, sin `Date.now()` implícito. La traza entra co
 parámetro.
 
 **Por qué.** Los tests se escriben con trazas sintéticas de 3 puntos en vez de
-depender del GeoJSON real de 6.911 vértices: fixtures legibles y fallos que
-señalan la línea exacta del bug. `prepararTraza` separada evita recalcular las
+depender del GeoJSON real de 7.121 vértices (estado actual; eran 6.911 antes de
+la extensión sur de F1.1): fixtures legibles y fallos que señalan la línea exacta
+del bug. `prepararTraza` separada evita recalcular las
 distancias acumuladas en cada petición (el día del reto habrá ~3.600 posiciones).
 
 ---
@@ -129,3 +135,85 @@ distancias acumuladas en cada petición (el día del reto habrá ~3.600 posicion
 **Por qué en un módulo propio.** El día del reto puede hacer falta ajustar un
 umbral en caliente. Buscarlos esparcidos por el código, con el reloj corriendo y
 Santi andando, es exactamente lo que no queremos.
+
+---
+
+## DT-005 — La traza es un corredor, no un recorrido: se extiende al sur y el progreso se ancla al inicio real
+
+**Fecha:** 2026-07-30 · **Tarea:** F1.1 — Ajuste de traza y anclaje
+**Deroga:** el punto de inicio y el objetivo de longitud de DT-002
+
+**Decisión de producto de Santi.** El reto debe **arrancar en un mojón físico
+cuya cifra grabada sea ≥ 100 km**. Y, textualmente: *"la ruta empieza donde yo le
+dé a iniciar"* y *"debe mostrar que llevo lo que lleve y que me queda lo
+calculado; debemos hacerlo de manera que empiece antes de los 100 km
+calculados"*.
+
+### El problema
+
+El inicio actual de la traza está 1,7 km al **norte** de O Porriño siguiendo la
+ruta. En la escala de los mojones eso es ≈98,7 km: **incumple el criterio**.
+
+Y no se puede corregir con precisión, por dos motivos independientes:
+
+1. **Las coordenadas de los mojones no existen en ningún dataset público.** El
+   dataset de la Xunta solo publica los trazados de etapa; OpenStreetMap en esa
+   zona solo tiene mojones de carretera (AP-9V, AG-46). Único ancla documentada
+   encontrada: el mojón **99,408**, donde el Camino abandona la N-550 para
+   entrar en O Porriño por la rúa Manuel Rodríguez.
+2. **Nuestra medición y la grabada en las piedras no coinciden.** Contrastando
+   hitos contra las distancias oficiales de etapa, nuestra traza mide de más de
+   forma creciente hacia el sur:
+
+   | Hito | Restante s/ traza | Guías | Desvío |
+   |---|---|---|---|
+   | Padrón | 25,310 km | 23,7 | +1,61 |
+   | Caldas de Reis | 44,411 km | 42,3 | +2,11 |
+   | Pontevedra | 65,690 km | 63,4 | +2,29 |
+   | Redondela | 85,495 km | 83,0 | +2,49 |
+   | O Porriño | 101,92 km | 98,2 | +3,72 |
+
+   **No es un fallo de la traza**: se verificó que no se solapa consigo misma en
+   ningún punto (0 zonas de repaso), así que no hay tramos duplicados del KML.
+   Es la diferencia normal entre un track GPS detallado y las distancias de
+   etapa redondeadas de las guías.
+
+### La decisión
+
+**1. La traza se extiende ~4,7 km hacia el sur**, atravesando O Porriño en
+dirección Tui, hasta ~3 km al sur del centro. Total ≈ **105 km**.
+
+En vez de acertar el mojón exacto —imposible con los datos disponibles— se
+ensancha la red: con 105 km, el punto donde una piedra pone `100` queda dentro de
+la traza incluso en el escenario de desfase más pesimista (+3,7 km).
+
+**2. El progreso se ancla al primer punto del intento, no al origen de la traza.**
+El porcentaje se mide desde donde Santi pulsa Iniciar hasta el Obradoiro. Sin
+esto, con la traza empezando 4,7 km antes, la barra marcaría ~4,5% antes de dar
+un paso. Odómetro y km restantes no cambian de semántica.
+
+**3. Se abandona el objetivo de longitud exacta.** El compromiso pasa de "100,000
+km exactos" a **"nunca menos de 100"**. Se anda algo más de lo que dice el
+titular, nunca menos.
+
+### Por qué esto es robusto
+
+La traza deja de ser *el recorrido* y pasa a ser *el corredor previsto*. Eso la
+hace inmune a las dos incógnitas que no podemos cerrar desde aquí (dónde está el
+mojón y cuál es el desfase real de la escala grabada): el recorrido de verdad lo
+define Santi al pulsar Iniciar.
+
+### Alternativas valoradas
+
+- *Localizar el mojón por investigación* (Wikiloc, fotos geolocalizadas, Street
+  View). Descartada por Santi a favor de estimar: más lento y aun así incierto.
+- *Estimar desde el mojón 99,408 y contar 500 m hacia atrás.* Encadena dos
+  estimaciones (dónde está ese cruce y que el espaciado sea regular) para ganar
+  una precisión que el diseño de corredor hace innecesaria.
+
+### Deuda que genera
+
+El día del reto, **la pantalla y las piedras no dirán el mismo número** (~1,5-3,7
+km de diferencia). Se aparca deliberadamente hasta F3: cuando Santi ande la ruta
+se podrán anotar mojones reales y calibrar con datos en vez de con estimaciones.
+Registrado en `DEBT.md`.

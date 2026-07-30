@@ -2,6 +2,17 @@
 
 ---
 
+## Desfase entre la pantalla y las piedras: calibración aplazada a F3
+
+**Fecha:** 2026-07-30
+**Contexto:** Generado en F1.1 al adoptar el diseño de "corredor" (DT-005). La traza mide de más respecto a las distancias grabadas en los mojones físicos del Camino, con un desfase creciente hacia el sur (medido: +1,61 km en Padrón, +2,11 km en Caldas, +2,29 km en Pontevedra, +2,49 km en Redondela, +3,72 km en O Porriño). No es un error de la traza — es la diferencia entre un track GPS detallado y las distancias de etapa redondeadas de las guías.
+**Problema:** El día del reto, cuando Santi pase junto a un mojón que pone "98" (por ejemplo), la web mostrará un número diferente. El desfase esperado es ~1,5-3,7 km según la zona. Esto puede ser confuso para los espectadores que conozcan los mojones físicos.
+**Impacto:** Cosmético durante el reto: la barra y el odómetro son coherentes entre sí, pero no coinciden con la escala grabada en piedra. Santi ya está informado y lo acepta. El mayor riesgo es que un espectador malinterprete el número como un error técnico.
+**Solución propuesta:** En F3, añadir al panel de admin la posibilidad de registrar mojones reales (número grabado + timestamp de paso) durante el reto. Con 2-3 mojones anotados se puede calibrar una función de corrección lineal que alinee la pantalla con las piedras para el resto del recorrido.
+**Prioridad:** Media — no bloquea F2-F4; debe valorarse antes del día del reto.
+
+---
+
 ## Tramo final de la traza pendiente de validar sobre el terreno
 
 **Fecha:** 2026-07-30
@@ -55,6 +66,17 @@ a 5 decimales (actualmente 6) o subir la tolerancia DP a 4-5 m.
 
 ---
 
+## Ancla del porcentaje se recalcula si el admin descarta la primera posición
+
+**Fecha:** 2026-07-30
+**Contexto:** Detectado por el Reviewer en la revisión de F1.1. En `proyeccion.ts`, el ancla del porcentaje (DT-005) se calcula desde `validas[0]` — el primer punto sin `descartado=true` — en cada llamada a `calcularProgreso`. Si el admin descarta la primera posición del histórico (operación que existirá en el panel de F4), la siguiente llamada ancla en la segunda posición, que puede estar en un km distinto de la traza.
+**Problema:** En el escenario donde la posición 0 estaba proyectada a km 4 de la traza, Santi avanzó hasta km 50 (porcentaje ≈ 45,5%), y el admin descarta la posición 0, la nueva ancla pasa a la posición 1 (km 5). El nuevo porcentaje es (50-5)/(105-5) × 100 = 45%. La barra baja visiblemente, aunque el comportamiento resultante es más correcto (el ancla refleja el inicio real del intento). El riesgo principal es que ocurra en directo con espectadores mirando.
+**Impacto:** Leve en casi todos los casos reales (las primeras dos posiciones registradas suelen estar muy próximas). Potencialmente visible si el primer GPS registró una posición muy desviada al sur antes de corregir.
+**Solución propuesta:** En F4, al implementar la acción de descartar posición, añadir una advertencia al admin si la posición a descartar es la que actualmente ancla el porcentaje. Alternativamente, persistir `kmAncla` en la tabla `intentos` de BD la primera vez que se calcula, para que no dependa del primer punto del histórico en cada petición.
+**Prioridad:** Baja — el escenario es operacionalmente improbable; solo importa si se descarta el primer punto mientras el reto está en curso.
+
+---
+
 ## `Progreso` expone campos internos de `Posicion` al serializar hacia el cliente en F3
 
 **Fecha:** 2026-07-30
@@ -78,5 +100,16 @@ La proyección debe hacerse explícitamente en la capa de servidor (Server Compo
 o route handler), nunca en el cliente.
 **Prioridad:** Media — no explota en F1, pero debe resolverse antes de que la web
 pública salga a producción.
+
+---
+
+## Envenenamiento del ancla de progreso desde el endpoint de ingesta (F2)
+
+**Fecha:** 2026-07-30
+**Contexto:** Detectado por el Agente de Seguridad en la revisión de F1.1. El ancla del porcentaje se fija con el primer punto no descartado del histórico y determina el denominador de todo el cálculo del intento. En F2 el histórico se alimentará desde `/api/track`, un endpoint accesible desde internet.
+**Problema:** Si el token de ingesta no se valida correctamente en servidor, o si no se comprueba que los puntos son geográficamente plausibles, un tercero podría insertar un primer punto en el km 104 de la traza: el denominador quedaría en ~1 km y la barra marcaría 100% desde el arranque, de forma permanente e irreversible sin tocar la BD.
+**Impacto:** La barra de progreso quedaría fijada al 100% permanentemente desde el inicio del reto, haciendo el seguimiento en directo inútil. Irreversible sin intervención directa en BD. Vector activo en producción desde el momento en que F2 despliegue el endpoint.
+**Solución propuesta:** En F2, validación estricta del token de ingesta (comparación en tiempo constante, no igualdad de cadenas) más rechazo de puntos cuya separación de la traza supere un umbral generoso (p. ej. 500 m). El umbral debe ser suficientemente amplio para no rechazar GPS con deriva, pero suficientemente estrecho para descartar puntos en el km 104 si Santi está en el km 0.
+**Prioridad:** Alta — hay que resolverlo dentro de F2, no después.
 
 ---
