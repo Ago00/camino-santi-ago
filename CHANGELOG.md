@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-08-01 — Arrancar el reto por primera vez desde el panel, sin tocar la base de datos
+
+**Tipo:** Fix
+
+Con la base de datos completamente vacía (antes de que el reto se haya
+iniciado alguna vez), la sección Actividad del panel admin no ofrecía ningún
+botón para empezar — solo un aviso de que no había ningún intento activo.
+Ahora, en ese caso, aparece un botón "Iniciar primer intento" que crea la
+primera fila desde el propio panel, sin necesidad de intervención manual en
+Supabase.
+
+---
+
 ## 2026-08-01 — Panel de administración del reto
 
 **Tipo:** Feature

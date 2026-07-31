@@ -82,6 +82,7 @@ vi.mock("@/lib/auth/admin-session", async () => {
 });
 
 const {
+  crearPrimerIntento,
   iniciarReto,
   finalizarReto,
   retomarReto,
@@ -119,6 +120,27 @@ describe("verificación de sesión (defensa independiente de proxy.ts)", () => {
   it("guardarTexto lanza con una cookie de sesión expirada", async () => {
     cookieSesionMock = crearSesion(new Date(Date.now() - 8 * 24 * 60 * 60 * 1000));
     await expect(guardarTexto("reto_titulo", "nuevo")).rejects.toThrow(/sesión/i);
+  });
+});
+
+describe("Actividad — arranque desde cero (crearPrimerIntento)", () => {
+  it("crea el primer intento en fase 'antes' cuando la tabla está vacía", async () => {
+    intentoActivoMock = null;
+    await crearPrimerIntento();
+
+    expect(insertIntentoSpy).toHaveBeenCalledWith({ fase: "antes" });
+  });
+
+  it("lanza y no inserta una segunda fila si ya existe un intento activo (regresión del índice único)", async () => {
+    intentoActivoMock = { id: 1, fase: "antes" };
+    await expect(crearPrimerIntento()).rejects.toThrow(/ya existe/i);
+    expect(insertIntentoSpy).not.toHaveBeenCalled();
+  });
+
+  it("crearPrimerIntento lanza si no hay cookie de sesión", async () => {
+    cookieSesionMock = undefined;
+    await expect(crearPrimerIntento()).rejects.toThrow(/sesión/i);
+    expect(insertIntentoSpy).not.toHaveBeenCalled();
   });
 });
 

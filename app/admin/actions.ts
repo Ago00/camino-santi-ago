@@ -53,6 +53,36 @@ export async function cerrarSesion(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Siembra la primera fila de `intentos` cuando la tabla está completamente
+ * vacía (arranque desde cero, sin SQL manual). Distinta de `reiniciarReto()`:
+ * esa exige una fila activa previa que cerrar; esta exige que NO exista
+ * ninguna. Mantenerlas separadas evita que una sola función tenga dos
+ * caminos con significado distinto según el estado de la BD.
+ *
+ * La comprobación previa (sin fila con `cerrado = false`) es defensiva, no la
+ * única garantía: el índice único `intentos_activo_unico` (migración
+ * 0001) es quien de verdad impide dos filas activas ante una carrera real.
+ */
+export async function crearPrimerIntento(): Promise<void> {
+  await requerirSesion();
+  const supabase = getSupabaseAdmin();
+
+  const { data: intentoActivo, error: errorBusqueda } = await supabase
+    .from("intentos")
+    .select("id")
+    .eq("cerrado", false)
+    .maybeSingle();
+
+  if (errorBusqueda) throw new Error("No se pudo comprobar si ya existe un intento activo.");
+  if (intentoActivo) throw new Error("Ya existe un intento activo.");
+
+  const { error: errorCreacion } = await supabase.from("intentos").insert({ fase: "antes" });
+  if (errorCreacion) throw new Error("No se pudo crear el intento.");
+
+  revalidarAdmin();
+}
+
+/**
  * antes → durante, sobre el intento activo actual. Pide confirmación en el
  * cliente (no aquí: la Server Action confía en que la UI ya confirmó).
  */
