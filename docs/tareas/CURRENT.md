@@ -629,3 +629,60 @@ en verde tras la limpieza. **Bug cerrado de verdad.**
 **Siguiente paso:** Reviewer y Seguridad sobre el diff acumulado de todo el
 ciclo de este bug (fix de postcss + fix del mapa + limpieza), antes de
 cerrar la tarea y fusionar el PR.
+
+---
+
+## Historial de revisión
+
+### Reviewer (2026-07-31) — commits posteriores a `25a83f5` (fixes post-preview)
+
+**Veredicto: ✅ Aprobado — pasa a Seguridad.**
+
+Revisado el diff acumulado de los tres fixes (`postcss.config.mjs`,
+`export const dynamic = "force-dynamic"` en `app/page.tsx`, worker de
+MapLibre pre-empaquetado con esbuild — DT-008), no F3 completo otra vez.
+
+**Sin bloqueantes.**
+
+**Comprobado explícitamente:**
+- `components/mapa/Mapa.tsx` leído completo: sin restos de instrumentación
+  de depuración (`window.Worker` sobrescrito, `console.log("DEBUG...")`,
+  listeners `styledata`/`sourcedata`/`dataloading` temporales). Solo queda
+  el listener permanente `instancia.on("error", ...)`, justificado.
+- `lib/maplibre-worker-entry.ts` (enfoque descartado en la 3ª pasada) no
+  existe en el filesystem ni se referencia desde ningún fichero de código
+  (confirmado con grep en todo el proyecto salvo `docs/`).
+- `scripts/bundle-maplibre-worker.ts` sigue el patrón de
+  `scripts/simplificar-traza.ts` (estilo, comentario de cabecera,
+  `main().catch(...)`); tiene guardia propia (regexp de imports sin
+  resolver) que lo hace fallar ruidosamente si esbuild no inlinea todo.
+- `package.json`: `esbuild` en `devDependencies` (correcto, no hace falta
+  en runtime). Hooks `predev`/`prebuild` bien colocados, no afectan a
+  `pnpm install`.
+- `eslint.config.mjs`: exclusión mínima, un único fichero
+  (`public/maplibre-gl-worker.bundled.js`), no un glob amplio.
+- `app/page.tsx`: `force-dynamic` en la posición correcta, no introduce
+  nuevos caminos de fallo (el try/catch de `obtenerIntentoActivo()` ya
+  cubre la ausencia de Supabase).
+- Documentación coherente entre `DT-008`, `LESSONS.md`, `BUGS.md`,
+  `CHANGELOG.md`, `AGENTS.md` — misma historia, mismo nivel de detalle.
+
+**Recomendaciones (registradas en `DEBT.md`, no bloquean):**
+1. `bundle-maplibre-worker.ts` no valida con `existsSync` que el fichero de
+   entrada de `node_modules/maplibre-gl` exista antes de invocar esbuild —
+   si falla, el mensaje es el genérico de esbuild, no uno propio que
+   remita a DT-008. Prioridad baja.
+2. DT-008 deja "a criterio del Implementador" si el artefacto se commitea
+   o se regenera, sin cerrar esa decisión en el propio documento (la
+   implementación real sí decidió: no se commitea, se regenera siempre).
+   Ajuste documental menor. Prioridad baja.
+
+**Nota de proceso:** el Reviewer no tuvo herramienta de ejecución de shell
+disponible en esta sesión y no pudo correr `pnpm typecheck/lint/test/build`
+de forma independiente. Se apoya en la evidencia estática del código y en
+los registros de quality gates ya documentados arriba por el Implementador
+y el Orquestador. Recomendado que quien fusione confirme una vez más el
+build en verde desde un checkout limpio.
+
+**Siguiente paso:** Agente de Seguridad sobre el mismo diff (commits
+posteriores a `25a83f5`).

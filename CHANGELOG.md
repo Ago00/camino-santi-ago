@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-07-31 — Fix: vulnerabilidad de severidad alta en una dependencia de desarrollo
+
+**Tipo:** Fix (seguridad)
+
+Una auditoría de dependencias encontró una vulnerabilidad conocida (denegación
+de servicio) en una librería usada solo por las herramientas de desarrollo
+(el comprobador de estilo de código y el medidor de cobertura de tests), no
+por la web en sí. Se ha corregido ajustando qué versión exacta de esa
+librería usan internamente esas herramientas. No afecta a la web pública ni
+a ningún dato de usuario.
+
+---
+
 ## 2026-07-31 — Fix (definitivo): el mapa en directo no mostraba calles ni terreno, solo la traza
 
 **Tipo:** Fix
