@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-07-31 — Fix: los estilos de Tailwind no se aplicaban en ninguna página
+
+**Tipo:** Fix
+
+Faltaba el fichero `postcss.config.mjs` que conecta Tailwind con el proceso
+de compilación — sin él, ninguna clase de Tailwind (tipografía, colores,
+espaciados, tamaños) llegaba a aplicarse realmente, aunque el código las
+tuviera escritas correctamente. La web se veía sin ningún estilo desde que
+existe el proyecto; no se notó antes porque F1 y F2 no tenían pantallas
+reales que mirar. F3 es la primera fase con UI visual, y es donde se detectó
+al abrir la preview.
+
+---
+
 ## 2026-07-31 — Fix: la página principal quedaba congelada con los datos del momento del despliegue
 
 **Tipo:** Fix

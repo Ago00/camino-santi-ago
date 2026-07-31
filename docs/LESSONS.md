@@ -115,6 +115,41 @@ usuario fusiona PRs sin avisar explícitamente en la conversación.
 
 ---
 
+## Ninguna quality gate detecta que Tailwind no esté generando CSS real
+
+**Registrada:** 2026-07-31
+**Por quién:** Orquestador (detectado por el usuario al abrir la preview)
+
+F3 se cerró con las 4 quality gates en verde (`typecheck`, `lint`, `test`,
+`build`) y pasó Reviewer y Seguridad, pero faltaba `postcss.config.mjs` —
+sin él, `@import "tailwindcss"` en `globals.css` nunca se expande y **ninguna
+clase de Tailwind se aplicaba**, en todo el proyecto, desde F1. Ni
+`next build` ni `tsc` ni los tests fallan por esto: Tailwind sin PostCSS
+conectado no es un error de compilación, es CSS que simplemente no se
+genera. El HTML sale con las clases escritas en el `className` (sintácticamente
+correctas) pero sin ninguna regla CSS real detrás. El bug pasó tres
+revisiones (Implementador, Reviewer, Seguridad, todas basadas en código/tests)
+sin que nadie lo viera, porque nadie abrió un navegador — hasta que el
+usuario abrió la preview de Vercel y "se veía lamentable".
+
+**Causa raíz:** el scaffolding inicial de F1 nunca generó `postcss.config.mjs`
+pese a tener `@tailwindcss/postcss` en `package.json`. No había ninguna
+pantalla real en F1/F2 para notarlo (F1 era un placeholder, F2 no tenía UI).
+
+**Regla:** para cualquier tarea que toque UI, el pipeline no puede darse por
+cerrado solo con quality gates de código (`typecheck`/`lint`/`test`/`build`)
+y revisión de código. Hace falta al menos una comprobación visual real —
+levantar el dev server (o revisar la preview desplegada) y mirar el
+resultado renderizado — antes de reportar la tarea como lista. Un build que
+compila y tests que pasan no garantizan que el CSS se esté generando.
+
+**Aplica a:** toda tarea con componentes visuales nuevos, en este proyecto o
+en cualquier otro con Tailwind v4 + Next.js — verificar que existe
+`postcss.config.mjs` (o equivalente) es parte del checklist de arranque de
+cualquier fase con UI, y el Orquestador debe insertar un paso de
+verificación visual (preview local o desplegada) antes de reportar el
+cierre de cualquier tarea con UI, no solo cuando el usuario lo pide.
+
 <!-- Formato de nueva entrada:
 ## [Título]
 **Registrada:** YYYY-MM-DD
