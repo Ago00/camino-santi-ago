@@ -5,14 +5,19 @@
  * desde código que se ejecute en el navegador. Se usa en route handlers y
  * server actions: `/api/track`, `/admin/actions.ts`, etc.
  *
- * NO SE HA PROBADO CONTRA UN PROYECTO SUPABASE REAL (F2, ver docs/tareas/CURRENT.md).
- * El proyecto Supabase todavía no existe (bloqueado por F0). El cliente está
- * escrito contra la API pública de @supabase/supabase-js y el esquema de
- * supabase/migrations/0001_esquema_inicial.sql, pero su comportamiento con una
- * BD real queda pendiente de verificación en cuanto F0 esté lista.
+ * NO SE HA PROBADO CONTRA UN PROYECTO SUPABASE REAL CON DATOS (F2, ver
+ * docs/tareas/CURRENT.md). El proyecto Supabase todavía no existe (bloqueado
+ * por F0). El cliente está escrito contra la API pública de
+ * @supabase/supabase-js y el esquema de supabase/migrations/0001_esquema_inicial.sql,
+ * pero su comportamiento con una BD real queda pendiente de verificación en
+ * cuanto F0 esté lista. Sí se ha verificado que `getSupabaseAdmin()` lee los
+ * nombres correctos de env vars (ver admin.test.ts) tras un bug real donde
+ * leía `SUPABASE_URL` en vez de `NEXT_PUBLIC_SUPABASE_URL` — los tests de
+ * route.test.ts mockean el cliente entero y no lo detectaban.
  *
- * Construcción perezosa (lazy): `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`
- * no existen todavía como env vars (no hay proyecto Supabase). Si este módulo
+ * Construcción perezosa (lazy): `NEXT_PUBLIC_SUPABASE_URL` y
+ * `SUPABASE_SERVICE_ROLE_KEY` no existen todavía como env vars (no hay
+ * proyecto Supabase). Si este módulo
  * llamara a createClient() en el top-level, `pnpm build` fallaría hoy mismo
  * por falta de esas variables — y el build no puede depender de secretos que
  * aún no existen. En su lugar, el cliente solo se construye (y solo entonces
@@ -88,18 +93,23 @@ let clienteAdmin: SupabaseClient<BaseDeDatos> | null = null;
 
 /**
  * Devuelve el cliente admin, construyéndolo la primera vez que se llama.
- * Lanza si `SUPABASE_URL` o `SUPABASE_SERVICE_ROLE_KEY` no están definidas —
- * pero solo en ese momento, nunca al importar el módulo.
+ * Lanza si `NEXT_PUBLIC_SUPABASE_URL` o `SUPABASE_SERVICE_ROLE_KEY` no están
+ * definidas — pero solo en ese momento, nunca al importar el módulo.
+ *
+ * La URL usa el prefijo `NEXT_PUBLIC_` (misma variable que public.ts) porque
+ * la URL de un proyecto Supabase no es secreta — no tiene sentido una
+ * variable de servidor separada solo para ella. El secreto real de este
+ * cliente es `SUPABASE_SERVICE_ROLE_KEY`, que sigue sin prefijo.
  */
 export function getSupabaseAdmin(): SupabaseClient<BaseDeDatos> {
   if (clienteAdmin) return clienteAdmin;
 
-  const url = process.env.SUPABASE_URL;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !serviceRoleKey) {
     throw new Error(
-      "Faltan las env vars SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY. " +
+      "Faltan las env vars NEXT_PUBLIC_SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY. " +
         "Este cliente solo puede usarse server-side, con el proyecto Supabase configurado."
     );
   }

@@ -57,6 +57,39 @@ inserts, etc.) — seguir el mismo patrón `Row: Pick<T, keyof T>`.
 
 ---
 
+## Los tests con mocks del cliente Supabase no verifican los nombres reales de env vars
+
+**Registrada:** 2026-07-30
+**Por quién:** Implementador (a partir de una verificación de integración manual)
+
+`app/api/track/route.test.ts` mockea `lib/supabase/admin` entero (sustituye
+`getSupabaseAdmin()` por un builder falso), así que nunca ejecuta el código
+real que lee `process.env`. Esto dejó pasar un bug real: `getSupabaseAdmin()`
+leía `process.env.SUPABASE_URL` — variable que nunca existió en el proyecto,
+el plan solo define `NEXT_PUBLIC_SUPABASE_URL` — sin que ningún test lo
+detectara. Con `.env.local` configurado correctamente según el plan, el
+cliente admin lanzaba en el primer uso real y `/api/track` devolvía 500.
+
+Lo encontró una verificación de integración manual contra Supabase real
+(fuera del pipeline automático de tests), precisamente el tipo de prueba que
+F2 tenía pendiente antes de darse por cerrada del todo (ver
+`docs/tareas/historico/`).
+
+**Solución validada:** además de los tests con mocks (necesarios para probar
+la lógica de negocio del endpoint sin BD), añadir al menos un test que
+instancie el cliente real — sin conectar, solo construirlo — para verificar
+los nombres exactos de env vars que lee. Ver `lib/supabase/admin.test.ts`:
+usa `vi.stubEnv()` para comprobar que con las variables correctas puestas no
+lanza, que lanza si falta alguna, y (regresión directa de este bug) que no
+se confunde si existe una variable con nombre parecido pero incorrecto.
+
+**Aplica a:** cualquier módulo que lea `process.env` directamente y esté
+cubierto solo por tests que lo mockean — el nombre de la variable en sí
+nunca queda bajo test a menos que se instancie el código real al menos una
+vez.
+
+---
+
 <!-- Formato de nueva entrada:
 ## [Título]
 **Registrada:** YYYY-MM-DD

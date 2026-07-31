@@ -14,6 +14,19 @@ retira una configuración duplicada que, además, generaba un fichero de
 bloqueo de dependencias con un formato no estándar (dos documentos en vez de
 uno), origen del error de parseo en Vercel.
 
+## 2026-07-30 — Fix: el cliente admin de Supabase no leía la URL configurada
+
+**Tipo:** Fix
+
+Una verificación de integración real detectó que la conexión a la base de
+datos desde el servidor (usada por el endpoint que recibe la posición GPS)
+buscaba el nombre de una variable de configuración que nunca había existido
+en el proyecto, así que fallaba en el primer uso real aunque todo estuviera
+bien configurado según el plan. Corregido para que use la misma dirección
+que ya usa el resto del sistema.
+
+---
+
 ## 2026-07-30 — F2: Ronda final de endurecimiento tras revisión
 
 **Tipo:** Fix
