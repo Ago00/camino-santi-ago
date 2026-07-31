@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "simplificar-traza": "tsx scripts/simplificar-traza.ts",
+    "generar-perfil-elevacion": "tsx scripts/generar-perfil-elevacion.ts",
     "bundle-maplibre-worker": "tsx scripts/bundle-maplibre-worker.ts"
   },
   "dependencies": {
