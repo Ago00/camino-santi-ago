@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 import { motion } from "motion/react";
 import { perfilElevacion, calcularDesnivel } from "@/lib/traza/perfil-elevacion";
 
@@ -18,8 +18,6 @@ const C = {
 };
 
 export default function PerfilElevacion() {
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-
   const distanciaTotal = perfilElevacion[perfilElevacion.length - 1].km;
   const { ascensoM, descensoM } = calcularDesnivel(perfilElevacion);
   const primerPunto = perfilElevacion[0];
@@ -34,7 +32,7 @@ export default function PerfilElevacion() {
       </div>
 
       <div className="px-4 pb-4 pt-5">
-        <PerfilSVG datos={perfilElevacion} hoverIdx={hoverIdx} onHover={setHoverIdx} />
+        <PerfilSVG datos={perfilElevacion} />
         <div className="mt-1.5 flex justify-between font-mono text-[10px] tabular-nums" style={{ color: "#9AA29C" }}>
           <span>O Porriño · {primerPunto.m} m</span>
           <span>Santiago · {ultimoPunto.m} m</span>
@@ -57,15 +55,7 @@ function MiniStat({ icon, value, unit, label, color }: { icon: React.ReactNode; 
   );
 }
 
-function PerfilSVG({
-  datos,
-  hoverIdx,
-  onHover,
-}: {
-  datos: { km: number; m: number }[];
-  hoverIdx: number | null;
-  onHover: (i: number | null) => void;
-}) {
+function PerfilSVG({ datos }: { datos: { km: number; m: number }[] }) {
   const W = 400;
   const H = 100;
   const PAD_Y = 10;
@@ -107,27 +97,6 @@ function PerfilSVG({
         animate={{ pathLength: 1 }}
         transition={{ duration: 0.9, ease: "easeOut" }}
       />
-      {datos.map((d, i) => (
-        <rect
-          key={i}
-          x={x(d.km) - (W / datos.length) / 2}
-          y={0}
-          width={W / datos.length}
-          height={H}
-          fill="transparent"
-          onMouseEnter={() => onHover(i)}
-          onMouseLeave={() => onHover(null)}
-        />
-      ))}
-      {hoverIdx !== null && (
-        <g>
-          <line x1={x(datos[hoverIdx].km)} y1={0} x2={x(datos[hoverIdx].km)} y2={H} stroke={C.ink} strokeOpacity={0.15} strokeWidth={1} />
-          <circle cx={x(datos[hoverIdx].km)} cy={y(datos[hoverIdx].m)} r={3.5} fill={C.ember} stroke="white" strokeWidth={1.5} />
-          <text x={x(datos[hoverIdx].km)} y={y(datos[hoverIdx].m) - 8} textAnchor="middle" fontSize="9" fontFamily="monospace" fill={C.ink}>
-            {datos[hoverIdx].m} m
-          </text>
-        </g>
-      )}
     </svg>
   );
 }
