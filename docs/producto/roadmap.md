@@ -12,7 +12,7 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 | F1 | Base (scaffolding, traza, dominio de progreso, tipos, docs) | **hecho** |
 | F2 | Datos e ingesta (esquema SQL, RLS, `/api/track`, clientes Supabase) | **hecho y verificado en producción real** |
 | F3 | Web pública (mapa, progreso, stats, formularios, textos) | hecho |
-| F4 | Panel admin (login, middleware, secciones) | definido |
+| F4 | Panel admin (login, proxy, secciones) | **hecho** |
 | F5 | Cierre (Reviewer, Seguridad OWASP/RLS, deploy producción, prueba real) | definido |
 
 ---
@@ -72,16 +72,26 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 
 ## F4 — Panel admin
 
-- [ ] Página de login
-- [ ] Middleware protegiendo `/admin/*`
-- [ ] Sección Actividad (Iniciar / Finalizar / Reiniciar)
-- [ ] Sección Posición (fichar, ver última, **descartar cualquier punto del
+**Hecha (2026-08-01).**
+
+- [x] Página de login (`/admin/login`, contraseña única)
+- [x] `proxy.ts` protegiendo `/admin/*` (Next 16 renombró `middleware.ts` a
+      `proxy.ts`, ver DT-010) + verificación de sesión independiente en cada
+      Server Action
+- [x] Sección Actividad: Iniciar / Finalizar / **Retomar** (deshace un
+      Finalizar sobre el mismo intento, sin confirmación) / Reiniciar (cierra
+      el intento y abre uno nuevo, con confirmación — disponible desde
+      `durante` y desde `llegada`)
+- [x] Sección Posición (ver última, **descartar cualquier punto del
       histórico** — no solo el último; DT-006 capa 2, defensa complementaria
       al filtro geográfico de F2 contra el envenenamiento del ancla de
-      progreso)
-- [ ] Sección Intenciones (leer, eliminar)
-- [ ] Sección Comentarios (ocultar, mostrar, eliminar, filtrar)
-- [ ] Sección Textos (editar)
+      progreso). No incluye "fichar posición ahora" (geolocalización manual
+      de respaldo): retirado explícitamente del alcance, se confía en
+      OwnTracks.
+- [x] Sección Intenciones (leer, eliminar — borrado real, la tabla no tiene
+      soft-delete)
+- [x] Sección Comentarios (ocultar, mostrar, eliminar, filtrar)
+- [x] Sección Textos (editar las 6 claves de `lib/textos/defaults.ts`)
 
 ## F5 — Cierre
 

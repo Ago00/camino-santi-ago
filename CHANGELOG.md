@@ -2,6 +2,34 @@
 
 ---
 
+## 2026-08-01 — Panel de administración del reto
+
+**Tipo:** Feature
+
+Nueva zona privada `/admin`, protegida con contraseña, desde la que gestionar
+el reto en directo sin tocar código ni la base de datos a mano:
+
+- **Actividad**: arrancar el reto (Iniciar), cerrarlo con un mensaje de
+  llegada (Finalizar), deshacer un Finalizar si hace falta seguir andando
+  (Retomar) o abortar y empezar de cero (Reiniciar, con confirmación —
+  ningún dato se borra nunca, el intento anterior queda guardado).
+- **Posición**: última posición conocida y el histórico completo, con la
+  opción de descartar cualquier punto raro de GPS, no solo el más reciente.
+- **Intenciones**: leer y eliminar las intenciones dejadas por familia y
+  amigos.
+- **Comentarios**: ocultar, volver a mostrar o eliminar comentarios, con
+  filtro por todos/públicos/ocultos.
+- **Textos**: editar cualquiera de los textos de la web pública sin
+  necesidad de desplegar código nuevo.
+
+La sesión de admin dura 7 días y se renueva sola mientras se usa el panel,
+para no obligar a volver a iniciar sesión en mitad del reto (24-30 h en
+marcha). Queda fuera de esta versión, por decisión explícita, el botón de
+"fichar mi posición ahora" (respaldo manual de geolocalización): se confía
+en que la app de tracking del móvil es suficiente.
+
+---
+
 ## 2026-07-31 — Foto de Santi y perfil de elevación en la web pública
 
 **Tipo:** Feature

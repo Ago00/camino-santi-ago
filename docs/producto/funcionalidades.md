@@ -49,17 +49,31 @@ Protegido por contraseña única (env var) y cookie firmada HttpOnly.
 
 ### Actividad
 
-- **Iniciar** — arranca el reto (transición a fase `durante`).
-- **Finalizar** — cierra el reto con mensaje de llegada (transición a `llegada`).
-- **Reiniciar** — cierra el intento actual y abre uno nuevo en `antes`. Nada se
-  borra de la BD: el historial completo queda intacto por si hay que auditarlo.
+- **Iniciar** — arranca el reto (transición `antes` → `durante`). Pide
+  confirmación.
+- **Finalizar** — cierra el reto con un mensaje de llegada, editable antes de
+  enviar (transición `durante` → `llegada`). Pide confirmación.
+- **Retomar** — deshace un Finalizar: vuelve de `llegada` a `durante` sobre
+  el mismo intento (no crea ni cierra nada, el histórico de posiciones queda
+  intacto). Pensado para seguir andando si Finalizar se pulsó por error o
+  antes de tiempo. No pide confirmación — es tan reversible como volver a
+  pulsar Finalizar.
+- **Reiniciar** — disponible desde `durante` (abortar un intento en marcha) y
+  desde `llegada` (empezar de cero). Cierra el intento actual y abre uno
+  nuevo en `antes`. Nada se borra de la BD: el historial completo queda
+  intacto por si hay que auditarlo. Pide confirmación — es la única acción
+  de Actividad que de verdad cierra una etapa sin vuelta atrás sencilla.
 
 ### Posición
 
-- "Fichar mi posición ahora" — usa la geolocalización del navegador para enviar
-  una posición manual (útil si el móvil falla).
-- Ver última posición y cuándo fue.
-- Descartar último punto (soft-delete reversible).
+- Ver la última posición conocida y cuándo se recibió.
+- Histórico completo de posiciones, paginado, con la opción de **descartar
+  cualquier punto**, no solo el más reciente — útil para limpiar un salto de
+  GPS raro aunque se descubra horas después. Reversible.
+
+No incluye geolocalización manual de respaldo ("fichar posición a mano"): se
+confía en que la app de tracking del móvil (OwnTracks) es suficiente, así
+que se ha decidido no construir esa red de seguridad adicional.
 
 ### Intenciones
 

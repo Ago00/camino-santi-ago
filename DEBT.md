@@ -100,14 +100,13 @@ de los campos internos aparece en el objeto resultante.
 
 ## Envenenamiento del ancla de progreso desde el endpoint de ingesta (F2)
 
-**Fecha:** 2026-07-30 · **Corregida (parcialmente):** 2026-07-30, tarea F2
+**Fecha:** 2026-07-30 · **Corregida (parcialmente):** 2026-07-30, tarea F2 · **Cerrada:** 2026-08-01, tarea F4
 **Contexto:** Detectado por el Agente de Seguridad en la revisión de F1.1. El ancla del porcentaje se fija con el primer punto no descartado del histórico y determina el denominador de todo el cálculo del intento. En F2 el histórico se alimenta desde `/api/track`, un endpoint accesible desde internet. Ver **DT-006** en `docs/tecnico/decisiones-tecnicas.md` para el análisis completo y la decisión de defensa en dos capas.
-**Problema (corrección de la premisa original):** Esta entrada decía "irreversible sin tocar la BD directamente". Es incorrecto: `calcularProgreso` recalcula el ancla en cada llamada como `validas[0]` (primer punto con `descartado: false`), así que marcar el punto envenenado como `descartado` desde el panel de admin lo repara sin tocar la BD a mano — **es reversible vía admin**. El problema real y más matizado: la especificación v1 solo prevé un botón de "descartar último punto", que no llega a un punto envenenado si queda enterrado bajo datos posteriores.
-**Impacto:** Si un tercero consigue insertar un primer punto muy adelantado en la traza (p. ej. km 104 con Santi en el km 0), la barra queda fijada cerca del 100% hasta que se descarte ese punto desde el panel. Con el filtro geográfico de F2 (ver más abajo) el vector de "punto absurdamente lejano" queda cerrado; sigue abierto el caso límite de un punto dentro de rango pero adelantado, insertado por alguien con el token, si se descubre tarde y el botón de F4 solo alcanza al último punto.
-**Solución — estado tras F2:**
+**Problema (corrección de la premisa original):** Esta entrada decía "irreversible sin tocar la BD directamente". Es incorrecto: `calcularProgreso` recalcula el ancla en cada llamada como `validas[0]` (primer punto con `descartado: false`), así que marcar el punto envenenado como `descartado` desde el panel de admin lo repara sin tocar la BD a mano — **es reversible vía admin**. El problema real y más matizado: la especificación v1 solo preveía un botón de "descartar último punto", que no llegaba a un punto envenenado si quedaba enterrado bajo datos posteriores.
+**Solución — estado final:**
 - **Capa 1 (F2, implementada):** filtro de plausibilidad geográfica en `/api/track` — se rechaza (sin guardar, sin dar pistas) cualquier punto a más de 100 km de la traza de cálculo. Ver `app/api/track/route.ts`, `lib/traza/umbrales.ts` (`SEPARACION_TRAZA_MAX_KM`) y sus tests en `app/api/track/route.test.ts`.
-- **Capa 2 (F4, pendiente):** el botón de descartar debe ampliarse de "último punto" a "cualquier punto del histórico", para poder llegar a un punto envenenado aunque quede enterrado bajo horas de datos posteriores. Registrado en `docs/producto/roadmap.md`, sección F4.
-**Prioridad:** Alta — se mantiene hasta que la capa 2 (F4) esté implementada. La capa 1 ya reduce drásticamente la superficie de ataque, pero el caso límite descrito arriba sigue sin cerrarse del todo.
+- **Capa 2 (F4, implementada):** la Server Action `descartarPosicion(id)` (`app/admin/actions.ts`) y la sección Posición del panel (`components/admin/SeccionPosicion.tsx`) permiten descartar cualquier punto del histórico paginado, no solo el último — cierra el caso límite de un punto envenenado enterrado bajo datos posteriores.
+**Prioridad:** Cerrada — ambas capas de defensa están implementadas.
 
 ---
 
@@ -128,6 +127,12 @@ de los campos internos aparece en el objeto resultante.
 **Impacto:** No compromete la integridad del ancla (eso ya lo cubre DT-006), pero permite agotar cuota de BD y ensuciar el histórico visible en el panel de admin si el token se filtra (captura de la config de OwnTracks en el móvil, logs de Vercel, etc.).
 **Solución propuesta:** Rate limiting a nivel de IP o de token en el propio route handler (o mediante la capa de Vercel/Edge si se dispone de ella), antes de F5 (cierre y deploy a producción).
 **Ampliación (F3):** los tres endpoints nuevos de la web pública (`POST /api/comentarios`, `POST /api/intenciones`, `GET /api/progreso`/`GET /api/comentarios`) están en el mismo caso — explícitamente fuera de alcance de F3 según `docs/tareas/CURRENT.md`, la solución de fondo es la misma y debe cubrir los cuatro endpoints (`/api/track` incluido) antes de F5.
+**Ampliación (F4):** `POST /api/admin/login` se añade a la misma lista — sin
+rate limiting, un atacante puede probar contraseñas sin límite (fuerza
+bruta). La comparación en tiempo constante (`timingSafeEqual`) evita fugar
+información por timing, pero no sustituye a un límite de intentos. Explícitamente
+fuera de alcance de F4 según `docs/tareas/CURRENT.md`, agrupado con los demás
+endpoints pendientes de F5.
 **Prioridad:** Media — no bloquea F2-F4, sí bloquea el despliegue real.
 
 ---
@@ -171,6 +176,17 @@ de los campos internos aparece en el objeto resultante.
 **Problema:** Un agente o desarrollador que consulte `arquitectura.md` para orientarse no verá estos cuatro ficheros nuevos, aunque sí están documentados en detalle en DT-009 (`decisiones-tecnicas.md`).
 **Impacto:** Puramente documental. No afecta al comportamiento del sistema, pero reduce la fiabilidad de `arquitectura.md` como mapa completo del proyecto.
 **Solución propuesta:** Añadir las 4 filas nuevas a la tabla de estructura de `arquitectura.md`, siguiendo el mismo formato que las entradas marcadas `# F3: ...`.
+**Prioridad:** Baja.
+
+---
+
+## Comentario desactualizado en `EnlacePaginacion.tsx`: dice "Link", implementa `<button>` + `router.push`
+
+**Fecha:** 2026-08-01
+**Contexto:** Detectado por el Reviewer en la revisión de F4 — Panel admin. El comentario de cabecera de `components/admin/EnlacePaginacion.tsx` dice "en vez de fetch de cliente, es un Link que actualiza un parámetro de offset propio en la URL", pero el componente no usa `next/link`: renderiza un `<button onClick={...}>` que llama a `router.push()`.
+**Problema:** El comentario no describe la implementación real. No es incorrecto en el efecto (navega actualizando la query string) pero induce a pensar que hay un `<Link>` de Next debajo, lo que puede confundir a quien lo lea para depurar o extender el patrón de paginación en otra sección.
+**Impacto:** Puramente documental — cero efecto en comportamiento.
+**Solución propuesta:** Ajustar el comentario para reflejar que es un botón con `router.push()`, no un `<Link>`.
 **Prioridad:** Baja.
 
 ---
