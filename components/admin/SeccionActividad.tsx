@@ -5,6 +5,7 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
 import ActividadAcciones from "@/components/admin/ActividadAcciones";
+import CrearPrimerIntentoBoton from "@/components/admin/CrearPrimerIntentoBoton";
 
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
@@ -24,9 +25,12 @@ export default async function SeccionActividad() {
 
   if (!intentoActivo) {
     return (
-      <p className="text-[14px]" style={{ color: C.muted }}>
-        No hay ningún intento activo en la base de datos.
-      </p>
+      <div className="space-y-3">
+        <p className="text-[14px]" style={{ color: C.muted }}>
+          No hay ningún intento activo en la base de datos.
+        </p>
+        <CrearPrimerIntentoBoton />
+      </div>
     );
   }
 

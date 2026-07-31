@@ -1,7 +1,8 @@
 # Tarea en curso
 
-Ninguna tarea en curso. Última cerrada: **F4 — Panel admin** (2026-08-01),
-archivada en `historico/2026-08-01-f4-panel-admin.md`.
+Ninguna tarea en curso. Última cerrada: **Bug — bootstrap del primer
+intento** (2026-08-01), archivada en
+`historico/2026-08-01-bug-bootstrap-primer-intento.md`.
 
 ---
 

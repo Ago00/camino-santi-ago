@@ -101,3 +101,42 @@ app), Turbopack no puede bundlearlo por mucho que se cambie desde dónde se
 referencia el fichero. La única solución robusta es eliminar la necesidad
 de bundling en tiempo real: pre-empaquetar el worker de antemano y servirlo
 como estático. Ver también `docs/LESSONS.md`.
+
+---
+
+## El panel admin no dejaba arrancar el reto la primera vez: nada creaba el primer `intento`
+
+**Fecha:** 2026-08-01
+**Tags:** server-action, supabase, bootstrap, panel-admin, testing-con-mocks
+
+**Síntomas:** Con F4 ya desplegado en producción y la tabla `intentos`
+todavía vacía (proyecto Supabase real, sin datos de prueba previos en esa
+tabla), la sección Actividad del panel admin mostraba "No hay ningún intento
+activo en la base de datos" y no ofrecía ningún botón — ni siquiera
+"Iniciar". Detectado por el usuario al probar el panel recién fusionado.
+
+**Causa raíz:** Las 4 Server Actions de Actividad en `app/admin/actions.ts`
+(`iniciarReto`, `finalizarReto`, `retomarReto`, `reiniciarReto`) parten todas
+de la premisa de que ya existe una fila con `cerrado = false` sobre la que
+actuar — incluida `reiniciarReto`, cuyo `insert` de la fila nueva solo es
+alcanzable después de cerrar una fila ya existente. Ninguna acción, ni
+`/api/track`, siembra la primera fila desde cero. Durante la verificación de
+F2 contra Supabase real, esa primera fila de prueba se insertó a mano por SQL
+directamente en el editor de Supabase — nunca se probó el panel de punta a
+punta arrancando desde una base de datos completamente vacía a través de la
+propia app, que es el escenario real de un proyecto nuevo.
+
+**Solución:** Nueva Server Action `crearPrimerIntento()` (misma verificación
+de sesión que el resto, comprueba explícitamente que no exista ya una fila
+`cerrado=false` antes de insertar, con el índice único parcial
+`intentos_activo_unico` como backstop ante condiciones de carrera) + botón
+en `SeccionActividad.tsx` (reutilizando `BotonConfirmable`) que aparece
+únicamente cuando no hay ningún intento activo.
+
+**Lección:** cuando una entidad tiene un ciclo de vida de estados (aquí:
+antes → durante → llegada, con cierre/reapertura), es fácil construir todas
+las transiciones *entre* estados y olvidar la transición *de la nada al
+primer estado*. Un entorno de pruebas que siempre arranca con datos
+sembrados a mano (SQL directo, fixtures, seeds) puede ocultar este hueco
+indefinidamente porque nunca ejercita el camino de "base de datos
+recién creada". Ver también `docs/LESSONS.md`.
