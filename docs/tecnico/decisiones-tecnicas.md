@@ -436,3 +436,55 @@ commitea. Open-Elevation no requiere clave ni gestión de cuenta.
   añadiría una dependencia de red externa a cada build sin ningún beneficio.
 - *API de elevación de MapTiler.* Descartada por la razón de cuota/clave
   explicada arriba.
+
+---
+
+## DT-010 — Sesión de admin: cookie HMAC casera con `node:crypto`; corrección `middleware.ts` → `proxy.ts`
+
+**Fecha:** 2026-07-31 · **Tarea:** F4 — Panel admin · **Decisión de arquitectura**
+
+**Contexto.** F4 necesita proteger `/admin/*` con una sesión de admin único
+(contraseña en `ADMIN_PASSWORD`). `docs/tecnico/arquitectura.md` documentaba
+`middleware.ts` como el fichero que protegería esas rutas.
+
+**Hallazgo previo a la decisión.** `middleware.ts` está deprecado desde
+Next.js **16.0.0** y renombrado a `proxy.ts` (función exportada `proxy()`,
+no `middleware()`) — confirmado en
+`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`,
+no en la documentación de entrenamiento del modelo (aviso de `AGENTS.md`
+sobre Next 16). `arquitectura.md` quedaba desactualizado en este punto desde
+que se escribió en F1. Además, Proxy en Next 16 usa **runtime Node.js por
+defecto** (antes Edge) — sin restricción para usar `node:crypto`. La propia
+documentación de Next advierte: las Server Actions se sirven como POST a la
+misma ruta donde se usan, así que un cambio de matcher en `proxy.ts` puede
+dejarlas sin cobertura sin que se note — **cada Server Action debe verificar
+la sesión por sí misma**, nunca asumir que `proxy.ts` ya lo hizo.
+
+**Decisión — sesión.** `lib/auth/admin-session.ts`: cookie `HttpOnly` con
+payload mínimo `{ exp: timestamp }` en base64url, firmado HMAC-SHA256
+(`ADMIN_SESSION_SECRET`), verificado con `timingSafeEqual` — mismo patrón que
+ya usa `/api/track` para `TRACK_TOKEN`. TTL 7 días, renovada en cada petición
+válida a `/admin/*` desde `proxy.ts`. Cada función de
+`app/admin/actions.ts` verifica la sesión ella misma antes de mutar nada.
+
+**Decisión — fichero.** `proxy.ts` (no `middleware.ts`) protege `/admin/*`
+excepto `/admin/login`.
+
+**Por qué HMAC casero y no `jose`/JWT.** Un solo admin, sin roles ni claims
+adicionales — un JWT completo resuelve un problema (multi-claim,
+interoperabilidad) que este proyecto no tiene. El HMAC casero es igual de
+seguro (mismo algoritmo por debajo) con cero dependencias nuevas y reutiliza
+un patrón ya presente y revisado en el proyecto.
+
+**Alternativas valoradas.**
+- *JWT con `jose`.* Descartada: dependencia nueva sin beneficio real para un
+  admin único.
+- *TTL corto (horas) sin renovación.* Descartada: obligaría a Santi a volver
+  a loguearse en pleno reto (24-30 h), justo el peor momento.
+- *TTL muy largo (meses) o sin expiración.* Descartada: amplía innecesariamente
+  la ventana de exposición si el móvil se pierde; las intenciones que protege
+  la sesión son datos privados de terceros.
+
+**Actualiza `arquitectura.md`**: `proxy.ts` sustituye a `middleware.ts` en la
+tabla de estructura; se añaden `lib/auth/admin-session.ts` y
+`components/admin/`.

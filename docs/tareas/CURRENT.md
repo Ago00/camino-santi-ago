@@ -1,8 +1,7 @@
 # Tarea en curso
 
-Ninguna tarea en curso. Última cerrada: **Foto en "Quién camina" +
-estadísticas y perfil de elevación** (2026-07-31), archivada en
-`historico/2026-07-31-foto-y-perfil-elevacion.md`.
+Ninguna tarea en curso. Última cerrada: **F4 — Panel admin** (2026-08-01),
+archivada en `historico/2026-08-01-f4-panel-admin.md`.
 
 ---
 

@@ -46,9 +46,15 @@ camino-santi-ago/
 │   ├── textos/               # F3
 │   │   ├── defaults.ts       # textos por defecto (override desde BD)
 │   │   └── obtener-textos.ts # server: fusiona defaults con la tabla `textos`
-│   └── auth/                 # F4
-│       └── admin-session.ts  # firma/verificación cookie HMAC
-├── middleware.ts             # F4: protege /admin/*
+│   ├── auth/                 # F4
+│   │   └── admin-session.ts  # firma/verificación cookie HMAC
+│   └── admin/                 # F4
+│       └── navegacion.ts     # estado de navegación (?tab=, ?filtroComentarios=)
+│                              # y sus validadores — fuera de components/admin/
+│                              # porque esos ficheros son "use client" (ver
+│                              # comentario en el propio fichero)
+├── proxy.ts                  # F4: protege /admin/* (Next 16: "middleware" se
+│                             # renombró a "proxy", ver DT-010)
 ├── docs/
 │   ├── traza-camino-portugues.geojson  # fuente original (CC BY-SA 4.0 Xunta)
 │   ├── producto/
