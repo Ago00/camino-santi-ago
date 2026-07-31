@@ -122,3 +122,34 @@ export interface TrazaPreparada {
   /** Longitud total de la traza en km. */
   longitudTotalKm: number;
 }
+
+// ---------------------------------------------------------------------------
+// Proyección pública del progreso (F3 — cierra la deuda de exposición de
+// campos internos de Posicion registrada en DEBT.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Última posición proyectada para consumo público: solo lo estrictamente
+ * necesario para pintar el mapa y la hora de la última señal. Nunca incluye
+ * `batt`, `acc`, `intento_id`, `fuente` ni `descartado` — esos campos son
+ * metadatos internos del tracker GPS y del modelo de datos, no información
+ * que la web pública deba exponer sobre una persona real en movimiento.
+ */
+export interface UltimaPosicionPublica {
+  lat: number;
+  lon: number;
+  ts: string; // ISO 8601
+}
+
+/**
+ * Proyección pública de `Progreso` (ver `lib/traza/progreso-publico.ts`).
+ * Es el único tipo de progreso que debe viajar del servidor al cliente en F3.
+ */
+export interface ProgresoPublico {
+  porcentaje: number;
+  kmAvanzados: number;
+  kmRestantes: number;
+  odometroKm: number;
+  estado: EstadoRuta;
+  ultimaPosicion: UltimaPosicionPublica | null;
+}

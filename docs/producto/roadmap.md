@@ -11,7 +11,7 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 | F0 | Infraestructura (repo, Supabase, Vercel, MapTiler, env vars) | **hecho** |
 | F1 | Base (scaffolding, traza, dominio de progreso, tipos, docs) | **hecho** |
 | F2 | Datos e ingesta (esquema SQL, RLS, `/api/track`, clientes Supabase) | **hecho y verificado en producción real** |
-| F3 | Web pública (mapa, progreso, stats, formularios, textos) | definido |
+| F3 | Web pública (mapa, progreso, stats, formularios, textos) | hecho |
 | F4 | Panel admin (login, middleware, secciones) | definido |
 | F5 | Cierre (Reviewer, Seguridad OWASP/RLS, deploy producción, prueba real) | definido |
 
@@ -58,15 +58,17 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 
 ## F3 — Web pública
 
-- [ ] Página principal con 3 modos (antes/durante/llegada)
-- [ ] Componente mapa (MapLibre + overlay SVG, patrón POC)
-- [ ] Stats (barra, km andados, km restantes, tiempo, ritmo)
-- [ ] Cielo-reloj (degradado dinámico día→noche según hora real)
-- [ ] Mojón como cifra de km restantes
-- [ ] Peregrino animado (camiseta rojiblanca, cabeza que se enfada al pinchar)
-- [ ] Formulario de intenciones
-- [ ] Formulario de comentarios + hilo público
-- [ ] Sistema de textos (default en código + override desde BD)
+**Hecha (2026-07-31).**
+
+- [x] Página principal con 3 modos (antes/durante/llegada)
+- [x] Componente mapa (MapLibre + overlay SVG, patrón POC)
+- [x] Stats (barra, km andados, km restantes, tiempo, ritmo)
+- [x] Cielo-reloj (degradado dinámico día→noche según hora real)
+- [x] Mojón como cifra de km restantes
+- [x] Peregrino animado (camiseta rojiblanca, cabeza que se enfada al pinchar)
+- [x] Formulario de intenciones
+- [x] Formulario de comentarios + hilo público
+- [x] Sistema de textos (default en código + override desde BD)
 
 ## F4 — Panel admin
 

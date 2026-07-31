@@ -275,3 +275,124 @@ adelantado) seguiría sin tener arreglo si se descubre tarde.
 "irreversible" a "reversible vía admin, con la ampliación de alcance de F4
 descrita aquí"; prioridad se mantiene Alta hasta que ambas capas estén
 implementadas.
+
+---
+
+## DT-007 — Web pública: polling + caché TTL en memoria en vez de Realtime o progreso incremental en BD
+
+**Fecha:** 2026-07-31 · **Tarea:** F3 — Web pública · **Decisión de arquitectura**
+
+**Contexto.** F3 necesita que "durante" refleje la posición y el progreso de
+Santi con datos vivos, y que el muro de comentarios se actualice. Dos
+decisiones relacionadas:
+
+**1. Cómo llega el dato vivo al cliente.**
+
+**Decisión:** *polling* del cliente a `GET /api/progreso` y `GET
+/api/comentarios` cada 30 s, en vez de Supabase Realtime.
+
+**Por qué.** `calcularProgreso` necesita `traza.geojson` (solo servidor, DT-001)
+— un evento de Realtime en el cliente igualmente tendría que disparar una
+llamada al servidor para recalcular, así que Realtime solo ahorraría el
+intervalo fijo, no el coste real de cómputo. Con audiencia familiar/amigos,
+30 s de retardo es imperceptible. Realtime añadiría gestión de conexión
+(reconexión, cleanup) sin resolver el problema real.
+
+**2. Coste de `calcularProgreso` en cada petición.**
+
+`calcularProgreso` recorre todo el histórico de posiciones y proyecta cada
+una sobre los ~7.121 segmentos de la traza — con ~3.600 posiciones al final
+del reto, hasta ~25M operaciones de distancia por llamada. Con varios
+seguidores haciendo polling cada 30 s durante 24-30 h, esto se ejecutaría sin
+caché justo cuando la web más tráfico tiene.
+
+**Decisión:** caché en memoria de proceso con TTL corto (15-20 s) dentro de
+`app/api/progreso/route.ts`. **No** se persiste progreso incremental en BD.
+
+**Por qué.** La alternativa correcta "de verdad" (guardar el estado
+acumulado — máximo histórico, odómetro, ancla — en `intentos` y actualizarlo
+incrementalmente desde `/api/track`) cambiaría la firma de `calcularProgreso`
+(dominio ya cerrado y testeado en F1, DT-003), la migración de F2 ya
+verificada contra Supabase real, y el propio `/api/track`. Eso excede el
+alcance aprobado para F3. La caché TTL en memoria resuelve el riesgo real
+(recomputación repetida en ráfagas de polling) sin tocar nada fuera de F3.
+
+**Alternativas valoradas.**
+- *Supabase Realtime.* Descartada — no evita la recomputación, solo el
+  intervalo; añade complejidad de conexión no justificada para este evento.
+- *Progreso incremental persistido en BD (Opción C).* Descartada para F3 por
+  alcance; ver `DEBT.md` — queda como el arreglo de fondo si la caché TTL
+  resulta insuficiente el día del evento.
+
+**Actualiza `DEBT.md`**: la entrada sobre el coste de `calcularProgreso` /
+`kmAcumulados` sin usar pasa de "evaluar en F2" a "mitigado en F3 con caché
+TTL en memoria; el arreglo de fondo (progreso incremental en BD) queda
+pendiente si el TTL no basta en producción".
+
+---
+
+## DT-008 — Worker de MapLibre GL pre-empaquetado con esbuild, servido desde `public/`
+
+**Fecha:** 2026-07-31 · **Tarea:** F3 — Web pública (bug post-cierre, PR #6) · **Decisión de arquitectura**
+
+**Contexto.** El mapa base de MapTiler (calles/agua) no se pintaba en `Mapa.tsx`.
+Investigación extensa (Debugger + Orquestador, con verificación directa en
+consola/red del navegador real del usuario) encontró la causa raíz completa:
+
+1. `maplibre-gl@6` calcula la URL de su Web Worker con un patrón
+   `new URL(target-condicional, import.meta.url)` que Turbopack no resuelve
+   bien (colapsa siempre al bundle principal). Fijar `config.WORKER_URL` a
+   mano evita esto.
+2. Pero apuntar `WORKER_URL` a cualquier fichero — de `node_modules` o de la
+   propia app — referenciado como `new URL(literal, import.meta.url)` hace
+   que Turbopack lo trate como **asset estático copiado en crudo**, sin
+   bundlear sus imports internos. El propio worker de MapLibre importa
+   `./maplibre-gl-shared.mjs` (sin hash de contenido); esa ruta nunca existe
+   en el output (solo la versión con hash), así que el import falla con
+   **404 dentro del contexto del worker** — confirmado con una captura real
+   de la pestaña Network del usuario en la preview de Vercel desplegada.
+3. Este fallo es **invisible desde el hilo principal**: `maplibre-gl` nunca
+   engancha `worker.onerror` al `Worker` nativo, así que ni `window.onerror`,
+   ni `map.on('error')`, ni la consola muestran nada. Solo se ve mirando
+   directamente la pestaña Network.
+4. Causa raíz de fondo, documentada en `node_modules/next/dist/docs/01-app/03-api-reference/08-turbopack.md`:
+   Turbopack solo aplica su tratamiento especial de bundling de Web Workers
+   cuando el propio código de la app contiene literalmente la expresión
+   `new Worker(new URL(...))`. Como `maplibre-gl` construye el `Worker`
+   internamente con una URL que le llega en tiempo de ejecución (vía
+   `config.WORKER_URL`), Turbopack nunca puede aplicar ese análisis estático,
+   sin importar desde qué fichero se referencie la URL.
+
+**Decisión.** Pre-empaquetar el worker de MapLibre GL (y su dependencia
+`maplibre-gl-shared.mjs`) en un único fichero autocontenido, sin ningún
+import externo, usando `esbuild` en un script de build
+(`scripts/bundle-maplibre-worker.ts`, patrón análogo a
+`scripts/simplificar-traza.ts`). El resultado se sirve desde `public/`
+(fichero estático servido tal cual por Next, sin pasar por el pipeline de
+bundling de Turbopack) y `config.WORKER_URL` apunta a esa ruta pública fija
+(`/maplibre-gl-worker.bundled.js`), sin `new URL(..., import.meta.url)` de
+por medio.
+
+**Por qué.** Al no tener ningún import interno que resolver, el fichero
+pre-empaquetado es inmune a las dos limitaciones de Turbopack descritas
+arriba. Servirlo desde `public/` evita por completo el pipeline de asset
+bundling de Turbopack (que es precisamente la pieza que falla), en vez de
+seguir intentando trabajar en contra de él.
+
+**Alternativas valoradas.**
+- *Bajar la versión de `maplibre-gl`.* Descartada: sin garantía de que una
+  versión anterior no tenga el mismo problema con Turbopack (la causa raíz
+  es de Turbopack + patrón de Worker en tiempo de ejecución, no específica
+  de la v6), y obligaría a revalidar todo el mapa de nuevo.
+- *Parchear el import a mano con un Blob en tiempo de ejecución* (fetch del
+  código fuente del worker + reescritura de string del import + Blob URL).
+  Descartada: frágil, dependiente de la estructura interna exacta del
+  paquete (rompe con cualquier actualización de `maplibre-gl`), y es
+  exactamente el tipo de "parche stringly-typed sobre código de terceros"
+  que el framework desaconseja.
+
+**Nueva dependencia:** `esbuild` (devDependency) + script de build que se
+ejecuta antes de `dev`/`build` (`predev`/`prebuild` en `package.json`) o de
+forma manual, según decida el Implementador — el artefacto generado
+(`public/maplibre-gl-worker.bundled.js`) puede regenerarse o commitearse,
+a criterio del Implementador, documentado en `README.md`/`AGENTS.md`.

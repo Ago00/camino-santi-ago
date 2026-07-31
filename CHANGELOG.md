@@ -2,6 +2,95 @@
 
 ---
 
+## 2026-07-31 — Fix: vulnerabilidad de severidad alta en una dependencia de desarrollo
+
+**Tipo:** Fix (seguridad)
+
+Una auditoría de dependencias encontró una vulnerabilidad conocida (denegación
+de servicio) en una librería usada solo por las herramientas de desarrollo
+(el comprobador de estilo de código y el medidor de cobertura de tests), no
+por la web en sí. Se ha corregido ajustando qué versión exacta de esa
+librería usan internamente esas herramientas. No afecta a la web pública ni
+a ningún dato de usuario.
+
+---
+
+## 2026-07-31 — Fix (definitivo): el mapa en directo no mostraba calles ni terreno, solo la traza
+
+**Tipo:** Fix
+
+El mapa mostraba la ruta del reto (línea naranja) pero el fondo — calles,
+ríos, relieve — quedaba en blanco. Un primer intento de arreglo (indicar a
+mano dónde está el proceso auxiliar del mapa) mejoró el diagnóstico pero no
+resolvió el problema de fondo: ese proceso auxiliar seguía sin poder cargar
+del todo una pieza interna que necesita, otra vez sin ningún error visible en
+pantalla. La solución definitiva empaqueta esa pieza junto con el proceso
+auxiliar en un único fichero autocontenido durante la compilación, y lo sirve
+tal cual desde la web sin pasar por el paso de compilación que fallaba.
+Verificado visualmente (captura de pantalla contra el build de producción
+real): el mapa carga calles, costa y relieve por completo, sin ningún error
+en la consola del navegador.
+
+---
+
+## 2026-07-31 — Fix: los estilos de Tailwind no se aplicaban en ninguna página
+
+**Tipo:** Fix
+
+Faltaba el fichero `postcss.config.mjs` que conecta Tailwind con el proceso
+de compilación — sin él, ninguna clase de Tailwind (tipografía, colores,
+espaciados, tamaños) llegaba a aplicarse realmente, aunque el código las
+tuviera escritas correctamente. La web se veía sin ningún estilo desde que
+existe el proyecto; no se notó antes porque F1 y F2 no tenían pantallas
+reales que mirar. F3 es la primera fase con UI visual, y es donde se detectó
+al abrir la preview.
+
+---
+
+## 2026-07-31 — Fix: la página principal quedaba congelada con los datos del momento del despliegue
+
+**Tipo:** Fix
+
+La página principal se generaba una sola vez al desplegar la web y ya no se
+actualizaba sola después — con el tiempo habría mostrado siempre la misma
+fase del reto y el mismo progreso, aunque Santi ya hubiera empezado a andar
+o hubiera llegado a Santiago. Ahora se recalcula en cada visita, como estaba
+previsto.
+
+---
+
+## 2026-07-31 — F3: Web pública (mapa, progreso en directo, formularios, textos)
+
+**Tipo:** Feature
+
+La web pública deja de ser un placeholder: ahora muestra tres momentos del
+reto según el estado real en la base de datos.
+
+Antes de que Santi empiece a andar, la página cuenta el reto como un hilo
+vertical: la historia, el recorrido completo en el mapa, quién camina, por
+qué lo hace por intenciones, y los formularios para dejar una intención o un
+comentario.
+
+Mientras Santi está en marcha, la web muestra un mapa en directo con su
+posición, el tramo ya andado y el que falta, un tinte de cielo que cambia
+según la hora real del día, cuántos kilómetros lleva y le quedan, cuánto
+tiempo lleva caminando y a qué ritmo. Los datos se actualizan solos cada 30
+segundos sin que nadie tenga que recargar la página.
+
+Al llegar a Santiago, todo queda congelado en el momento de la meta con un
+mensaje de llegada, y el muro de comentarios paginado sigue abierto para que
+la gente pueda felicitarle.
+
+También hay un pequeño peregrino animado que deambula libre por la pantalla,
+deja huellas al andar, y se enfada (durante 3 segundos) si alguien le pincha.
+
+**Importante:** el progreso que se muestra al público nunca incluye datos
+internos del rastreador GPS (batería, precisión, si el punto viene de la app
+o se ha metido a mano) — solo la posición y la hora, cerrando una deuda de
+seguridad pendiente desde F1.
+
+---
+
 ## 2026-07-31 — Fix: primer deploy en Vercel fallaba por detección incorrecta del gestor de paquetes
 
 **Tipo:** Fix

@@ -48,13 +48,23 @@ en F2, actualiza aquí primero.
 ## Comandos
 
 ```bash
-pnpm dev               # desarrollo
-pnpm build             # build de producción
-pnpm typecheck         # tsc --noEmit (debe dar cero errores)
-pnpm lint              # eslint
-pnpm test              # vitest run (todos los tests)
-pnpm simplificar-traza # regenerar los dos GeoJSON desde la fuente
+pnpm dev                     # desarrollo (regenera antes el worker de MapLibre, ver abajo)
+pnpm build                   # build de producción (ídem)
+pnpm typecheck               # tsc --noEmit (debe dar cero errores)
+pnpm lint                    # eslint
+pnpm test                    # vitest run (todos los tests)
+pnpm simplificar-traza       # regenerar los dos GeoJSON desde la fuente
+pnpm bundle-maplibre-worker  # regenerar public/maplibre-gl-worker.bundled.js
 ```
+
+**`bundle-maplibre-worker`** (DT-008, `docs/tecnico/decisiones-tecnicas.md`):
+pre-empaqueta con `esbuild` el Web Worker de MapLibre GL (+ su dependencia
+`maplibre-gl-shared.mjs`) en un único fichero sin imports externos, y lo
+escribe en `public/maplibre-gl-worker.bundled.js` — necesario porque Turbopack
+no puede bundlear un Worker cuya URL se resuelve en tiempo de ejecución dentro
+de una librería de terceros (ver `docs/LESSONS.md`). Se ejecuta automáticamente
+en los hooks `predev`/`prebuild`; el artefacto generado **no se commitea**
+(está en `.gitignore`, se regenera siempre desde `node_modules`).
 
 ## Qué no instalar
 

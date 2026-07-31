@@ -8,3 +8,12 @@ allowBuilds:
 overrides:
   sharp: ">=0.35.0"
   postcss: ">=8.5.18"
+  # GHSA-mh99-v99m-4gvg (DoS): la única versión realmente parcheada es la
+  # línea 5.x de brace-expansion. minimatch@3/@9 (arrastrados por
+  # eslint-plugin-import y por @vitest/coverage-v8 vía glob) traen versiones
+  # antiguas de brace-expansion no compatibles con un override directo a la
+  # v5 — se sube minimatch en sí a una mayor moderna (ya usada en otras
+  # partes del árbol con brace-expansion@5.0.8 sin problema) en vez de
+  # forzar brace-expansion de forma aislada e incompatible.
+  "minimatch@3": ">=10.0.0"
+  "minimatch@9": ">=10.0.0"

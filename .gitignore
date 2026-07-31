@@ -5,6 +5,10 @@
 /.next/
 /out/
 
+# worker de MapLibre GL pre-empaquetado (scripts/bundle-maplibre-worker.ts)
+# se regenera en predev/prebuild desde node_modules — nunca se commitea
+/public/maplibre-gl-worker.bundled.js
+
 # production
 /build
 
