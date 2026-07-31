@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-07-31 — Foto de Santi y perfil de elevación en la web pública
+
+**Tipo:** Feature
+
+En el modo "Antes" de la web pública: la sección "Quién camina" ahora tiene
+una tarjeta de foto (con un dibujo de silueta mientras no haya foto real, se
+sustituye por una línea de código en cuanto Santi la tenga). Y debajo del
+mapa del recorrido se han añadido las estadísticas del reto — distancia
+total, metros de subida y metros de bajada — junto con un gráfico del
+perfil de elevación de toda la ruta. Los datos de altitud son reales,
+obtenidos de un servicio público de elevación y calculados una sola vez.
+
+---
+
 ## 2026-07-31 — Fix: vulnerabilidad de severidad alta en una dependencia de desarrollo
 
 **Tipo:** Fix (seguridad)

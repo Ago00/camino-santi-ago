@@ -396,3 +396,43 @@ ejecuta antes de `dev`/`build` (`predev`/`prebuild` en `package.json`) o de
 forma manual, según decida el Implementador — el artefacto generado
 (`public/maplibre-gl-worker.bundled.js`) puede regenerarse o commitearse,
 a criterio del Implementador, documentado en `README.md`/`AGENTS.md`.
+
+---
+
+## DT-009 — Perfil de elevación: dato estático generado una vez con Open-Elevation, commiteado
+
+**Fecha:** 2026-07-31 · **Tarea:** Foto + perfil de elevación · **Decisión de arquitectura**
+
+**Contexto.** Se pide mostrar distancia, desnivel (ascenso/descenso) y un
+perfil de elevación de la ruta en el modo "Antes". La traza real no tiene
+datos de altitud: el KML fuente de la Xunta trae elevación `0` en todos los
+puntos (confirmado por inspección directa), así que hace falta una fuente
+externa.
+
+**Decisión.**
+1. Nuevo script `scripts/generar-perfil-elevacion.ts`, ejecución **manual**
+   (no enganchado a `predev`/`prebuild`). Remuestrea `traza-mapa.geojson`
+   (traza de PINTADO, nunca la de cálculo — es contenido de visualización)
+   a intervalos de ~1 km, consulta **Open-Elevation** (API pública, gratis,
+   sin clave, endpoint de lote) en una sola petición, y escribe
+   `lib/traza/perfil-elevacion.json`.
+2. El artefacto generado **se commitea al repositorio**, igual que
+   `traza-mapa.geojson` — no se regenera en cada build. La ruta es fija; no
+   tiene sentido que cada deploy de Vercel dependa de la disponibilidad de
+   una API externa de terceros para un dato que no cambia.
+3. La web pública **nunca llama a Open-Elevation** — cero dependencia
+   externa en producción, cero riesgo de indisponibilidad en el reto.
+
+**Por qué Open-Elevation y no la API de MapTiler.** Ya hay cuenta/clave de
+MapTiler, pero al ejecutarse una sola vez y nunca en producción, no compensa
+generar dependencia de su cuota por un dato que se pide una vez y se
+commitea. Open-Elevation no requiere clave ni gestión de cuenta.
+
+**Alternativas valoradas.**
+- *Regenerar el perfil en cada build (`predev`/`prebuild`, patrón DT-008).*
+  Descartada: DT-008 lo hacía porque el artefacto depende de la versión
+  instalada de una librería (`maplibre-gl`) que puede cambiar; aquí el dato
+  depende de la geografía real de la ruta, que es fija. Regenerarlo siempre
+  añadiría una dependencia de red externa a cada build sin ningún beneficio.
+- *API de elevación de MapTiler.* Descartada por la razón de cuota/clave
+  explicada arriba.

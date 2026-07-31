@@ -8,11 +8,17 @@
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "motion/react";
 import Mapa from "@/components/mapa/Mapa";
+import PerfilElevacion from "@/components/publico/PerfilElevacion";
 import IntencionForm from "@/components/publico/IntencionForm";
 import ComentarioForm from "@/components/publico/ComentarioForm";
 import type { Textos } from "@/lib/textos/obtener-textos";
 
 const C = { ink: "#1B211D", gold: "#C9A24B", eucalipto: "#2F5D50", ember: "#D9773B" };
+
+// Foto: pon aquí la ruta cuando exista (en /public), p.ej. "/santi.jpg".
+// Con undefined usa el placeholder — mismo patrón que FOTO_PEREGRINO
+// (components/publico/PeregrinoLibre.tsx).
+const FOTO_SANTI: string | undefined = undefined;
 
 const rise = {
   hidden: { opacity: 0, y: 22 },
@@ -79,13 +85,17 @@ export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
             <div className="mt-3 overflow-hidden rounded-2xl border shadow-sm" style={{ borderColor: "#00000012" }}>
               <Mapa trazaCoords={trazaCoords} hora="dia" modo="resumen" />
             </div>
+            <div className="mt-4">
+              <PerfilElevacion />
+            </div>
           </div>
         </Hito>
 
         <Hito>
           <div>
             <Kicker>Quién camina</Kicker>
-            <p className="mt-2 text-[14.5px] leading-relaxed" style={{ color: "#3C433E" }}>
+            <FotoQuienCamina />
+            <p className="mt-3 text-[14.5px] leading-relaxed" style={{ color: "#3C433E" }}>
               {textos.quien_camina}
             </p>
           </div>
@@ -167,6 +177,59 @@ function Kicker({ children }: { children: React.ReactNode }) {
     <span className="font-mono text-[10px] uppercase tracking-[0.16em]" style={{ color: C.ember }}>
       {children}
     </span>
+  );
+}
+
+// Tarjeta de foto de Santi en "Quién camina". Recupera el tratamiento del
+// mockup original de F3 (design-sandbox/app/camino-perfil/page.tsx,
+// FotoQuienCamina), perdido al simplificar en la implementación inicial.
+// Con FOTO_SANTI sin definir muestra un placeholder de silueta genérica;
+// cuando se defina con una ruta de /public, muestra la foto real con
+// object-cover — mismo patrón que FOTO_PEREGRINO en PeregrinoLibre.tsx.
+function FotoQuienCamina() {
+  return (
+    <div
+      className="mt-2 overflow-hidden rounded-2xl shadow-lg"
+      style={{ aspectRatio: "4/3", background: "linear-gradient(150deg,#3C4C46,#182721 80%)" }}
+    >
+      <div className="relative h-full w-full">
+        <GranitoTextura opacity={0.16} />
+        {FOTO_SANTI ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={FOTO_SANTI} alt="Santi" className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
+          <PlaceholderSilueta />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
+        <div className="absolute bottom-0 p-4" style={{ textShadow: "0 1px 6px #0009" }}>
+          <div className="[font-family:var(--font-fraunces)] text-[20px] font-semibold text-white">Santi</div>
+          <div className="text-[12px] text-white/80">Peregrino de una noche</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlaceholderSilueta() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center opacity-40">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+      </svg>
+    </div>
+  );
+}
+
+function GranitoTextura({ opacity = 0.12 }: { opacity?: number }) {
+  return (
+    <svg className="pointer-events-none absolute inset-0 h-full w-full" style={{ opacity }}>
+      <filter id="grano">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
+        <feColorMatrix type="saturate" values="0" />
+      </filter>
+      <rect width="100%" height="100%" filter="url(#grano)" />
+    </svg>
   );
 }
 
