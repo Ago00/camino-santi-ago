@@ -11,8 +11,7 @@ una tarjeta de foto (con un dibujo de silueta mientras no haya foto real, se
 sustituye por una línea de código en cuanto Santi la tenga). Y debajo del
 mapa del recorrido se han añadido las estadísticas del reto — distancia
 total, metros de subida y metros de bajada — junto con un gráfico del
-perfil de elevación de toda la ruta, que permite pasar el dedo/ratón por
-encima para ver la altitud en cada punto. Los datos de altitud son reales,
+perfil de elevación de toda la ruta. Los datos de altitud son reales,
 obtenidos de un servicio público de elevación y calculados una sola vez.
 
 ---
