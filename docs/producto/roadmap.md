@@ -8,7 +8,7 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 
 | Fase | Descripción | Estado |
 |---|---|---|
-| F0 | Infraestructura (repo, Supabase, Vercel, MapTiler, env vars) | **en curso** (Supabase y Vercel hechos; MapTiler pendiente, no bloquea) |
+| F0 | Infraestructura (repo, Supabase, Vercel, MapTiler, env vars) | **hecho** |
 | F1 | Base (scaffolding, traza, dominio de progreso, tipos, docs) | **hecho** |
 | F2 | Datos e ingesta (esquema SQL, RLS, `/api/track`, clientes Supabase) | **hecho y verificado en producción real** |
 | F3 | Web pública (mapa, progreso, stats, formularios, textos) | definido |
@@ -17,21 +17,20 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 
 ---
 
-## F0 — Infraestructura (en curso, bloquea F2)
-
-Las altas de cuentas las hace Santi; el código no las necesitó en F1 pero F2 no
-puede empezar sin ellas.
+## F0 — Infraestructura (hecha, 2026-07-31)
 
 - [x] Repo GitHub `Ago00/camino-santi-ago` (público, por el límite de Vercel Hobby)
 - [x] Proyecto Supabase nuevo (región eu-west-1, URL/anon/service role
       configuradas en `.env.local`) — 2026-07-30
 - [x] Proyecto Vercel nuevo conectado al repo — desplegado y verificado en
       producción real (`https://camino-santi-ago-sage.vercel.app`) — 2026-07-31
-- [ ] Cuenta MapTiler (free tier) y su API key — no bloquea nada hasta F3
+- [x] Cuenta MapTiler (free tier) y su API key — verificada con una petición
+      real de tiles antes de guardarla — 2026-07-31
 - [x] Env vars cargadas en Vercel (Production): `NEXT_PUBLIC_SUPABASE_URL`,
-      `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`
-- [ ] `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, `NEXT_PUBLIC_MAPTILER_KEY` —
-      pendientes, no bloquean hasta F3/F4
+      `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`,
+      `NEXT_PUBLIC_MAPTILER_KEY`
+- [ ] `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET` — pendientes, entran en F4
+      (panel admin), no bloquean F3
 
 ## F2 — Datos e ingesta
 
