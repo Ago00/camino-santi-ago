@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-07-31 — Fix: el mapa en directo no mostraba calles ni terreno, solo la traza
+
+**Tipo:** Fix
+
+El mapa mostraba la ruta del reto (línea naranja) pero el fondo — calles,
+ríos, relieve — quedaba en blanco. La causa era interna al proceso de
+compilación: la librería del mapa (MapLibre) no conseguía arrancar
+correctamente el proceso auxiliar que descarga y dibuja las calles y el
+terreno, sin dar ningún error visible. Se ha corregido indicando
+explícitamente dónde está ese proceso auxiliar. Ahora el mapa se ve completo,
+con calles, ríos y relieve de fondo.
+
+---
+
 ## 2026-07-31 — Fix: los estilos de Tailwind no se aplicaban en ninguna página
 
 **Tipo:** Fix

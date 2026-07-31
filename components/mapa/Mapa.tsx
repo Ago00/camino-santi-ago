@@ -133,9 +133,25 @@ export default function Mapa({
     let cancelled = false;
     let map: import("maplibre-gl").Map | null = null;
 
+    // DEBUG TEMPORAL
+    window.addEventListener("error", (e) => console.error("WINDOW ERROR", e.message, e.filename, e.error));
+    window.addEventListener("unhandledrejection", (e) => console.error("UNHANDLED REJECTION", e.reason));
+
     (async () => {
-      const { Map: MapLibreMap, AttributionControl } = await import("maplibre-gl");
+      const { Map: MapLibreMap, AttributionControl, config } = await import("maplibre-gl");
       if (cancelled || !containerRef.current) return;
+
+      // Turbopack no resuelve el `new URL(target-condicional, import.meta.url)`
+      // interno de maplibre-gl (colapsa siempre al bundle principal en vez del
+      // worker real, sin ningún error visible — ver docs/bugs/BUGS.md). Fijamos
+      // WORKER_URL explícitamente con un target literal único, que sí es un
+      // patrón que Turbopack resuelve correctamente.
+      if (!config.WORKER_URL) {
+        config.WORKER_URL = new URL(
+          "maplibre-gl/dist/maplibre-gl-worker.mjs",
+          import.meta.url
+        ).href;
+      }
 
       const key = process.env.NEXT_PUBLIC_MAPTILER_KEY;
       const styleUrl = key
@@ -158,6 +174,13 @@ export default function Mapa({
       instancia.touchZoomRotate.disableRotation();
       instancia.addControl(new AttributionControl({ compact: true }), "bottom-left");
       mapRef.current = instancia;
+
+      // DEBUG TEMPORAL — instrumentación de diagnóstico, se retira tras investigar.
+      instancia.on("error", (e) => console.error("MAPLIBRE ERROR", e.error, e));
+      instancia.on("styledata", () => console.log("DEBUG styledata", instancia.isStyleLoaded()));
+      instancia.on("sourcedata", (e) => console.log("DEBUG sourcedata", e.sourceId, e.isSourceLoaded, e.dataType));
+      instancia.on("dataloading", (e) => console.log("DEBUG dataloading", "sourceId" in e ? e.sourceId : "(sin sourceId)", e.dataType));
+      instancia.on("idle", () => console.log("DEBUG idle"));
 
       // Modo previa: el mapa no se manipula (tocar = ampliar).
       instancia.dragPan.disable();

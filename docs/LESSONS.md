@@ -150,6 +150,47 @@ cualquier fase con UI, y el Orquestador debe insertar un paso de
 verificación visual (preview local o desplegada) antes de reportar el
 cierre de cualquier tarea con UI, no solo cuando el usuario lo pide.
 
+## Turbopack no resuelve `new URL(target-condicional, import.meta.url)`: colapsa siempre al bundle principal, sin error visible
+
+**Registrada:** 2026-07-31 (F3 — bug del mapa base de MapTiler sin pintar)
+**Por quién:** Debugger (diagnóstico) / Implementador (fix aplicado)
+
+`maplibre-gl@6` calcula la URL de su Web Worker con
+`new URL(condición ? "a.mjs" : "b.mjs", import.meta.url)` — el nombre del
+fichero destino depende de una condición evaluada en tiempo de ejecución
+(dos targets posibles). Webpack y Vite sí soportan `new URL(...,
+import.meta.url)` cuando pueden analizarlo estáticamente, pero Turbopack no
+resuelve bien el caso de **doble target condicional**: colapsa la
+referencia siempre al primer/bundle principal, descarta la rama condicional
+como expresión huérfana, y no lanza ningún error — el resultado es un
+módulo ESM válido que se ejecuta sin excepción pero no es el fichero
+esperado (en este caso, un Worker que arranca pero nunca instala el
+`onmessage`/actor real).
+
+Esto es especialmente peligroso porque **no hay ningún error de compilación
+ni de runtime**: `tsc`, `next build`, los tests y la consola del navegador
+quedan todos en silencio. El único síntoma es un comportamiento incompleto
+en runtime (en este caso, ninguna tesela `.pbf` se llega a pedir nunca,
+aunque `style.json`/`tiles.json` sí cargan bien).
+
+**Solución validada:** cuando una librería de terceros calcula
+internamente la URL de un Web Worker con este patrón condicional, no
+confiar en el cálculo automático. Usar la API pública que casi todas estas
+librerías exponen para fijar la URL a mano (en MapLibre,
+`config.WORKER_URL`) **antes** de cualquier uso, con un
+`new URL(literal-único, import.meta.url)` propio en el código de la app
+(no en `node_modules`) — ese caso sí es un patrón que Turbopack resuelve
+correctamente porque el target es un string literal único, sin condición.
+Verificado con éxito en `components/mapa/Mapa.tsx`.
+
+**Aplica a:** cualquier librería con Web Workers bajo Next.js/Turbopack que
+use `import.meta.url` con un target condicional o dinámico (no solo
+maplibre-gl — el mismo patrón puede repetirse en otras libs con workers:
+comprobar primero si exponen una forma de fijar la URL del worker a mano
+antes de asumir que "simplemente funciona" con Turbopack). Señal de alarma:
+un Worker se crea sin error pero el comportamiento que depende de él nunca
+se completa — sin ningún error en consola ni en red.
+
 <!-- Formato de nueva entrada:
 ## [Título]
 **Registrada:** YYYY-MM-DD
