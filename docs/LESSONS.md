@@ -90,6 +90,31 @@ vez.
 
 ---
 
+## No commitear en una rama cuyo PR ya se ha fusionado
+
+**Registrada:** 2026-07-31
+**Por quién:** Orquestador
+
+Durante la verificación de F2 contra Supabase real se encontró y corrigió un
+bug (variable de entorno mal nombrada en `admin.ts`). El fix se commiteó y
+subió a `feature/f2-datos-ingesta` — la misma rama del PR de F2 — sin
+comprobar que ese PR **ya estaba fusionado**. GitHub no vuelve a fusionar
+automáticamente los pushes nuevos en una rama con el PR cerrado: el commit
+quedó huérfano, nunca llegó a `main`, y el bug siguió en producción pese a
+"estar arreglado" — costó dos rondas de deploy fallido en Vercel y una
+sesión completa de depuración hasta encontrar la causa real.
+
+**Regla:** antes de commitear sobre cualquier rama de feature, comprobar con
+`gh pr view <rama>` (o el estado de la rama en GitHub) si su PR sigue abierto.
+Si ya se fusionó, crear una rama nueva desde `main` actualizado — nunca
+reutilizar una rama con el PR cerrado, por poco que quede por añadir.
+
+**Aplica a:** cualquier fix o ajuste que surja después de que una tarea ya se
+haya dado por cerrada y fusionada — especialmente en sesiones donde el
+usuario fusiona PRs sin avisar explícitamente en la conversación.
+
+---
+
 <!-- Formato de nueva entrada:
 ## [Título]
 **Registrada:** YYYY-MM-DD

@@ -8,9 +8,9 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 
 | Fase | Descripción | Estado |
 |---|---|---|
-| F0 | Infraestructura (repo, Supabase, Vercel, MapTiler, env vars) | **en curso** (Supabase hecho; Vercel y MapTiler pendientes) |
+| F0 | Infraestructura (repo, Supabase, Vercel, MapTiler, env vars) | **en curso** (Supabase y Vercel hechos; MapTiler pendiente, no bloquea) |
 | F1 | Base (scaffolding, traza, dominio de progreso, tipos, docs) | **hecho** |
-| F2 | Datos e ingesta (esquema SQL, RLS, `/api/track`, clientes Supabase) | **hecho y verificado contra Supabase real** |
+| F2 | Datos e ingesta (esquema SQL, RLS, `/api/track`, clientes Supabase) | **hecho y verificado en producción real** |
 | F3 | Web pública (mapa, progreso, stats, formularios, textos) | definido |
 | F4 | Panel admin (login, middleware, secciones) | definido |
 | F5 | Cierre (Reviewer, Seguridad OWASP/RLS, deploy producción, prueba real) | definido |
@@ -25,12 +25,13 @@ puede empezar sin ellas.
 - [x] Repo GitHub `Ago00/camino-santi-ago` (público, por el límite de Vercel Hobby)
 - [x] Proyecto Supabase nuevo (región eu-west-1, URL/anon/service role
       configuradas en `.env.local`) — 2026-07-30
-- [ ] Proyecto Vercel nuevo conectado al repo
-- [ ] Cuenta MapTiler (free tier) y su API key
-- [ ] Env vars cargadas en **Vercel** (ya están en `.env.local` local, faltan
-      en producción): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-      `SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`, `ADMIN_PASSWORD`,
-      `ADMIN_SESSION_SECRET`, `NEXT_PUBLIC_MAPTILER_KEY`
+- [x] Proyecto Vercel nuevo conectado al repo — desplegado y verificado en
+      producción real (`https://camino-santi-ago-sage.vercel.app`) — 2026-07-31
+- [ ] Cuenta MapTiler (free tier) y su API key — no bloquea nada hasta F3
+- [x] Env vars cargadas en Vercel (Production): `NEXT_PUBLIC_SUPABASE_URL`,
+      `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`
+- [ ] `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, `NEXT_PUBLIC_MAPTILER_KEY` —
+      pendientes, no bloquean hasta F3/F4
 
 ## F2 — Datos e ingesta
 
@@ -48,11 +49,12 @@ puede empezar sin ellas.
 - [x] Aplicar la migración contra Supabase real — 5 tablas, RLS activo en
       las 5, verificado que `intenciones` es inaccesible para `anon` incluso
       con filas reales insertadas
-- [x] Verificar `/api/track` con peticiones reales contra la BD viva: token
+- [x] Verificar `/api/track` con peticiones reales contra la BD viva (local y
+      **en producción real, `camino-santi-ago-sage.vercel.app`**): token
       incorrecto → 401, punto fuera de rango → descartado sin guardar, punto
       válido → guardado correctamente. Encontrado y corregido un bug real en
       el proceso (`admin.ts` leía una env var inexistente — ver `BUGS.md`)
-- [ ] Verificar con OwnTracks real desde el móvil (pendiente de Vercel — hace
+- [ ] Verificar con OwnTracks real desde el móvil (siguiente paso — hace
       falta una URL pública para que el teléfono pueda mandar peticiones)
 
 ## F3 — Web pública
