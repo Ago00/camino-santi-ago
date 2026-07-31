@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-07-31 — Fix: primer deploy en Vercel fallaba por detección incorrecta del gestor de paquetes
+
+**Tipo:** Fix
+
+El primer despliegue en Vercel fallaba al instalar dependencias porque el
+proyecto no declaraba el gestor de paquetes en el campo estándar que Vercel
+reconoce, lo que provocaba un conflicto entre npm y pnpm durante la
+instalación. Se añade ese campo con la versión exacta de pnpm en uso y se
+retira una configuración duplicada que, además, generaba un fichero de
+bloqueo de dependencias con un formato no estándar (dos documentos en vez de
+uno), origen del error de parseo en Vercel.
+
 ## 2026-07-30 — F2: Ronda final de endurecimiento tras revisión
 
 **Tipo:** Fix
