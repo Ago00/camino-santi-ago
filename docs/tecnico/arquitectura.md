@@ -20,8 +20,9 @@ camino-santi-ago/
 │   │   └── actions.ts        # F4: server actions de admin
 │   └── api/
 │       ├── track/route.ts    # F2: ingesta OwnTracks
-│       ├── comentarios/route.ts  # F3
-│       ├── intenciones/route.ts  # F3
+│       ├── progreso/route.ts     # F3: GET, caché TTL en memoria (DT-007)
+│       ├── comentarios/route.ts  # F3: GET paginado + POST
+│       ├── intenciones/route.ts  # F3: POST (cliente admin)
 │       └── admin/login/route.ts  # F4
 ├── components/
 │   ├── mapa/Mapa.tsx         # F3: overlay SVG (patrón de la POC)
@@ -29,17 +30,22 @@ camino-santi-ago/
 │   └── admin/               # F4: secciones del panel
 ├── lib/
 │   ├── types.ts              # tipos de dominio (contrato para todas las capas)
+│   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
 │   ├── traza/
 │   │   ├── traza.geojson         # traza de CÁLCULO (7.121 puntos, sin simplificar)
 │   │   ├── traza-mapa.geojson    # traza de PINTADO (Douglas-Peucker 3 m, ~2.011 pts)
 │   │   ├── proyeccion.ts         # dominio puro: prepararTraza + calcularProgreso
 │   │   ├── proyeccion.test.ts    # tests unitarios con fixtures sintéticas
+│   │   ├── progreso-publico.ts   # F3: aProgresoPublico() — proyección segura al cliente
+│   │   ├── cargar-traza.ts       # carga traza.geojson (cálculo) server-side
+│   │   ├── cargar-traza-mapa.ts  # F3: carga traza-mapa.geojson (pintado) server-side
 │   │   └── umbrales.ts           # constantes del dominio (EN_RUTA_MAX_M, etc.)
 │   ├── supabase/             # F2
 │   │   ├── admin.ts          # cliente service role (solo servidor)
 │   │   └── public.ts         # cliente anon (peticiones públicas)
 │   ├── textos/               # F3
-│   │   └── defaults.ts       # textos por defecto (override desde BD)
+│   │   ├── defaults.ts       # textos por defecto (override desde BD)
+│   │   └── obtener-textos.ts # server: fusiona defaults con la tabla `textos`
 │   └── auth/                 # F4
 │       └── admin-session.ts  # firma/verificación cookie HMAC
 ├── middleware.ts             # F4: protege /admin/*

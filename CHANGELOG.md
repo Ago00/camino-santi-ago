@@ -2,6 +2,50 @@
 
 ---
 
+## 2026-07-31 — Fix: la página principal quedaba congelada con los datos del momento del despliegue
+
+**Tipo:** Fix
+
+La página principal se generaba una sola vez al desplegar la web y ya no se
+actualizaba sola después — con el tiempo habría mostrado siempre la misma
+fase del reto y el mismo progreso, aunque Santi ya hubiera empezado a andar
+o hubiera llegado a Santiago. Ahora se recalcula en cada visita, como estaba
+previsto.
+
+---
+
+## 2026-07-31 — F3: Web pública (mapa, progreso en directo, formularios, textos)
+
+**Tipo:** Feature
+
+La web pública deja de ser un placeholder: ahora muestra tres momentos del
+reto según el estado real en la base de datos.
+
+Antes de que Santi empiece a andar, la página cuenta el reto como un hilo
+vertical: la historia, el recorrido completo en el mapa, quién camina, por
+qué lo hace por intenciones, y los formularios para dejar una intención o un
+comentario.
+
+Mientras Santi está en marcha, la web muestra un mapa en directo con su
+posición, el tramo ya andado y el que falta, un tinte de cielo que cambia
+según la hora real del día, cuántos kilómetros lleva y le quedan, cuánto
+tiempo lleva caminando y a qué ritmo. Los datos se actualizan solos cada 30
+segundos sin que nadie tenga que recargar la página.
+
+Al llegar a Santiago, todo queda congelado en el momento de la meta con un
+mensaje de llegada, y el muro de comentarios paginado sigue abierto para que
+la gente pueda felicitarle.
+
+También hay un pequeño peregrino animado que deambula libre por la pantalla,
+deja huellas al andar, y se enfada (durante 3 segundos) si alguien le pincha.
+
+**Importante:** el progreso que se muestra al público nunca incluye datos
+internos del rastreador GPS (batería, precisión, si el punto viene de la app
+o se ha metido a mano) — solo la posición y la hora, cerrando una deuda de
+seguridad pendiente desde F1.
+
+---
+
 ## 2026-07-31 — Fix: primer deploy en Vercel fallaba por detección incorrecta del gestor de paquetes
 
 **Tipo:** Fix

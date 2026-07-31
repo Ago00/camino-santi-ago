@@ -45,7 +45,8 @@ incorrectamente, el test falla.
 **Problema:** El array `kmAcumulados` de 6.915 doubles (~55 KB en memoria) se genera y se almacena en `TrazaPreparada` pero no se usa. El rendimiento real de `calcularProgreso` con el histórico completo del día del reto (~3.600 posiciones) depende de cuántas veces Turf itera los 6.914 segmentos de la traza: en el peor caso, ~24,9 millones de operaciones de distancia por petición. La documentación del tipo y del módulo implica que el precálculo evita este trabajo, pero no es cierto en la implementación actual.
 **Impacto:** Potencial lentitud en el endpoint de datos en F2 si se llama con el histórico completo sin paginar. Si `calcularProgreso` se ejecuta en cada petición con 3.600 posiciones, podría superar 100 ms en servidor. No hay impacto en correctitud — solo en rendimiento.
 **Solución propuesta:** Dos opciones: (a) implementar la proyección usando `kmAcumulados` (búsqueda binaria + interpolación lineal) para O(log n) por punto en vez de O(n); o (b) eliminar `kmAcumulados` de `TrazaPreparada` y documentar que el rendimiento depende de Turf. La opción (a) es la que se anticipaba en el diseño. Evaluar en F2 cuando se defina cómo se llama `calcularProgreso`.
-**Prioridad:** Media (no bloquea F2-F4; debe evaluarse antes de F5 cuando se pruebe con historial real)
+**Actualización (F3, 2026-07-31):** `calcularProgreso` se invoca ahora desde `GET /api/progreso` con polling del cliente cada 30 s. Ver DT-007: se mitiga con una caché en memoria de proceso (TTL 15-20 s) en el propio route handler, sin tocar `proyeccion.ts` ni el esquema. Si en producción (día del reto) la caché TTL no basta — por ejemplo con muchos más seguidores concurrentes de los previstos — el arreglo de fondo sigue siendo la opción (a) de arriba, o persistir el progreso incremental en `intentos` (Opción C descartada en DT-007 por alcance).
+**Prioridad:** Media (mitigada en F3; el arreglo de fondo queda pendiente solo si el TTL resulta insuficiente en producción)
 
 ---
 
@@ -79,27 +80,21 @@ a 5 decimales (actualmente 6) o subir la tolerancia DP a 4-5 m.
 
 ## `Progreso` expone campos internos de `Posicion` al serializar hacia el cliente en F3
 
-**Fecha:** 2026-07-30
+**Fecha:** 2026-07-30 · **Resuelta:** 2026-07-31, tarea F3
 **Contexto:** Detectado por el Agente de Seguridad en la revisión de F1. El tipo
 `Progreso` incluye `ultimaPosicion: Posicion | null`, que es el tipo completo de
 base de datos.
-**Problema:** El tipo `Posicion` arrastra campos internos: `batt`, `acc`,
-`intento_id`, `fuente` y `descartado`. Cuando F3 serialice `Progreso` hacia el
-navegador, todos esos campos internos viajarán al cliente salvo que se filtren
-de forma explícita. El proyecto publica la posición en tiempo real de una persona
-real durante 30 horas, así que cada campo de más es superficie de exposición
-innecesaria.
-**Impacto:** No explota en F1 (no hay serialización hacia cliente aún), pero si
-F3 serializa `Progreso` tal cual, el cliente recibirá metadatos internos del
-tracker GPS (nivel de batería, precisión GPS, fuente del dato, flag de descarte).
-En el peor caso, revela información sobre el hardware del dispositivo de rastreo
-y el estado interno del sistema.
-**Solución propuesta:** Definir en F3 un tipo `ProgresoPublico` que proyecte solo
-lo que la web pública necesita (`lat`, `lon`, `ts`) antes de enviarlo al cliente.
-La proyección debe hacerse explícitamente en la capa de servidor (Server Component
-o route handler), nunca en el cliente.
-**Prioridad:** Media — no explota en F1, pero debe resolverse antes de que la web
-pública salga a producción.
+**Resolución:** F3 introduce `ProgresoPublico` (`lib/types.ts`) y la función pura
+`aProgresoPublico()` (`lib/traza/progreso-publico.ts`), que proyecta `Progreso` a
+solo `porcentaje`, `kmAvanzados`, `kmRestantes`, `odometroKm`, `estado`, y de
+`ultimaPosicion` solo `lat`/`lon`/`ts` — nunca `batt`, `acc`, `intento_id`,
+`fuente` ni `descartado`. La proyección se ejecuta siempre en servidor:
+`GET /api/progreso/route.ts` y `app/page.tsx` (Server Component) son los únicos
+puntos que llaman a `calcularProgreso()`, y ambos serializan a través de
+`aProgresoPublico()` antes de que nada llegue al cliente. Cubierto con tests
+(`lib/traza/progreso-publico.test.ts`) que verifican explícitamente que ninguno
+de los campos internos aparece en el objeto resultante.
+**Prioridad:** Cerrada.
 
 ---
 
@@ -127,11 +122,22 @@ pública salga a producción.
 
 ## Sin rate limiting en `/api/track`
 
-**Fecha:** 2026-07-30
+**Fecha:** 2026-07-30 · **Ampliada:** 2026-07-31, tarea F3
 **Contexto:** Detectado por el Agente de Seguridad en la revisión de F2 (auditoría OWASP Top 10, A04).
 **Problema:** El endpoint de ingesta no tiene ningún límite de peticiones. No es bloqueante mientras el proyecto no esté desplegado (F0/Vercel pendiente), pero es condición explícita antes de exponer el endpoint a internet: un token filtrado sin límite permite spam de inserciones en `posiciones`, degradando el rendimiento y ensuciando el histórico (con impacto directo en el cálculo de progreso).
 **Impacto:** No compromete la integridad del ancla (eso ya lo cubre DT-006), pero permite agotar cuota de BD y ensuciar el histórico visible en el panel de admin si el token se filtra (captura de la config de OwnTracks en el móvil, logs de Vercel, etc.).
 **Solución propuesta:** Rate limiting a nivel de IP o de token en el propio route handler (o mediante la capa de Vercel/Edge si se dispone de ella), antes de F5 (cierre y deploy a producción).
-**Prioridad:** Media — no bloquea F2, sí bloquea el despliegue real.
+**Ampliación (F3):** los tres endpoints nuevos de la web pública (`POST /api/comentarios`, `POST /api/intenciones`, `GET /api/progreso`/`GET /api/comentarios`) están en el mismo caso — explícitamente fuera de alcance de F3 según `docs/tareas/CURRENT.md`, la solución de fondo es la misma y debe cubrir los cuatro endpoints (`/api/track` incluido) antes de F5.
+**Prioridad:** Media — no bloquea F2-F4, sí bloquea el despliegue real.
+
+---
+
+## Overlay del mapa (F3): el corte "andado / restante" usa distancia euclídea en grados, no la proyección real de Turf
+
+**Fecha:** 2026-07-31 · **Contexto:** Generado en F3 al implementar `components/mapa/Mapa.tsx`.
+**Problema:** Para pintar el tramo andado en naranja y el restante en discontinuo, el overlay SVG busca el vértice de `traza-mapa.geojson` más cercano a la posición actual con distancia euclídea simple en grados lon/lat (función `indiceMasCercano`), en vez de reutilizar `nearestPointOnLine` de Turf (la misma proyección que ya usa `calcularProgreso` en `proyeccion.ts`). Es una aproximación deliberada para no acoplar un componente puramente visual al dominio de cálculo de progreso (que trabaja sobre `traza.geojson`, no `traza-mapa.geojson`).
+**Impacto:** Puramente cosmético — el `%`/km mostrados en el Mojón siempre vienen de `calcularProgreso` (correcto). El único efecto de esta aproximación es que, en tramos donde la traza serpentea mucho (curvas cerradas), el punto de corte entre el color naranja y el discontinuo puede desviarse visualmente unos pocos vértices del punto exacto. No afecta a ningún número mostrado al usuario.
+**Solución propuesta:** Si en producción se nota un desajuste visible, sustituir `indiceMasCercano` por una proyección con Turf sobre `traza-mapa.geojson` (import de `@turf/nearest-point-on-line`, ya es dependencia del proyecto).
+**Prioridad:** Baja — cosmético, sin impacto en los datos mostrados.
 
 ---

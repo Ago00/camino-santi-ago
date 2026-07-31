@@ -275,3 +275,56 @@ adelantado) seguiría sin tener arreglo si se descubre tarde.
 "irreversible" a "reversible vía admin, con la ampliación de alcance de F4
 descrita aquí"; prioridad se mantiene Alta hasta que ambas capas estén
 implementadas.
+
+---
+
+## DT-007 — Web pública: polling + caché TTL en memoria en vez de Realtime o progreso incremental en BD
+
+**Fecha:** 2026-07-31 · **Tarea:** F3 — Web pública · **Decisión de arquitectura**
+
+**Contexto.** F3 necesita que "durante" refleje la posición y el progreso de
+Santi con datos vivos, y que el muro de comentarios se actualice. Dos
+decisiones relacionadas:
+
+**1. Cómo llega el dato vivo al cliente.**
+
+**Decisión:** *polling* del cliente a `GET /api/progreso` y `GET
+/api/comentarios` cada 30 s, en vez de Supabase Realtime.
+
+**Por qué.** `calcularProgreso` necesita `traza.geojson` (solo servidor, DT-001)
+— un evento de Realtime en el cliente igualmente tendría que disparar una
+llamada al servidor para recalcular, así que Realtime solo ahorraría el
+intervalo fijo, no el coste real de cómputo. Con audiencia familiar/amigos,
+30 s de retardo es imperceptible. Realtime añadiría gestión de conexión
+(reconexión, cleanup) sin resolver el problema real.
+
+**2. Coste de `calcularProgreso` en cada petición.**
+
+`calcularProgreso` recorre todo el histórico de posiciones y proyecta cada
+una sobre los ~7.121 segmentos de la traza — con ~3.600 posiciones al final
+del reto, hasta ~25M operaciones de distancia por llamada. Con varios
+seguidores haciendo polling cada 30 s durante 24-30 h, esto se ejecutaría sin
+caché justo cuando la web más tráfico tiene.
+
+**Decisión:** caché en memoria de proceso con TTL corto (15-20 s) dentro de
+`app/api/progreso/route.ts`. **No** se persiste progreso incremental en BD.
+
+**Por qué.** La alternativa correcta "de verdad" (guardar el estado
+acumulado — máximo histórico, odómetro, ancla — en `intentos` y actualizarlo
+incrementalmente desde `/api/track`) cambiaría la firma de `calcularProgreso`
+(dominio ya cerrado y testeado en F1, DT-003), la migración de F2 ya
+verificada contra Supabase real, y el propio `/api/track`. Eso excede el
+alcance aprobado para F3. La caché TTL en memoria resuelve el riesgo real
+(recomputación repetida en ráfagas de polling) sin tocar nada fuera de F3.
+
+**Alternativas valoradas.**
+- *Supabase Realtime.* Descartada — no evita la recomputación, solo el
+  intervalo; añade complejidad de conexión no justificada para este evento.
+- *Progreso incremental persistido en BD (Opción C).* Descartada para F3 por
+  alcance; ver `DEBT.md` — queda como el arreglo de fondo si la caché TTL
+  resulta insuficiente el día del evento.
+
+**Actualiza `DEBT.md`**: la entrada sobre el coste de `calcularProgreso` /
+`kmAcumulados` sin usar pasa de "evaluar en F2" a "mitigado en F3 con caché
+TTL en memoria; el arreglo de fondo (progreso incremental en BD) queda
+pendiente si el TTL no basta en producción".
