@@ -133,24 +133,30 @@ export default function Mapa({
     let cancelled = false;
     let map: import("maplibre-gl").Map | null = null;
 
-    // DEBUG TEMPORAL
-    window.addEventListener("error", (e) => console.error("WINDOW ERROR", e.message, e.filename, e.error));
-    window.addEventListener("unhandledrejection", (e) => console.error("UNHANDLED REJECTION", e.reason));
-
     (async () => {
       const { Map: MapLibreMap, AttributionControl, config } = await import("maplibre-gl");
       if (cancelled || !containerRef.current) return;
 
-      // Turbopack no resuelve el `new URL(target-condicional, import.meta.url)`
-      // interno de maplibre-gl (colapsa siempre al bundle principal en vez del
-      // worker real, sin ningún error visible — ver docs/bugs/BUGS.md). Fijamos
-      // WORKER_URL explícitamente con un target literal único, que sí es un
-      // patrón que Turbopack resuelve correctamente.
+      // Causa raíz completa (DT-008, docs/tecnico/decisiones-tecnicas.md):
+      // maplibre-gl calcula la URL de su Worker en tiempo de ejecución vía
+      // `config.WORKER_URL`. Turbopack solo bundlea un Worker cuando el
+      // propio código de la app contiene literalmente `new Worker(new
+      // URL(...))` como expresión estática — como esa URL le llega a
+      // maplibre-gl ya resuelta (no como literal en la app), Turbopack nunca
+      // puede aplicar ese análisis, venga de donde venga el fichero
+      // referenciado (de node_modules o de la propia app). En cualquiera de
+      // los dos casos lo trata como asset estático copiado en crudo, sin
+      // bundlear el `import ... from "./maplibre-gl-shared.mjs"` interno del
+      // propio worker — esa ruta sin hash nunca existe en el output real, lo
+      // que provoca un 404 silencioso dentro del contexto del worker
+      // (invisible desde el hilo principal: MapLibre no engancha
+      // `worker.onerror`). La solución es pre-empaquetar el worker con
+      // esbuild (scripts/bundle-maplibre-worker.ts, inlinea
+      // maplibre-gl-shared.mjs, sin imports externos restantes) y servirlo
+      // como fichero estático desde public/, fuera por completo del
+      // pipeline de bundling de Turbopack.
       if (!config.WORKER_URL) {
-        config.WORKER_URL = new URL(
-          "maplibre-gl/dist/maplibre-gl-worker.mjs",
-          import.meta.url
-        ).href;
+        config.WORKER_URL = "/maplibre-gl-worker.bundled.js";
       }
 
       const key = process.env.NEXT_PUBLIC_MAPTILER_KEY;
@@ -175,12 +181,11 @@ export default function Mapa({
       instancia.addControl(new AttributionControl({ compact: true }), "bottom-left");
       mapRef.current = instancia;
 
-      // DEBUG TEMPORAL — instrumentación de diagnóstico, se retira tras investigar.
-      instancia.on("error", (e) => console.error("MAPLIBRE ERROR", e.error, e));
-      instancia.on("styledata", () => console.log("DEBUG styledata", instancia.isStyleLoaded()));
-      instancia.on("sourcedata", (e) => console.log("DEBUG sourcedata", e.sourceId, e.isSourceLoaded, e.dataType));
-      instancia.on("dataloading", (e) => console.log("DEBUG dataloading", "sourceId" in e ? e.sourceId : "(sin sourceId)", e.dataType));
-      instancia.on("idle", () => console.log("DEBUG idle"));
+      // MapLibre no propaga fallos internos (p. ej. de estilo o de fuentes)
+      // fuera de su propio Evented — sin este listener, un error real
+      // quedaría completamente silencioso (ver docs/LESSONS.md: el fallo
+      // del worker que originó este mismo componente tampoco se veía).
+      instancia.on("error", (e) => console.error("Error de MapLibre GL:", e.error));
 
       // Modo previa: el mapa no se manipula (tocar = ampliar).
       instancia.dragPan.disable();

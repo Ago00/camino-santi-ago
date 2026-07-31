@@ -43,3 +43,61 @@ instancia el cliente real (sin conectar), en vez de depender solo de mocks.
 mockea el cliente entero no prueba nada sobre los nombres de las variables que
 usa. Hace falta al menos un test que construya el objeto real con
 `vi.stubEnv()`. Ver también `docs/LESSONS.md`.
+
+---
+
+## El mapa base de MapTiler no pintaba: worker de MapLibre GL roto en silencio por Turbopack
+
+**Fecha:** 2026-07-31
+**Tags:** maplibre-gl, turbopack, web-worker, bundling, esbuild, next.js
+
+**Síntomas:** En `components/mapa/Mapa.tsx`, el overlay SVG (traza naranja,
+marcadores) se pintaba correctamente, pero el mapa base de MapTiler (calles,
+agua, relieve) quedaba completamente en blanco. Cero errores en consola, cero
+peticiones `.pbf` (teselas vectoriales) en la pestaña Network, `style.json` y
+`tiles.json` sí se cargaban con normalidad. `gl.readPixels()` sobre el canvas
+WebGL devolvía `[0,0,0,0]` en el centro del mapa.
+
+**Causa raíz (confirmada tras 3 rondas de diagnóstico, ver
+`docs/tareas/historico/` y DT-008 en `docs/tecnico/decisiones-tecnicas.md`):**
+
+1. `maplibre-gl@6` calcula la URL de su Web Worker con
+   `new URL(target-condicional-en-runtime, import.meta.url)`. Turbopack no
+   resuelve bien ese patrón de doble target condicional: colapsa siempre la
+   referencia al bundle principal en vez del worker real, sin ningún error.
+   Fijar `config.WORKER_URL` a mano evita este primer problema — pero no basta.
+2. Turbopack solo bundlea (resuelve y hashea) un Web Worker cuando el propio
+   código de la app contiene **literalmente** `new Worker(new URL(...))` como
+   expresión estática analizable. Como `maplibre-gl` construye el `Worker`
+   con una URL que le llega en tiempo de ejecución vía `config.WORKER_URL`,
+   Turbopack nunca puede aplicar ese análisis — sin importar si la URL
+   apunta a un fichero de `node_modules` o a un fichero propio de la app
+   creado expresamente para ello. En ambos casos, Turbopack trata el
+   fichero como **asset estático copiado en crudo**, sin bundlear sus
+   imports internos.
+3. El propio worker de MapLibre (`maplibre-gl-worker.mjs`) importa
+   internamente `./maplibre-gl-shared.mjs` (ruta sin hash de contenido).
+   Esa ruta sin hash **nunca existe** en el output de Turbopack (solo la
+   versión con hash), así que el import falla con **404 dentro del
+   contexto del propio Worker** — confirmado con una captura real de la
+   pestaña Network de una preview de Vercel desplegada.
+4. Este fallo es invisible desde el hilo principal: `maplibre-gl` nunca
+   engancha `worker.onerror` al `Worker` nativo, así que ni
+   `window.onerror`, ni `map.on('error')`, ni la consola de la página
+   principal muestran nada. Solo se detecta inspeccionando directamente la
+   pestaña Network o leyendo el código fuente de la librería.
+
+**Solución:** pre-empaquetar el worker de MapLibre GL (y su dependencia
+`maplibre-gl-shared.mjs`) en un único fichero autocontenido con `esbuild`,
+sin ningún import externo restante (`scripts/bundle-maplibre-worker.ts`,
+ejecutado en `predev`/`prebuild`), y servirlo como asset estático desde
+`public/maplibre-gl-worker.bundled.js` — fuera por completo del pipeline de
+bundling de Turbopack. `config.WORKER_URL` apunta a esa ruta pública fija,
+sin `new URL(..., import.meta.url)` de por medio. Ver DT-008.
+
+**Lección:** cuando una librería de terceros crea un Web Worker con una URL
+resuelta en tiempo de ejecución (no un literal estático en el código de la
+app), Turbopack no puede bundlearlo por mucho que se cambie desde dónde se
+referencia el fichero. La única solución robusta es eliminar la necesidad
+de bundling en tiempo real: pre-empaquetar el worker de antemano y servirlo
+como estático. Ver también `docs/LESSONS.md`.

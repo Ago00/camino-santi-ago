@@ -2,17 +2,21 @@
 
 ---
 
-## 2026-07-31 — Fix: el mapa en directo no mostraba calles ni terreno, solo la traza
+## 2026-07-31 — Fix (definitivo): el mapa en directo no mostraba calles ni terreno, solo la traza
 
 **Tipo:** Fix
 
 El mapa mostraba la ruta del reto (línea naranja) pero el fondo — calles,
-ríos, relieve — quedaba en blanco. La causa era interna al proceso de
-compilación: la librería del mapa (MapLibre) no conseguía arrancar
-correctamente el proceso auxiliar que descarga y dibuja las calles y el
-terreno, sin dar ningún error visible. Se ha corregido indicando
-explícitamente dónde está ese proceso auxiliar. Ahora el mapa se ve completo,
-con calles, ríos y relieve de fondo.
+ríos, relieve — quedaba en blanco. Un primer intento de arreglo (indicar a
+mano dónde está el proceso auxiliar del mapa) mejoró el diagnóstico pero no
+resolvió el problema de fondo: ese proceso auxiliar seguía sin poder cargar
+del todo una pieza interna que necesita, otra vez sin ningún error visible en
+pantalla. La solución definitiva empaqueta esa pieza junto con el proceso
+auxiliar en un único fichero autocontenido durante la compilación, y lo sirve
+tal cual desde la web sin pasar por el paso de compilación que fallaba.
+Verificado visualmente (captura de pantalla contra el build de producción
+real): el mapa carga calles, costa y relieve por completo, sin ningún error
+en la consola del navegador.
 
 ---
 

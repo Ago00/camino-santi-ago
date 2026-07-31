@@ -345,3 +345,287 @@ reporta el resultado exacto (Content-Type real de la respuesta, o logs de
 los listeners de diagnóstico, o estado del hilo de Worker en DevTools) para
 que el Debugger cierre el diagnóstico definitivo con evidencia de runtime,
 no solo de código estático.
+
+---
+
+## Registro del Implementador (3ª pasada — causa raíz confirmada por el Orquestador, fix indicado NO funciona según evidencia de build)
+
+**Contexto recibido:** el Orquestador confirmó la causa raíz 100% (404 real
+y verificado en Network de Vercel: `.../maplibre-gl-shared.mjs` sin hash no
+existe porque Turbopack copia `maplibre-gl-worker.mjs` como asset estático
+crudo sin bundlear su `import ... from "./maplibre-gl-shared.mjs"` interno).
+El fix indicado: crear `lib/maplibre-worker-entry.ts` con
+`import "maplibre-gl/dist/maplibre-gl-worker.mjs";` y apuntar
+`config.WORKER_URL` a ese fichero de la app en vez de al de `node_modules`,
+bajo la premisa de que Turbopack trataría esa referencia como "entrada de
+bundling real" y sí resolvería/hashearía el grafo de imports del worker.
+
+**Cambios aplicados (código, tal como se indicó):**
+1. Creado `lib/maplibre-worker-entry.ts` exactamente como se especificó.
+2. En `components/mapa/Mapa.tsx`, `config.WORKER_URL` ahora apunta a
+   `new URL("../../lib/maplibre-worker-entry.ts", import.meta.url).href`
+   (ruta relativa verificada: `Mapa.tsx` está en `components/mapa/`, `../../`
+   sube a la raíz del proyecto, correcto).
+3. Comentario de `WORKER_URL` reescrito con la causa raíz completa (URL sin
+   hash + Turbopack copia asset crudo + MapLibre no engancha `worker.onerror`).
+4. Retirada toda la instrumentación `// DEBUG TEMPORAL`: los listeners de
+   `window.addEventListener("error"/"unhandledrejection", ...)` y los
+   `instancia.on("styledata"/"sourcedata"/"dataloading"/"idle", ...)`.
+   Se conserva (como código de producción limpio, sin prefijo de debug) un
+   único listener permanente `instancia.on("error", (e) =>
+   console.error("Error de MapLibre GL:", e.error))` — decisión de bloqueo
+   menor: es razonable dejarlo dado que ya sabemos que MapLibre puede fallar
+   sin propagar el error por ningún otro canal.
+
+**Quality gates de código — las 3 primeras en verde:**
+1. `pnpm typecheck` — 0 errores.
+2. `pnpm lint` — 0 errores.
+3. `pnpm test` — 78/78 tests en verde (9 ficheros), sin cambios de dominio.
+4. `pnpm build` — completa sin errores... **pero la inspección del output
+   real revela que el fix NO logra el efecto esperado.**
+
+**BLOQUEO MAYOR — el fix indicado no resuelve la causa raíz según evidencia del build de producción:**
+
+Inspeccioné `.next/static/media/` y los chunks generados tras `pnpm build`:
+
+- Turbopack SÍ genera un asset con hash para el nuevo fichero:
+  `.next/static/media/maplibre-worker-entry.0mpwi316efso-.ts` — pero **es una
+  copia literal y cruda del `.ts` fuente sin transpilar**, tal cual (con el
+  comentario incluido), no un bundle. Turbopack lo trató como "asset
+  estático referenciado por `new URL(..., import.meta.url)`" — exactamente
+  el mismo tratamiento que ya se aplicaba al fichero de `node_modules` —, no
+  como "entrada de bundling".
+- En el chunk cliente (`.next/static/chunks/2qdz7o0b9yaf7.js`) la asignación
+  de `WORKER_URL` queda como
+  `o.WORKER_URL=new t.U(t.r(56342)).href`, y el módulo `56342` mapea (visto
+  en `.next/static/chunks/3jh6ntzr9it4k.js`, la función de manifest) a
+  `/_next/static/media/maplibre-worker-entry.0mpwi316efso-.ts` — el propio
+  `.ts` copiado tal cual, con el `import "maplibre-gl/dist/maplibre-gl-worker.mjs"`
+  sin resolver.
+- El fichero real del worker sigue siendo el de siempre,
+  `.next/static/media/maplibre-gl-worker.2er27gb6mgsf8.mjs`, y su primera
+  línea de import sigue exactamente igual que antes del fix:
+  `from"./maplibre-gl-shared.mjs"` — **la ruta sin hash, que sigue sin
+  existir en el output** (`.next/static/media/maplibre-gl-shared.2zqce7ukeetkz.mjs`
+  es la única versión de ese fichero, con hash). El worker que
+  efectivamente se sirve al navegador seguiría dando el mismo 404 interno
+  que motivó esta tarea.
+
+**Conclusión:** el patrón "referenciar el worker desde un fichero de la
+propia app en vez de `node_modules`" **no cambia el tratamiento de Turbopack**
+para `new URL(literal, import.meta.url)` — en ambos casos Turbopack lo trata
+como un asset estático copiado en crudo, nunca como punto de entrada de
+bundling. La premisa del fix (documentada también así en el prompt recibido
+y pensada para actualizar `docs/LESSONS.md`) no se sostiene con la evidencia
+real del build. Esto es un cambio respecto al plan aprobado — no una
+ambigüedad de implementación menor — así que paro aquí en vez de improvisar
+una solución alternativa de arquitectura (p. ej. `?url`, `import()` dinámico
+sin `new URL`, mover el worker a `public/`, o configurar Turbopack para que
+trate `.ts`/`.mjs` bajo esa ruta como módulo en vez de asset).
+
+**Estado del código en este momento:** el fix de `WORKER_URL` y la limpieza
+de instrumentación de debug están aplicados en el working tree tal como se
+pidió (útiles como base, el comentario del listener de error permanente es
+válido en cualquier escenario), pero **el bug del mapa base sin pintar sigue
+sin resolverse** — no se ha podido verificar visualmente (paso 2-3 de la
+verificación exigida) porque el fix de fondo no llega a servir el worker
+correcto.
+
+**No se ha hecho:** verificación con `curl`/preview del navegador, porque el
+build ya revela por inspección estática que el resultado sería el mismo 404
+que antes del fix — no tiene sentido gastar ese paso hasta que haya una
+solución de fondo distinta.
+
+**Siguiente paso:** Orquestador/Arquitecto deciden la vía alternativa real
+para bundlear el grafo de imports del worker de MapLibre bajo Turbopack.
+Alternativas no probadas que podrían investigarse: (a) importar el worker
+con sufijo `?url` (patrón de Vite,
+`import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url"`,
+ya descartado preventivamente por el Debugger en la 1ª pasada por no ser
+necesariamente soportado por Turbopack, pero no se ha probado empíricamente
+todavía); (b) copiar el worker y su dependencia compartida a `public/` en
+tiempo de build (script propio, similar a `simplificar-traza.ts`) y apuntar
+`WORKER_URL` a esa ruta estática servida sin pasar por el pipeline de
+bundling de Turbopack en absoluto; (c) investigar si Turbopack tiene alguna
+directiva/config (`turbopack.rules` en `next.config`) para forzar que un
+`.mjs` bajo cierta ruta se trate como módulo transformable en vez de asset.
+
+---
+
+## Decisión de Arquitectura (Orquestador, tras 3 rondas de diagnóstico) — DT-008
+
+**Aprobada por Santi (2026-07-31).** Registrada en `docs/tecnico/decisiones-tecnicas.md` como DT-008.
+
+El Implementador (3ª pasada) confirmó con evidencia real de build que referenciar
+el worker desde un fichero de la app (en vez de `node_modules`) NO resuelve el
+problema: Turbopack solo bundlea correctamente un Worker cuando el propio código
+de la app contiene literalmente `new Worker(new URL(...))` — como `maplibre-gl`
+construye el Worker con una URL en tiempo de ejecución, Turbopack nunca puede
+aplicar ese análisis, venga de donde venga el fichero referenciado.
+
+**Solución aprobada:** pre-empaquetar el worker de MapLibre (+ su dependencia
+`maplibre-gl-shared.mjs`) con `esbuild` en un fichero único sin imports
+externos, servido desde `public/` (fuera del pipeline de bundling de Turbopack
+por completo). Ver DT-008 para el detalle completo y las alternativas descartadas.
+
+**Siguiente paso:** Implementador (4ª pasada) — instrucciones exactas en el
+mensaje del Orquestador al invocarlo.
+
+---
+
+## Registro del Implementador (4ª pasada — DT-008 implementado)
+
+**Cambios aplicados:**
+
+1. **`esbuild` añadido como devDependency** (`^0.28.1`).
+2. **`scripts/bundle-maplibre-worker.ts`** creado, patrón análogo a
+   `scripts/simplificar-traza.ts`. Usa la API de Node de esbuild
+   (`esbuild.build({...})`) con `entryPoints:
+   ["node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs"]`, `bundle: true`,
+   `format: "esm"`, `outfile: "public/maplibre-gl-worker.bundled.js"`.
+   Verifica al final con una regexp que el fichero de salida no contenga
+   ningún `import ... from "./"` sin resolver, y lanza si lo encontrara.
+   **Decisión de bloqueo menor:** un único bundle sirve para dev y
+   producción (no se genera variante `-dev`) — el Debugger ya había
+   confirmado en la 2ª ronda que `maplibre-gl-worker.mjs` y
+   `maplibre-gl-worker-dev.mjs` son funcionalmente equivalentes (mismo
+   `Actor`, mismos message handlers; el `-dev` solo añade warnings). No
+   vale la pena mantener dos artefactos para esa diferencia cosmética.
+3. **`package.json`:** nuevo script `"bundle-maplibre-worker": "tsx
+   scripts/bundle-maplibre-worker.ts"`, enganchado en `predev` y `prebuild`
+   (`simplificar-traza` es manual, sin hook — pero aquí se justifica un hook
+   automático porque el artefacto depende de la versión de `maplibre-gl` en
+   `node_modules`, que puede cambiar sin que nadie recuerde regenerar el
+   worker a mano).
+4. **Artefacto generado** en `public/maplibre-gl-worker.bundled.js`
+   (634 KB) y **añadido a `.gitignore`** — se regenera siempre en
+   `predev`/`prebuild`, nunca se commitea (consistente con cómo el proyecto
+   trata otros artefactos derivados como `.next/`).
+5. **`components/mapa/Mapa.tsx`:**
+   - Eliminado `lib/maplibre-worker-entry.ts` (enfoque descartado, ya no se
+     referencia desde ningún sitio).
+   - `config.WORKER_URL = "/maplibre-gl-worker.bundled.js"` — ruta pública
+     fija, sin `new URL(..., import.meta.url)`.
+   - Comentario reescrito con la causa raíz completa (DT-008) y la solución
+     final.
+   - Se mantiene el listener `instancia.on("error", ...)` permanente (ya
+     decidido en la 3ª pasada).
+6. **`eslint.config.mjs`:** añadido `public/maplibre-gl-worker.bundled.js`
+   a `globalIgnores` — es un artefacto generado por esbuild (código de
+   terceros minificado/bundleado), no código fuente del proyecto; sin esto
+   ESLint lo lintea y genera cientos de warnings irrelevantes.
+
+**Quality gates — las 4 en verde:**
+1. `pnpm typecheck` — 0 errores.
+2. `pnpm lint` — 0 errores (tras excluir el artefacto generado).
+3. `pnpm test` — 78/78 tests en verde (9 ficheros), sin tests nuevos: el
+   cambio es de infraestructura de build (script de empaquetado + ruta de
+   worker), no lógica de dominio. El propio script de bundling actúa como
+   su propia guardia de calidad (falla si detecta un import sin resolver
+   en su salida) — verificado que efectivamente pasa esa guardia con el
+   contenido real generado.
+4. `pnpm build` — completa sin errores. El hook `prebuild` regeneró
+   correctamente `public/maplibre-gl-worker.bundled.js` antes de que Next
+   compilara (verificado borrando el artefacto antes del build y
+   confirmando que reaparece).
+
+**Verificación exigida — resultado y método exacto de cada punto:**
+
+1. **`public/maplibre-gl-worker.bundled.js` existe y no está vacío tras el
+   build:** confirmado (649.631 bytes tras `pnpm build`, regenerado por el
+   hook `prebuild`).
+2. **`curl` directo al fichero servido + grep de imports sin resolver:**
+   levantado `pnpm build && pnpm start` (puerto 3000, producción real, no
+   dev server). `curl -sD - http://localhost:3000/maplibre-gl-worker.bundled.js`
+   devuelve `HTTP/1.1 200 OK`, `Content-Type: application/javascript;
+   charset=UTF-8` (MIME type válido para un módulo ES en un Worker — esto
+   era precisamente la hipótesis principal de la 2ª ronda de diagnóstico
+   cuando el fichero se servía desde `_next/static/media/`; servido desde
+   `public/` el problema desaparece). El contenido descargado por `curl` es
+   **byte a byte idéntico** al fichero generado localmente (`diff` sin
+   diferencias) y **no contiene ningún `import ... from "./"` ni `import`
+   de nivel superior sin resolver** (verificado con grep con varios
+   patrones: ninguna coincidencia).
+3. **Navegación real + `preview_network` sin 404 de MapLibre:** **NO
+   ejecutado por este subagente.** Las herramientas `preview_start` /
+   `preview_network` / `preview_screenshot` / `preview_eval` no están
+   disponibles en el entorno de este subagente Implementador — viven
+   exclusivamente en el hilo principal del Orquestador (mismo límite ya
+   documentado en la 1ª pasada de esta tarea).
+4. **Confirmación visual del mapa base pintado (screenshot o
+   `gl.readPixels()`):** **NO ejecutado**, mismo motivo que el punto 3.
+
+**Servidor de producción dejado activo para el Orquestador:** `pnpm start`
+sigue corriendo en `http://localhost:3000/` (procesos `node.exe`, PIDs
+16224/16932/16816 en el momento de escribir esto) con el artefacto ya
+generado y verificado por red — el Orquestador puede navegar directamente
+sin tener que reconstruir, solo completar los puntos 3 y 4 con sus
+herramientas de preview.
+
+**No cierro esta tarea como resuelta.** Los puntos 1 y 2 de la verificación
+exigida están confirmados con evidencia real (build + red + contenido
+byte a byte). Los puntos 3 y 4 — los que de verdad confirman que el bug
+está resuelto en un navegador real, que es lo que ha fallado dos veces
+antes — quedan pendientes de las herramientas de preview del Orquestador.
+Dado el historial de esta tarea (dos "fixes" reportados sin verificación
+visual real que resultaron no funcionar), no reporto éxito sin esa
+confirmación final.
+
+**Alcance:** cambios acotados a lo aprobado en DT-008: nueva dependencia
+`esbuild`, nuevo script `scripts/bundle-maplibre-worker.ts`, hooks
+`predev`/`prebuild` en `package.json`, eliminación de
+`lib/maplibre-worker-entry.ts`, cambio de `WORKER_URL` en `Mapa.tsx`, y
+exclusión del artefacto generado en `eslint.config.mjs` (ajuste menor
+necesario para que `pnpm lint` no lintee código de terceros bundleado —
+consistente con cómo ya se ignoran `.next/`, `out/`, `build/`). No se ha
+tocado ninguna otra capa. No se ha generado deuda técnica nueva; no se ha
+encontrado deuda no relacionada en el camino que mereciera registro
+adicional.
+
+**Documentación actualizada:** `CHANGELOG.md` (entrada del fix parcial
+sustituida por el fix definitivo), `docs/LESSONS.md` (ampliada la lección
+de Turbopack + Web Workers con el hallazgo final), `docs/bugs/BUGS.md`
+(nueva entrada con causa raíz completa y solución), `AGENTS.md` (nuevo
+comando `bundle-maplibre-worker` documentado).
+
+**Siguiente paso:** Orquestador completa los puntos 3 y 4 de la
+verificación exigida con sus herramientas de preview contra el servidor ya
+activo en `localhost:3000`. Si confirma visualmente que el mapa base pinta
+(calles/agua/relieve) y no hay 404 de MapLibre en Network, la tarea puede
+darse por cerrada de verdad — Reviewer y Seguridad después. Si algo falla,
+es un bloqueo mayor nuevo y hay que reabrir el diagnóstico, no volver a
+reportar éxito sin esa confirmación.
+
+---
+
+## Confirmación final del Orquestador (2026-07-31)
+
+**Puntos 3 y 4 completados.** Con instrumentación temporal adicional
+(interceptor de `window.Worker` para capturar tráfico de mensajes, y
+listeners `sourcedata`/`idle`/`render` en el Map) confirmé contra el build
+de producción real (`pnpm build && pnpm start`):
+
+- `sourcedata maptiler_planet true` — la fuente real de teselas SÍ completa
+  su carga (antes se quedaba en bucle infinito en `false`).
+- `idle - todo cargado` se dispara — MapLibre considera el mapa
+  completamente renderizado.
+- **Captura de pantalla real** contra el servidor de producción: el mapa
+  pinta calles, costa y relieve (Vigo, Pontevedra, Santiago de Compostela,
+  la ría) — no solo el overlay SVG de la traza sobre fondo plano.
+- Sin ningún error en consola.
+
+**Nota metodológica:** `gl.readPixels()` sobre el canvas WebGL dio
+falso negativo repetidamente (siempre `[0,0,0,0]`) incluso con el mapa ya
+confirmado como renderizado correctamente — el buffer de dibujo de WebGL
+se limpia tras presentar cada frame salvo que el contexto pida
+`preserveDrawingBuffer`, así que leerlo fuera del propio bucle de render
+no es una prueba fiable. La captura de pantalla real (`preview_screenshot`)
+es el método correcto para verificar visualmente un canvas WebGL.
+
+Retiré toda la instrumentación de depuración de `Mapa.tsx` (queda solo el
+listener de error permanente ya añadido). Re-confirmé las 4 quality gates
+en verde tras la limpieza. **Bug cerrado de verdad.**
+
+**Siguiente paso:** Reviewer y Seguridad sobre el diff acumulado de todo el
+ciclo de este bug (fix de postcss + fix del mapa + limpieza), antes de
+cerrar la tarea y fusionar el PR.
