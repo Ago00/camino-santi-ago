@@ -4,6 +4,7 @@
 // correcto (componente Logo, mojón + monigote rojiblanco — no VieiraMark).
 
 import Mapa from "@/components/mapa/Mapa";
+import Stats from "@/components/publico/Stats";
 import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
 import type { ProgresoPublico } from "@/lib/types";
@@ -15,12 +16,12 @@ interface ModoLlegadaProps {
   mensajeLlegada: string;
   /** "hh:mm" ya formateado del tiempo total del intento. */
   tiempoTotal: string;
+  /** Ritmo medio del intento completo, ya formateado (km/h). */
+  ritmoMedio: string;
   trazaCoords: [number, number][];
 }
 
-export default function ModoLlegada({ progreso, mensajeLlegada, tiempoTotal, trazaCoords }: ModoLlegadaProps) {
-  const kmCaminados = Math.round(progreso.odometroKm);
-
+export default function ModoLlegada({ progreso, mensajeLlegada, tiempoTotal, ritmoMedio, trazaCoords }: ModoLlegadaProps) {
   return (
     <section className="space-y-5 pt-6">
       <div className="relative overflow-hidden rounded-2xl p-6 text-center" style={{ background: "linear-gradient(180deg,#F3E6C9,#EFE8DA)", border: `1px solid ${C.gold}44` }}>
@@ -34,33 +35,17 @@ export default function ModoLlegada({ progreso, mensajeLlegada, tiempoTotal, tra
           <h2 className="[font-family:var(--font-fraunces)] mt-1 text-[30px] font-semibold" style={{ color: C.ink }}>
             ¡Ha llegado a Santiago!
           </h2>
-          <div className="mt-4 flex justify-center gap-6">
-            <div>
-              <div className="font-mono text-[30px] font-semibold tabular-nums" style={{ color: C.ink }}>
-                {kmCaminados}
-              </div>
-              <div className="text-[10px] uppercase tracking-wide" style={{ color: "#8A928C" }}>
-                km caminados
-              </div>
-            </div>
-            <div className="w-px" style={{ background: "#00000015" }} />
-            <div>
-              <div className="font-mono text-[30px] font-semibold tabular-nums" style={{ color: C.ink }}>
-                {tiempoTotal}
-              </div>
-              <div className="text-[10px] uppercase tracking-wide" style={{ color: "#8A928C" }}>
-                h · m
-              </div>
-            </div>
-          </div>
           <p className="mx-auto mt-4 max-w-xs text-[14px] leading-relaxed" style={{ color: "#3C433E" }}>
             {mensajeLlegada}
           </p>
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-2xl border shadow-sm" style={{ borderColor: "#00000012" }}>
-        <Mapa trazaCoords={trazaCoords} hora="dia" modo="directo" posicionActual={progreso.ultimaPosicion} ultimaSenalTexto={null} />
+      <div className="space-y-3">
+        <div className="relative overflow-hidden rounded-2xl border shadow-sm" style={{ borderColor: "#00000012" }}>
+          <Mapa trazaCoords={trazaCoords} hora="dia" modo="directo" posicionActual={progreso.ultimaPosicion} ultimaSenalTexto={null} />
+        </div>
+        <Stats tiempoEnMarcha={tiempoTotal} kmAndados={formatearKm(progreso.odometroKm)} ritmoMedio={ritmoMedio} />
       </div>
 
       {/* tras llegar ya no se ofrecen intenciones; solo mensajes / felicitaciones */}
@@ -96,4 +81,8 @@ function Logo() {
       <ellipse cx="27" cy="44.4" rx="7.6" ry="1.8" fill="#6B4A2E" />
     </svg>
   );
+}
+
+function formatearKm(valor: number): string {
+  return valor.toLocaleString("es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }

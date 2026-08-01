@@ -219,6 +219,17 @@ compartido (Upstash u otro).
 
 ---
 
+## `calcularRitmoMedioIntento` (y sus equivalentes) no se defienden contra fechas inválidas
+
+**Fecha:** 2026-08-01
+**Contexto:** Detectado por el Reviewer en la revisión de "Estadísticas (tiempo, distancia, ritmo) en la pantalla de llegada". `lib/ritmo.ts` (`calcularRitmoMedioIntento`) recibe `iniciadoEn`/`finalizadoEn` como `string | null` (o `Date | string | null` en el caso del final) directamente desde columnas de Supabase (`started_at`/`ended_at`), sin validación de formato. Si el valor almacenado no fuera un ISO 8601 parseable, `new Date(valor)` produce `Invalid Date` (`getTime()` → `NaN`), y la resta `(final - inicio) / 3_600_000` da `NaN`, que pasa la comprobación `horasTranscurridas <= 0` como `false` (toda comparación con `NaN` es `false`) y termina formateándose como `"NaN,N"` en vez de caer al fallback `"—"`.
+**Problema:** No es una regresión de esta tarea — el mismo patrón sin blindar ya existe en `calcularRitmoMedio` de `components/publico/ModoDurante.tsx` y en `formatearTiempoTotal` de `app/page.tsx`, ninguno con test para este caso. Pero al centralizar la fórmula de ritmo en `lib/ritmo.ts` con tests, es el punto natural para cerrarlo de una vez para los tres sitios.
+**Impacto:** Bajo en la práctica — `started_at`/`ended_at` los escribe el propio backend (Server Actions del panel admin), nunca un formulario de usuario externo; la superficie de que lleguen corruptos es pequeña. Si ocurriera, el efecto visible sería mostrar `"NaN,N"` en vez de `"—"` en la pantalla pública, un fallo cosmético pero visible a espectadores.
+**Solución propuesta:** Añadir una comprobación `Number.isNaN(inicio) || Number.isNaN(final)` (o validar con `Number.isFinite`) antes de calcular `horasTranscurridas` en `lib/ritmo.ts`, con su test de regresión; valorar si merece la pena replicar el mismo guard en `ModoDurante.tsx`/`page.tsx` o extraerlos también a `lib/ritmo.ts` en una tarea futura de consolidación.
+**Prioridad:** Baja.
+
+---
+
 ## `docs/tecnico/arquitectura.md` no incluye `lib/rate-limit.ts` en la tabla de estructura
 
 **Fecha:** 2026-08-01 · **Cerrada:** 2026-08-01, tarea "Auto-refresco de fase en la web pública"
