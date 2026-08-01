@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-08-02 — Ajustes visuales del feed "Minuto a minuto" tras feedback real
+
+**Tipo:** Mejora
+
+Dos ajustes al feed "Minuto a minuto" tras probarlo en producción: el feed
+ahora aparece justo debajo de las estadísticas (tiempo, km, ritmo) en vez de
+justo debajo del mapa, y las entradas con foto muestran la imagen a ancho
+completo y con más presencia visual, en vez de como una pequeña miniatura
+junto al texto.
+
+---
+
 ## 2026-08-02 — Minuto a minuto: feed en directo con fotos
 
 **Tipo:** Feature
