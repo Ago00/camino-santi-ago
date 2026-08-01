@@ -112,12 +112,26 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 - [ ] Carga de textos finales desde el panel — pendiente, la hace Santi
       directamente en el panel admin cuando tenga los textos definitivos
 
+## Post-F5 — Minuto a minuto (hecho, 2026-08-02)
+
+Idea promovida desde "Ideas v2" y ampliada con fotos. Ver DT-013
+(`docs/tecnico/decisiones-tecnicas.md`) y
+`docs/tareas/historico/2026-08-02-minuto-a-minuto.md`.
+
+- [x] Tabla `minuto_a_minuto` + Supabase Storage (bucket público) — **migración
+      `0002_minuto_a_minuto.sql` pendiente de aplicar contra Supabase real**
+- [x] Panel admin: publicar (texto + foto opcional), editar texto, eliminar
+- [x] Web pública: feed en "durante" (con auto-actualización) y recopilatorio
+      en "llegada"
+- [x] Clic en una entrada → marcador temporal en el mapa con la posición en
+      la que se publicó (sin saturar el mapa con marcadores permanentes)
+- [x] Reviewer y Seguridad aprobados
+
 ---
 
 ## Ideas v2 (fuera de alcance v1)
 
 - Hitos automáticos (cada pueblo, cada 10 km)
-- Minuto a minuto (feed de mensajes en directo, editable desde admin)
 - Bot de Telegram
 - Contador de seguidores (presencia en localStorage + BD)
 - Geocodificación inversa ("Ahora: cerca de Redondela") en web pública

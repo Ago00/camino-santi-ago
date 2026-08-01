@@ -219,6 +219,28 @@ compartido (Upstash u otro).
 
 ---
 
+## `docs/producto/roadmap.md` y `funcionalidades.md` no reflejan "Minuto a minuto" como implementado
+
+**Fecha:** 2026-08-02
+**Contexto:** Detectado por el Reviewer en la revisión de la tarea "Minuto a minuto (feed en directo con fotos)". La feature está completamente implementada (DT-013), documentada en `CHANGELOG.md` y en la documentación técnica (`arquitectura.md`, `modelo-datos.md`), pero `docs/producto/roadmap.md` sigue listando "Minuto a minuto (feed de mensajes en directo, editable desde admin)" bajo la sección "Ideas v2 (fuera de alcance v1)" sin marcarlo como hecho, y `docs/producto/funcionalidades.md` no describe la nueva sección desde el punto de vista del usuario (a diferencia del resto de funcionalidades del documento).
+**Problema:** Documentación de producto desactualizada respecto al estado real del sistema. Un lector de `roadmap.md`/`funcionalidades.md` (incluido el Agente de Producto en una tarea futura) puede concluir que la feature sigue sin construir.
+**Impacto:** Puramente documental — cero efecto en comportamiento. Reduce la fiabilidad de la documentación de producto como fuente de verdad de qué existe ya en el producto.
+**Solución propuesta:** El Agente de Producto debe mover el ítem de `roadmap.md` de "Ideas v2" a la sección de hechos (o marcarlo `[x]` con contexto de qué fase/tarea lo implementó, igual que el resto de ítems ya cerrados), y añadir una entrada en `funcionalidades.md` describiendo el feed "minuto a minuto" desde la perspectiva del usuario (qué ve, cuándo, cómo interactúa con el mapa).
+**Prioridad:** Baja.
+
+---
+
+## `MinutoAMinuto.tsx` asume sin documentarlo que `entradas[0]` es siempre la entrada más reciente para el poll incremental
+
+**Fecha:** 2026-08-02
+**Contexto:** Detectado por el Reviewer en la revisión de "Minuto a minuto (feed en directo con fotos)". `components/publico/MinutoAMinuto.tsx` usa `entradas[0].id` como `despuesDeId` para el poll incremental (`masRecienteIdRef`), lo que asume que la primera entrada del array (ordenado por `created_at desc`) tiene también el `id` más alto — cierto hoy porque `id` es autoincremental y `created_at` se genera en el mismo insert, pero es una invariante implícita, no verificada por ningún test ni documentada en el propio componente.
+**Problema:** Si en el futuro se permitiera editar `created_at`, hacer backfill de entradas antiguas, o cualquier operación que desacople el orden de `id` del orden de `created_at`, el poll incremental podría dejar de detectar entradas nuevas (o repetirlas) sin que ningún test lo capture.
+**Impacto:** Bajo en el estado actual del sistema — no hay ninguna vía para insertar `minuto_a_minuto` con `created_at` fuera de orden respecto a `id` (todas las inserciones son vía `crearMinutoAMinuto`, que no permite fijar `created_at`). Solo se manifestaría si una tarea futura cambia esa garantía.
+**Solución propuesta:** Añadir un comentario junto a `masRecienteIdRef` documentando explícitamente la invariante ("`id` creciente y `created_at desc` están siempre correlacionados porque ambos se generan en el mismo insert, sin vía de edición de `created_at`"), y opcionalmente un test que verifique el comportamiento del poll con una respuesta de varias entradas nuevas a la vez.
+**Prioridad:** Baja.
+
+---
+
 ## `calcularRitmoMedioIntento` (y sus equivalentes) no se defienden contra fechas inválidas
 
 **Fecha:** 2026-08-01

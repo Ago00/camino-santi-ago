@@ -97,12 +97,45 @@ Textos editables de la web desde el panel admin.
 
 **Invariante:** añadir una clave nueva requiere código (decidir dónde se pinta). Editar un texto existente no requiere código — solo el panel admin.
 
+### `minuto_a_minuto`
+
+Entrada del feed en directo "minuto a minuto" (DT-013): texto corto + foto
+opcional, publicada solo por el admin, con snapshot de posición.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | bigint PK | Generado automáticamente |
+| `intento_id` | bigint FK | Apunta al intento sobre el que se publicó |
+| `texto` | text | 1-500 chars (check constraint) |
+| `foto_url` | text | URL pública de Supabase Storage (bucket `minuto-a-minuto`); null = sin foto |
+| `lat` | double precision | Snapshot de la última posición conocida al publicar; null si aún no había ninguna |
+| `lon` | double precision | Ídem |
+| `created_at` | timestamptz | Automático |
+| `updated_at` | timestamptz | Se actualiza al editar el texto |
+
+**Invariante de diseño:** `lat`/`lon` son un snapshot fijado en el momento de
+publicar, nunca recalculado después — no reflejan la posición actual de
+Santi si se consultan más tarde, reflejan dónde estaba al publicar esa
+entrada concreta.
+
+**Invariante de edición (DT-013):** editar una entrada solo puede cambiar
+`texto` (y `updated_at`). La foto no es editable — si está mal, la solución
+es borrar la entrada y publicar una nueva. No hay soft-delete: eliminar es
+hard delete, igual que `intenciones`. El objeto de Storage asociado a una
+entrada eliminada no se borra (deuda aceptada explícitamente, ver `DEBT.md`).
+
+**Storage:** las fotos viven en el bucket público `minuto-a-minuto` de
+Supabase Storage. Todas las subidas pasan por `lib/supabase/storage.ts` con
+el cliente `service role` (bypassa RLS de Storage), nunca desde el cliente
+directamente.
+
 ---
 
 ## Relaciones
 
 ```
-intentos (1) ──< posiciones (N)   intento_id → intentos.id
+intentos (1) ──< posiciones (N)          intento_id → intentos.id
+intentos (1) ──< minuto_a_minuto (N)     intento_id → intentos.id
 ```
 
 Las demás tablas (`intenciones`, `comentarios`, `textos`) son independientes.
@@ -118,16 +151,22 @@ Las demás tablas (`intenciones`, `comentarios`, `textos`) son independientes.
 | `intenciones` | Ninguna política (cero acceso) | ALL |
 | `comentarios` | SELECT `publico AND NOT oculto`; INSERT sin poder fijar `oculto` | ALL |
 | `textos` | SELECT | ALL |
+| `minuto_a_minuto` | SELECT solo entradas del intento activo (`NOT cerrado`) | ALL |
 
-RLS se activa en las 5 tablas en `supabase/migrations/0001_esquema_inicial.sql`.
-El service role bypassa RLS por diseño de Supabase (no necesita políticas
-explícitas); las políticas del fichero son únicamente para el rol `anon`.
+RLS se activa en las 5 tablas en `supabase/migrations/0001_esquema_inicial.sql`
+y en `minuto_a_minuto` en `supabase/migrations/0002_minuto_a_minuto.sql`
+(DT-013). El service role bypassa RLS por diseño de Supabase (no necesita
+políticas explícitas); las políticas de los ficheros son únicamente para el
+rol `anon`. Storage (bucket `minuto-a-minuto`) no tiene políticas propias:
+es un bucket público, y todas las subidas pasan por el cliente service role.
 
 ---
 
 ## Migración
 
-**Ubicación:** `supabase/migrations/0001_esquema_inicial.sql`.
+**Ubicación:** `supabase/migrations/0001_esquema_inicial.sql` (5 tablas
+iniciales) y `supabase/migrations/0002_minuto_a_minuto.sql` (tabla
+`minuto_a_minuto` + bucket de Storage, DT-013).
 
 **Convención de carpeta:** `supabase/migrations/NNNN_slug.sql`, numeración
 secuencial de 4 dígitos — la misma que usa la CLI oficial de Supabase

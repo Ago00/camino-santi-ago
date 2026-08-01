@@ -13,6 +13,7 @@ import Stats from "@/components/publico/Stats";
 import IntencionForm from "@/components/publico/IntencionForm";
 import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
+import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
 import { bandaHoraria } from "@/lib/cielo";
 import type { ProgresoPublico } from "@/lib/types";
 
@@ -30,6 +31,11 @@ export default function ModoDurante({ progresoInicial, iniciadoEn, trazaCoords }
   const [progreso, setProgreso] = useState(progresoInicial);
   const [hora, setHora] = useState(() => bandaHoraria(new Date()));
   const [ahora, setAhora] = useState(() => new Date());
+  const [puntoResaltado, setPuntoResaltado] = useState<{
+    lat: number;
+    lon: number;
+    hora: string;
+  } | null>(null);
 
   useEffect(() => {
     const id = setInterval(async () => {
@@ -70,8 +76,10 @@ export default function ModoDurante({ progresoInicial, iniciadoEn, trazaCoords }
             modo="directo"
             posicionActual={progreso.ultimaPosicion}
             ultimaSenalTexto={ultimaSenalTexto}
+            puntoResaltado={puntoResaltado}
           />
         </div>
+        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} />
         <Mojon kmRestantes={formatearKm(progreso.kmRestantes)} pct={progreso.porcentaje} />
         <Stats
           tiempoEnMarcha={tiempoEnMarcha}

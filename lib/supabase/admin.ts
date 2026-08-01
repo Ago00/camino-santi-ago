@@ -25,7 +25,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Comentario, Intencion, Intento, Posicion, Texto } from "@/lib/types";
+import type { Comentario, Intencion, Intento, MinutoAMinuto, Posicion, Texto } from "@/lib/types";
 
 /**
  * Esquema de BD tipado para el cliente Supabase (espejo de lib/types.ts).
@@ -81,6 +81,12 @@ export interface BaseDeDatos {
         Row: Pick<Texto, keyof Texto>;
         Insert: Omit<Texto, "updated_at">;
         Update: Partial<Texto>;
+        Relationships: [];
+      };
+      minuto_a_minuto: {
+        Row: Pick<MinutoAMinuto, keyof MinutoAMinuto>;
+        Insert: Omit<MinutoAMinuto, "id" | "created_at" | "updated_at">;
+        Update: Partial<MinutoAMinuto>;
         Relationships: [];
       };
     };

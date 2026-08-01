@@ -16,6 +16,7 @@ import PeregrinoLibre from "@/components/publico/PeregrinoLibre";
 import ModoAntes from "@/components/publico/ModoAntes";
 import ModoDurante from "@/components/publico/ModoDurante";
 import ModoLlegada from "@/components/publico/ModoLlegada";
+import type { EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
 import RefrescoAlCambiarFase from "@/components/publico/RefrescoAlCambiarFase";
 
 // La fase y el progreso se leen de Supabase en cada petición: sin esto,
@@ -85,7 +86,10 @@ async function ModoLlegadaConectado({
   mensajeLlegada: string | null;
   trazaCoords: [number, number][];
 }) {
-  const progreso = await calcularProgresoDelIntento(intentoId);
+  const [progreso, entradasMinutoAMinuto] = await Promise.all([
+    calcularProgresoDelIntento(intentoId),
+    cargarEntradasMinutoAMinuto(intentoId),
+  ]);
   const tiempoTotal = formatearTiempoTotal(startedAt, endedAt);
   const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, startedAt, endedAt);
 
@@ -96,8 +100,22 @@ async function ModoLlegadaConectado({
       tiempoTotal={tiempoTotal}
       ritmoMedio={ritmoMedio}
       trazaCoords={trazaCoords}
+      entradasMinutoAMinuto={entradasMinutoAMinuto}
     />
   );
+}
+
+async function cargarEntradasMinutoAMinuto(
+  intentoId: number
+): Promise<EntradaMinutoAMinutoPublica[]> {
+  const supabase = getSupabasePublic();
+  const { data } = await supabase
+    .from("minuto_a_minuto")
+    .select("id, texto, foto_url, lat, lon, created_at")
+    .eq("intento_id", intentoId)
+    .order("created_at", { ascending: false });
+
+  return data ?? [];
 }
 
 interface IntentoActivo {

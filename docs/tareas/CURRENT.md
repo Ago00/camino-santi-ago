@@ -1,8 +1,8 @@
 # Tarea en curso
 
-Ninguna tarea en curso. Última cerrada: **Estadísticas (tiempo, distancia,
-ritmo) en la pantalla de llegada** (2026-08-01), archivada en
-`historico/2026-08-01-stats-pantalla-llegada.md`.
+Ninguna tarea en curso. Última cerrada: **Minuto a minuto (feed en directo
+con fotos)** (2026-08-02), archivada en
+`historico/2026-08-02-minuto-a-minuto.md`.
 
 ---
 

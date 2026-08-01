@@ -575,3 +575,67 @@ responsabilidad (igual que `/api/track`, `/api/comentarios`,
 vez de reutilizar un cálculo caro para un dato que no lo necesita, y sin
 introducir Realtime/WebSockets (coherente con DT-007: la audiencia
 familiar/amigos no necesita menos de 30 s de latencia).
+
+---
+
+## DT-013 — Minuto a minuto: tabla scoped por intento, Storage público, polling (no Realtime)
+
+**Fecha:** 2026-08-01 · **Tarea:** Minuto a minuto (feed en directo con fotos) · **Decisión de arquitectura**
+
+**Contexto.** Nueva sección "Minuto a minuto" (idea de `roadmap.md`, hasta
+ahora sin definir): entradas de texto + foto opcional + posición asociada,
+publicadas solo por el admin, visibles en "durante" (en directo) y "llegada"
+(recopilatorio), con clic → marcador temporal en el mapa. Mockup aprobado en
+`design-sandbox/app/camino/{admin,durante}-minuto-a-minuto/page.tsx`.
+
+**Decisiones sin alternativa real:**
+
+1. **Fotos → Supabase Storage, bucket público** (`minuto-a-minuto`). Mismo
+   proyecto Supabase ya existente, sin cuenta nueva. Todas las subidas pasan
+   por Server Actions con el cliente `service role`, que bypassa RLS de
+   Storage igual que bypassa RLS de BD — no hace falta ninguna política de
+   Storage para `insert`. Bucket público porque nada de este contenido es
+   privado (mismo criterio que `posiciones`/`comentarios`, ya públicos).
+   Alternativas descartadas por el mismo motivo que DT-011 descartó Upstash:
+   un servicio externo (Cloudinary) añade una cuenta nueva sin necesidad
+   real; base64 en la fila degradaría cualquier consulta del feed.
+2. **Tabla `minuto_a_minuto` con `intento_id` FK**, mismo patrón que
+   `posiciones`: RLS de `anon` solo `SELECT` de entradas cuyo intento no esté
+   `cerrado`, cero políticas de escritura para `anon` (solo `service role`
+   vía Server Actions). "Reiniciar" resetea el feed automáticamente, sin
+   código extra — coherente con que el resto de datos del intento también
+   se resetean así.
+   ```sql
+   create table minuto_a_minuto (
+     id          bigint generated always as identity primary key,
+     intento_id  bigint not null references intentos(id),
+     texto       text not null check (char_length(texto) between 1 and 500),
+     foto_url    text,               -- URL pública de Storage; null = sin foto
+     lat         double precision,   -- snapshot de la última posición al publicar
+     lon         double precision,
+     created_at  timestamptz not null default now(),
+     updated_at  timestamptz not null default now()
+   );
+   create index minuto_a_minuto_intento_idx on minuto_a_minuto (intento_id, created_at desc);
+   alter table minuto_a_minuto enable row level security;
+   create policy "select_intento_activo" on minuto_a_minuto for select
+     using (exists (select 1 from intentos where intentos.id = minuto_a_minuto.intento_id and not intentos.cerrado));
+   ```
+3. **"Editar" se limita a corregir el texto, no a cambiar la foto adjunta.**
+   El mockup no especificaba el detalle de edición; para no gestionar
+   borrado/reemplazo de objetos huérfanos en Storage (complejidad real sin
+   beneficio para un evento de un día), si la foto está mal la solución es
+   borrar la entrada y publicarla de nuevo.
+4. **`Mapa.tsx` gana una prop opcional `puntoResaltado`** (`{lat, lon, hora}
+   | null`), pintada por el overlay SVG existente igual que el resto de
+   marcadores — aditiva, valor por defecto `null`, no cambia el
+   comportamiento actual cuando no se usa.
+
+**Decisión con tradeoffs — actualización en vivo en "durante":**
+**Polling** de entradas nuevas cada 30 s (extiende DT-007), no Supabase
+Realtime. Descartado Realtime por ser la primera vez que el proyecto lo
+introduciría, con gestión de conexión/reconexión que DT-007 ya evitó
+explícitamente por no aportar nada real a esta audiencia (30 s es
+imperceptible para audiencia familiar/amigos mirando el móvil de vez en
+cuando). En "llegada" el feed se carga una vez, sin polling (modo ya
+diseñado para quedar congelado, ver `ModoLlegada.tsx`).
