@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-08-01 — Auto-refresco de fase en la web pública
+
+**Tipo:** Feature
+
+La web pública ahora detecta sola cuando cambia la fase del reto (antes →
+durante → llegada, y también los cambios inversos desde el panel de admin) y
+se recarga automáticamente, sin que quien esté viéndola tenga que refrescar
+a mano. El cambio se refleja en menos de 30-60 segundos desde que se pulsa
+el botón correspondiente en el panel de administración.
+
+---
+
 ## 2026-08-01 — Refuerzo de la protección de acceso al panel de administración
 
 **Tipo:** Fix
