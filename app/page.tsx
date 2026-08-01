@@ -15,6 +15,7 @@ import PeregrinoLibre from "@/components/publico/PeregrinoLibre";
 import ModoAntes from "@/components/publico/ModoAntes";
 import ModoDurante from "@/components/publico/ModoDurante";
 import ModoLlegada from "@/components/publico/ModoLlegada";
+import RefrescoAlCambiarFase from "@/components/publico/RefrescoAlCambiarFase";
 
 // La fase y el progreso se leen de Supabase en cada petición: sin esto,
 // Next.js prerenderiza "/" una vez en build y el HTML queda congelado con
@@ -32,6 +33,7 @@ export default async function Home() {
 
   return (
     <div className="min-h-dvh w-full" style={{ background: C.paper, color: C.ink }}>
+      <RefrescoAlCambiarFase faseActual={fase} />
       <PeregrinoLibre />
       <div className="mx-auto w-full max-w-[480px] px-5 pb-28">
         {fase === "antes" && <ModoAntes textos={textos} trazaCoords={trazaCoords} />}

@@ -23,14 +23,17 @@ camino-santi-ago/
 │       ├── progreso/route.ts     # F3: GET, caché TTL en memoria (DT-007)
 │       ├── comentarios/route.ts  # F3: GET paginado + POST
 │       ├── intenciones/route.ts  # F3: POST (cliente admin)
-│       └── admin/login/route.ts  # F4
+│       ├── admin/login/route.ts  # F4
+│       └── fase/route.ts         # auto-refresco de fase: GET mínimo, sin caché (DT-012)
 ├── components/
 │   ├── mapa/Mapa.tsx         # F3: overlay SVG (patrón de la POC)
 │   ├── publico/              # F3: hero, stats, formularios, hilo
+│   │   └── RefrescoAlCambiarFase.tsx  # auto-refresco: polling 30 s a /api/fase, reload si cambia (DT-012)
 │   └── admin/               # F4: secciones del panel
 ├── lib/
 │   ├── types.ts              # tipos de dominio (contrato para todas las capas)
 │   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
+│   ├── rate-limit.ts          # F5: rate limiting en memoria de proceso (DT-011), usado por todos los endpoints públicos
 │   ├── traza/
 │   │   ├── traza.geojson         # traza de CÁLCULO (7.121 puntos, sin simplificar)
 │   │   ├── traza-mapa.geojson    # traza de PINTADO (Douglas-Peucker 3 m, ~2.011 pts)

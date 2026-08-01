@@ -1,8 +1,8 @@
 # Tarea en curso
 
-Ninguna tarea en curso. Última cerrada: **F5 — Cierre** (rate limiting +
-auditoría completa Reviewer/Seguridad) (2026-08-01), archivada en
-`historico/2026-08-01-f5-cierre-produccion.md`.
+Ninguna tarea en curso. Última cerrada: **Auto-refresco de fase en la web
+pública** (2026-08-01), archivada en
+`historico/2026-08-01-auto-refresco-fase.md`.
 
 ---
 

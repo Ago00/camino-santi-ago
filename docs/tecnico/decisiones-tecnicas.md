@@ -538,3 +538,40 @@ parcialmente. Aceptable para el tráfico esperado (evento de un día, audiencia
 familiar/amigos); si el tráfico real lo desborda, la solución de fondo es
 migrar a un contador compartido (Upstash u otro), igual que ya se anticipa
 para DT-007 en `DEBT.md`.
+
+---
+
+## DT-012 — Auto-refresco de fase: endpoint dedicado `GET /api/fase`, sin Realtime
+
+**Fecha:** 2026-08-01 · **Tarea:** Auto-refresco de fase en la web pública · **Decisión de arquitectura**
+
+**Contexto.** La web pública decide en servidor (`app/page.tsx`, Server
+Component) qué modo mostrar (`antes`/`durante`/`llegada`) en cada petición.
+Un visitante con la página ya cargada no ve el cambio de fase hasta que
+refresca a mano. Se pide que la web detecte el cambio sola y recargue.
+
+**Opción valorada y descartada:** reutilizar `GET /api/progreso` (ya
+devuelve datos del intento activo) añadiéndole el campo `fase`. Descartada:
+en modo "durante" habría dos pollings independientes al mismo endpoint cada
+30 s (el de `ModoDurante` para el progreso, y el nuevo para la fase), y ese
+endpoint ejecuta `calcularProgreso()` — caro — solo para exponer un campo
+que no lo necesita.
+
+**Decisión:** endpoint nuevo `GET /api/fase`, de responsabilidad única:
+`select fase from intentos where not cerrado`, sin cálculo de progreso, sin
+caché (la consulta ya es mínima). Rate limit 60 req/min por IP, mismo
+criterio que `/api/progreso`/`/api/comentarios` GET (DT-011).
+
+Un único componente cliente, `RefrescoAlCambiarFase` (`components/publico/`),
+se renderiza una vez en `app/page.tsx` junto al modo activo, recibe la fase
+actual como prop desde el servidor, hace polling a `/api/fase` cada 30 s
+(mismo patrón e intervalo que DT-007) y ejecuta `window.location.reload()`
+si la fase del servidor ya no coincide con la mostrada. No se modifica
+`ModoAntes`, `ModoDurante` ni `ModoLlegada`.
+
+**Por qué.** Sigue el patrón ya establecido en el proyecto: un endpoint por
+responsabilidad (igual que `/api/track`, `/api/comentarios`,
+`/api/intenciones`, `/api/progreso`, `/api/admin/login`), consulta mínima en
+vez de reutilizar un cálculo caro para un dato que no lo necesita, y sin
+introducir Realtime/WebSockets (coherente con DT-007: la audiencia
+familiar/amigos no necesita menos de 30 s de latencia).

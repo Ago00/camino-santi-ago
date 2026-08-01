@@ -221,11 +221,11 @@ compartido (Upstash u otro).
 
 ## `docs/tecnico/arquitectura.md` no incluye `lib/rate-limit.ts` en la tabla de estructura
 
-**Fecha:** 2026-08-01
+**Fecha:** 2026-08-01 · **Cerrada:** 2026-08-01, tarea "Auto-refresco de fase en la web pública"
 **Contexto:** Detectado por el Reviewer en la auditoría completa de F5. La tabla de estructura de carpetas de `arquitectura.md` no lista `lib/rate-limit.ts`, pese a ser un módulo de infraestructura compartida (DT-011) usado activamente por las 6 rutas públicas del proyecto.
 **Problema:** Mismo patrón ya registrado para el perfil de elevación (ver entrada anterior en este archivo): la tabla de estructura no es fuente de verdad completa de dónde vive cada tipo de código.
 **Impacto:** Puramente documental. La decisión sí está bien documentada en DT-011 (`decisiones-tecnicas.md`), solo falta el reflejo en la tabla de `arquitectura.md`.
-**Solución propuesta:** Añadir una fila para `lib/rate-limit.ts` en la tabla de estructura de `arquitectura.md`, junto a las demás pendientes de la misma naturaleza (perfil de elevación).
-**Prioridad:** Baja.
+**Resolución:** Añadida la fila `lib/rate-limit.ts` a la tabla de estructura de `arquitectura.md` al añadir también `app/api/fase/route.ts` y `components/publico/RefrescoAlCambiarFase.tsx` (DT-012).
+**Prioridad:** Cerrada.
 
 ---
