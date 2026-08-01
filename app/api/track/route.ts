@@ -19,17 +19,25 @@
  *   1. Comparación de token en tiempo constante (ver verificarToken()).
  *   2. Filtro de plausibilidad geográfica: rechaza puntos a más de
  *      SEPARACION_TRAZA_MAX_KM de la traza de cálculo.
+ *
+ * Rate limiting (DT-011): 40 req/min por token, antes de tocar BD. Responde
+ * 429 sin cuerpo — mismo criterio de rechazo silencioso que el resto del
+ * endpoint.
  */
 
 import { createHash, timingSafeEqual } from "crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { consumir } from "@/lib/rate-limit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { separacionDeTrazaM } from "@/lib/traza/proyeccion";
 import { SEPARACION_TRAZA_MAX_KM } from "@/lib/traza/umbrales";
 
 export const runtime = "nodejs";
+
+const LIMITE_PETICIONES_POR_MINUTO = 40;
+const VENTANA_MS = 60_000;
 
 // ---------------------------------------------------------------------------
 // Validación del payload OwnTracks
@@ -93,7 +101,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // 2. Parsear el payload OwnTracks.
+  // 2. Rate limit por token (DT-011): tras validar el token, para no usar
+  // el 429 como oráculo de qué tokens existen, y antes de tocar BD.
+  if (!consumir(tokenRecibido, LIMITE_PETICIONES_POR_MINUTO, VENTANA_MS)) {
+    return new NextResponse(null, { status: 429 });
+  }
+
+  // 3. Parsear el payload OwnTracks.
   let bodyJson: unknown;
   try {
     bodyJson = await request.json();
@@ -110,7 +124,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { lat, lon, tst, batt, acc } = payload.data;
 
-  // 3. Filtro de plausibilidad geográfica (DT-006, capa 1).
+  // 4. Filtro de plausibilidad geográfica (DT-006, capa 1).
   const traza = cargarTrazaDeCalculo();
   const separacionM = separacionDeTrazaM(lat, lon, traza);
   const separacionMaximaM = SEPARACION_TRAZA_MAX_KM * 1000;
@@ -118,7 +132,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return respuestaVacia();
   }
 
-  // 4. Buscar el intento activo (not cerrado).
+  // 5. Buscar el intento activo (not cerrado).
   const supabase = getSupabaseAdmin();
   const { data: intentoActivo, error: errorIntento } = await supabase
     .from("intentos")
@@ -130,7 +144,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return respuestaVacia();
   }
 
-  // 5. Insertar la posición.
+  // 6. Insertar la posición.
   // No hay verificación de velocidad imposible aquí: eso lo hace
   // calcularProgreso() en el dominio, no la ingesta (no se duplica).
   await supabase.from("posiciones").insert({
@@ -143,6 +157,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     fuente: "app",
   });
 
-  // 6. Responder 200 con [] siempre.
+  // 7. Responder 200 con [] siempre.
   return respuestaVacia();
 }

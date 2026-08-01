@@ -5,12 +5,20 @@
  * vértices en un test unitario).
  *
  * Cubre: caso sin intento activo, caso con histórico, la proyección a
- * ProgresoPublico (nunca campos internos de Posicion), y el comportamiento
- * de la caché TTL en memoria (DT-007).
+ * ProgresoPublico (nunca campos internos de Posicion), el comportamiento
+ * de la caché TTL en memoria (DT-007) y el rate limiting por IP (DT-011).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
+import { reiniciarRateLimit } from "@/lib/rate-limit";
 import type { Posicion, TrazaPreparada } from "@/lib/types";
+
+function crearPeticion(ip = "203.0.113.10"): NextRequest {
+  return new NextRequest("http://localhost/api/progreso", {
+    headers: { "x-forwarded-for": ip },
+  });
+}
 
 let intentoActivoMock: { id: number } | null = null;
 let posicionesMock: Posicion[] = [];
@@ -71,6 +79,7 @@ function posicion(overrides: Partial<Posicion>): Posicion {
 beforeEach(async () => {
   intentoActivoMock = null;
   posicionesMock = [];
+  reiniciarRateLimit();
   // La caché TTL vive a nivel de módulo (DT-007): hay que limpiarla
   // explícitamente entre tests, `vi.resetModules()` no reimporta el módulo
   // ya cacheado por Node/Vitest a través de imports estáticos previos.
@@ -81,7 +90,7 @@ beforeEach(async () => {
 describe("GET /api/progreso", () => {
   it("devuelve progreso en cero cuando no hay intento activo", async () => {
     const { GET } = await import("@/app/api/progreso/route");
-    const response = await GET();
+    const response = await GET(crearPeticion());
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -96,7 +105,7 @@ describe("GET /api/progreso", () => {
     ];
 
     const { GET } = await import("@/app/api/progreso/route");
-    const response = await GET();
+    const response = await GET(crearPeticion());
     const body = await response.json();
 
     expect(body.ultimaPosicion).not.toBeNull();
@@ -113,7 +122,7 @@ describe("GET /api/progreso", () => {
     ];
 
     const { GET } = await import("@/app/api/progreso/route");
-    const response = await GET();
+    const response = await GET(crearPeticion());
     const body = await response.json();
 
     expect(body.porcentaje).toBeGreaterThan(0);
@@ -125,11 +134,37 @@ describe("GET /api/progreso", () => {
     posicionesMock = [posicion({ id: 1, lat: 0, lon: 0 })];
 
     const { GET } = await import("@/app/api/progreso/route");
-    const primera = await (await GET()).json();
+    const primera = await (await GET(crearPeticion())).json();
 
     posicionesMock = [posicion({ id: 2, lat: 0.45049, lon: 0 })];
-    const segunda = await (await GET()).json();
+    const segunda = await (await GET(crearPeticion())).json();
 
     expect(segunda).toEqual(primera);
+  });
+});
+
+describe("GET /api/progreso — rate limiting (DT-011)", () => {
+  it("responde 429 al superar 60 peticiones en un minuto desde la misma IP", async () => {
+    const { GET } = await import("@/app/api/progreso/route");
+
+    for (let i = 0; i < 60; i++) {
+      const response = await GET(crearPeticion("198.51.100.7"));
+      expect(response.status).toBe(200);
+    }
+
+    const response = await GET(crearPeticion("198.51.100.7"));
+    expect(response.status).toBe(429);
+  });
+
+  it("no limita a una IP distinta aunque otra haya agotado su cupo", async () => {
+    const { GET } = await import("@/app/api/progreso/route");
+
+    for (let i = 0; i < 60; i++) {
+      await GET(crearPeticion("198.51.100.7"));
+    }
+    await GET(crearPeticion("198.51.100.7")); // agota el cupo de esta IP
+
+    const response = await GET(crearPeticion("198.51.100.99"));
+    expect(response.status).toBe(200);
   });
 });

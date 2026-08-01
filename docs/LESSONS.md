@@ -238,6 +238,49 @@ del worker es correcto, pero sigue sin haber ninguna petición de datos
 servido en busca de imports internos sin resolver, no solo si la petición
 en sí tuvo éxito.
 
+## Comentarios de cabecera que documentan un estado transitorio ("bloqueado por F0", "no probado aún") sobreviven fases enteras sin actualizarse
+
+**Registrada:** 2026-08-01 (F5 — Cierre, auditoría completa)
+**Por quién:** Reviewer
+
+En la auditoría completa de F5 (todo el código acumulado desde F1) aparecieron
+tres ficheros de producción (`app/api/track/route.ts`, `lib/supabase/admin.ts`,
+`lib/supabase/public.ts`) con comentarios de cabecera escritos en F2 que
+afirman literalmente "NO SE HA PROBADO CONTRA UNA BASE DE DATOS REAL" y
+"bloqueado por F0" — falsos desde hace tres fases: el proyecto está en
+producción real con Supabase desde F2. Es el mismo patrón que ya había
+generado una entrada de deuda en F4 (`EnlacePaginacion.tsx`, comentario que
+describe un `<Link>` que ya no existe), pero esta vez en tres ficheros a la
+vez y sobre una afirmación más engañosa (sugiere que código crítico de
+ingesta/BD nunca se validó contra datos reales, cuando sí se validó e incluso
+generó una entrada en `docs/bugs/BUGS.md`).
+
+**Causa raíz del patrón:** un comentario que documenta el *estado del
+proyecto en el momento de escribirlo* (en vez de una decisión o invariante
+atemporal) caduca en cuanto ese estado cambia, y nada en el pipeline fuerza su
+revisión — no rompe ningún test, no falla ningún build, y el Implementador de
+la fase siguiente rara vez vuelve a abrir un fichero que ya "funciona" y no
+está tocando.
+
+**Regla a partir de ahora:** los comentarios sobre "no probado todavía" /
+"bloqueado por [fase futura]" / cualquier afirmación atada a un estado
+temporal del proyecto deben tratarse como TODO con caducidad explícita, no
+como documentación permanente. Dos alternativas mejores: (a) si la
+información es relevante a largo plazo, moverla a `docs/bugs/BUGS.md` o
+`decisiones-tecnicas.md` en pasado ("se verificó en la fase X, ver..."), donde
+sí hay revisión activa; (b) si es puramente transitoria, no dejarla como
+comentario de cabecera sino como entrada de `DEBT.md` con la fase en la que
+caduca, para que algún checklist la recoja. El Reviewer, al auditar cualquier
+fase de cierre, debe además buscar explícitamente referencias a fases
+anteriores o "pendiente de F#" en comentarios de código (no solo en `DEBT.md`)
+— es una categoría de desactualización que no se detecta leyendo solo la
+documentación viva.
+
+**Aplica a:** cualquier proyecto con pipeline multi-fase donde el código de
+una fase temprana se comenta describiendo limitaciones que fases posteriores
+resuelven — buscar y purgar estos comentarios debe ser parte explícita del
+checklist de cualquier tarea de tipo "cierre" o "auditoría completa".
+
 <!-- Formato de nueva entrada:
 ## [Título]
 **Registrada:** YYYY-MM-DD

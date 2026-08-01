@@ -13,7 +13,7 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 | F2 | Datos e ingesta (esquema SQL, RLS, `/api/track`, clientes Supabase) | **hecho y verificado en producción real** |
 | F3 | Web pública (mapa, progreso, stats, formularios, textos) | hecho |
 | F4 | Panel admin (login, proxy, secciones) | **hecho** |
-| F5 | Cierre (Reviewer, Seguridad OWASP/RLS, deploy producción, prueba real) | definido |
+| F5 | Cierre (Reviewer, Seguridad OWASP/RLS, deploy producción, prueba real) | **hecho (ingeniería)** |
 
 ---
 
@@ -29,8 +29,8 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 - [x] Env vars cargadas en Vercel (Production): `NEXT_PUBLIC_SUPABASE_URL`,
       `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `TRACK_TOKEN`,
       `NEXT_PUBLIC_MAPTILER_KEY`
-- [ ] `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET` — pendientes, entran en F4
-      (panel admin), no bloquean F3
+- [x] `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET` — cargadas en Vercel Production
+      (confirmado en F5, 2026-08-01)
 
 ## F2 — Datos e ingesta
 
@@ -95,11 +95,22 @@ Backlog vivo del proyecto. Estado: idea / definido / en curso / hecho.
 
 ## F5 — Cierre
 
-- [ ] Reviewer del código
-- [ ] Agente de Seguridad (OWASP Top 10, auditoría de dependencias, RLS)
-- [ ] Deploy a producción
-- [ ] Prueba real andando (como la POC)
-- [ ] Carga de textos finales desde el panel
+**Ingeniería hecha (2026-08-01).**
+
+- [x] Rate limiting en los 6 endpoints públicos/sensibles (DT-011), cerrando
+      la deuda técnica que lo marcaba como bloqueante explícito antes de
+      producción real
+- [x] Reviewer del código — auditoría completa F1-F5, sin bloqueantes
+- [x] Agente de Seguridad (OWASP Top 10, auditoría de dependencias, RLS) —
+      auditoría completa F1-F5; un bloqueante encontrado y corregido (control
+      de acceso en lectura de datos de admin sin verificación de sesión
+      propia), re-revisado y aprobado
+- [x] Verificación de despliegue a producción — env vars de admin confirmadas
+      en Vercel Production
+- [ ] Prueba real andando (como la POC) — pendiente, solo puede hacerla Santi
+      el día del reto
+- [ ] Carga de textos finales desde el panel — pendiente, la hace Santi
+      directamente en el panel admin cuando tenga los textos definitivos
 
 ---
 

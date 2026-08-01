@@ -7,15 +7,22 @@
  * oculto`, y el INSERT no puede fijar `oculto = true` (ver
  * docs/tecnico/modelo-datos.md). Principio de mínimo privilegio (DT-007):
  * no hace falta el cliente admin para ninguna de las dos operaciones.
+ *
+ * Rate limiting por IP (DT-011): 60 req/min en GET, 10 req/min en POST.
+ * Responde 429 sin cuerpo al exceder el límite.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
 import { getSupabasePublic } from "@/lib/supabase/public";
 
 export const runtime = "nodejs";
 
 const TAMANO_PAGINA_POR_DEFECTO = 20;
+const VENTANA_MS = 60_000;
+const LIMITE_GET_POR_MINUTO = 60;
+const LIMITE_POST_POR_MINUTO = 10;
 
 const queryPaginacion = z.object({
   offset: z.coerce.number().int().min(0).default(0),
@@ -29,6 +36,10 @@ const nuevoComentario = z.object({
 });
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  if (!consumir(obtenerIpCliente(request), LIMITE_GET_POR_MINUTO, VENTANA_MS)) {
+    return new NextResponse(null, { status: 429 });
+  }
+
   const paginacion = queryPaginacion.safeParse({
     offset: request.nextUrl.searchParams.get("offset") ?? undefined,
     limit: request.nextUrl.searchParams.get("limit") ?? undefined,
@@ -60,6 +71,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (!consumir(obtenerIpCliente(request), LIMITE_POST_POR_MINUTO, VENTANA_MS)) {
+    return new NextResponse(null, { status: 429 });
+  }
+
   let bodyJson: unknown;
   try {
     bodyJson = await request.json();

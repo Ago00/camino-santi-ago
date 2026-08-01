@@ -2,11 +2,20 @@
 // propio Server Component que pide sus propios datos (ver
 // docs/tecnico/decisiones-tecnicas.md, DT-010).
 //
-// La protección de acceso vive en proxy.ts (redirige a /admin/login sin
-// sesión válida) — esta página no vuelve a comprobarlo porque no muta nada;
-// las mutaciones (Server Actions en actions.ts) sí verifican sesión cada una.
+// La primera capa de protección vive en proxy.ts (redirige a /admin/login sin
+// sesión válida). Esta página verifica la sesión una segunda vez, ella misma,
+// antes de renderizar ninguna sección — igual que cada Server Action de
+// actions.ts hace con requerirSesion(), y por el mismo motivo: un cambio
+// futuro en el matcher de proxy.ts (u otra vía de renderizado que no pase por
+// el proxy) no debe dejar sin protección la lectura de datos sensibles como
+// `intenciones` (cero acceso para `anon`, ver modelo-datos.md). Un único
+// punto de verificación aquí basta: todas las secciones cuelgan de esta
+// página, así que no hace falta duplicar la comprobación en cada una.
 
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { esFiltroComentarioValido, esTabValida, type TabAdmin } from "@/lib/admin/navegacion";
+import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
 import TabsAdmin from "@/components/admin/TabsAdmin";
 import BotonCerrarSesion from "@/components/admin/BotonCerrarSesion";
 import SeccionActividad from "@/components/admin/SeccionActividad";
@@ -24,6 +33,12 @@ interface AdminPageProps {
 }
 
 export default async function AdminPage({ searchParams }: AdminPageProps) {
+  const almacenCookies = await cookies();
+  const cookieSesion = almacenCookies.get(NOMBRE_COOKIE_SESION)?.value;
+  if (!verificarSesion(cookieSesion)) {
+    redirect("/admin/login");
+  }
+
   const params = await searchParams;
   const tab: TabAdmin = esTabValida(params.tab ?? null) ? (params.tab as TabAdmin) : "actividad";
   const posOffset = numeroDesdeQuery(params.posOffset);

@@ -13,6 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import { reiniciarRateLimit } from "@/lib/rate-limit";
 
 const TRACK_TOKEN_TEST = "token-secreto-de-prueba-larga-y-aleatoria";
 
@@ -98,6 +99,7 @@ beforeEach(() => {
   intentoActivoMock = null;
   erroIntentoMock = null;
   insertSpy.mockClear();
+  reiniciarRateLimit();
 });
 
 // ---------------------------------------------------------------------------
@@ -248,5 +250,33 @@ describe("POST /api/track — intento activo", () => {
       acc: 12,
       fuente: "app",
     });
+  });
+});
+
+describe("POST /api/track — rate limiting por token (DT-011)", () => {
+  it("responde 429 sin insertar al superar 40 peticiones en un minuto con el mismo token", async () => {
+    intentoActivoMock = { id: 1 };
+
+    for (let i = 0; i < 40; i++) {
+      const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido()));
+      expect(response.status).toBe(200);
+    }
+
+    insertSpy.mockClear();
+    const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido()));
+
+    expect(response.status).toBe(429);
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  it("no consume cupo del rate limit cuando el token es incorrecto", async () => {
+    for (let i = 0; i < 40; i++) {
+      await POST(crearPeticion("token-incorrecto", payloadValido()));
+    }
+
+    intentoActivoMock = { id: 1 };
+    const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido()));
+
+    expect(response.status).toBe(200);
   });
 });

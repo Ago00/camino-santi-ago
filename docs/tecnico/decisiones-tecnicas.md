@@ -488,3 +488,53 @@ un patrón ya presente y revisado en el proyecto.
 **Actualiza `arquitectura.md`**: `proxy.ts` sustituye a `middleware.ts` en la
 tabla de estructura; se añaden `lib/auth/admin-session.ts` y
 `components/admin/`.
+
+---
+
+## DT-011 — Rate limiting en memoria de proceso, sin infraestructura nueva
+
+**Fecha:** 2026-08-01 · **Tarea:** F5 — Cierre · **Decisión de arquitectura**
+
+**Contexto.** `DEBT.md` marca explícitamente "sin rate limiting" como bloqueante
+antes de desplegar a producción real, en 6 endpoints: `POST /api/track`,
+`POST /api/comentarios`, `GET /api/comentarios`, `POST /api/intenciones`,
+`GET /api/progreso` y `POST /api/admin/login`.
+
+**Opciones valoradas:**
+- **Redis gestionado (Upstash vía `@upstash/ratelimit`).** Contador realmente
+  compartido entre instancias/regiones. Descartada: exige dar de alta una
+  cuenta/integración externa nueva y env vars adicionales, sobredimensionado
+  para un proyecto Hobby con audiencia familiar/amigos de un solo día.
+- **Reglas de rate limiting del Firewall de Vercel.** Sin tocar código.
+  Descartada sin explorar más: las reglas personalizadas de rate limiting del
+  Firewall son función de plan Pro; el proyecto es explícitamente Hobby.
+
+**Decisión:** rate limiter en memoria de proceso, módulo compartido
+`lib/rate-limit.ts` con una función genérica `consumir(clave, limite,
+ventanaMs): boolean` sobre un `Map<string, {count, resetAt}>` en scope de
+módulo. Cada ruta la llama con su propia clave (IP vía `x-forwarded-for` para
+las públicas, token para `/api/track`) y su propio límite:
+
+| Endpoint | Clave | Límite |
+|---|---|---|
+| `POST /api/track` | token | 40 req/min |
+| `POST /api/comentarios` | IP | 10 req/min |
+| `POST /api/intenciones` | IP | 10 req/min |
+| `GET /api/progreso` | IP | 60 req/min |
+| `GET /api/comentarios` | IP | 60 req/min |
+| `POST /api/admin/login` | IP | 10 intentos/15 min |
+
+**Por qué.** Mismo patrón ya validado en **DT-007** (caché TTL en memoria de
+proceso en `/api/progreso`), coherente con el resto del proyecto. Coste cero,
+sin dependencias ni cuentas nuevas. El riesgo real a mitigar —token filtrado o
+spam puntual desde un mismo origen— no requiere precisión distribuida: el
+límite es por clave (IP o token), así que una ráfaga de visitantes distintos
+nunca se bloquea entre sí, solo se frena a quien excede su propio límite.
+
+**Limitación conocida (aceptada, igual que DT-007):** el contador vive por
+instancia de función serverless — no se comparte entre regiones ni sobrevive
+a un cold start. Un atacante distribuido en múltiples instancias lo esquiva
+parcialmente. Aceptable para el tráfico esperado (evento de un día, audiencia
+familiar/amigos); si el tráfico real lo desborda, la solución de fondo es
+migrar a un contador compartido (Upstash u otro), igual que ya se anticipa
+para DT-007 en `DEBT.md`.
