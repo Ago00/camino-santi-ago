@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-08-01 — Estadísticas de tiempo, distancia y ritmo en la pantalla de llegada
+
+**Tipo:** Feature
+
+La pantalla que se muestra al llegar a Santiago ahora incluye, justo debajo
+del mapa, la misma rejilla de tres estadísticas que ya se veía durante el
+reto: tiempo total en marcha, kilómetros caminados y ritmo medio del intento
+completo. El cabecero de celebración se simplifica y deja de repetir el
+tiempo y los kilómetros por separado, para dar paso a esta vista más
+completa una vez terminado el reto.
+
+---
+
 ## 2026-08-01 — Auto-refresco de fase en la web pública
 
 **Tipo:** Feature

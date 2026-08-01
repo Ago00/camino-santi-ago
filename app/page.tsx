@@ -10,6 +10,7 @@ import { calcularProgreso } from "@/lib/traza/proyeccion";
 import { aProgresoPublico } from "@/lib/traza/progreso-publico";
 import { obtenerTextos } from "@/lib/textos/obtener-textos";
 import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
+import { calcularRitmoMedioIntento } from "@/lib/ritmo";
 import type { Posicion } from "@/lib/types";
 import PeregrinoLibre from "@/components/publico/PeregrinoLibre";
 import ModoAntes from "@/components/publico/ModoAntes";
@@ -86,12 +87,14 @@ async function ModoLlegadaConectado({
 }) {
   const progreso = await calcularProgresoDelIntento(intentoId);
   const tiempoTotal = formatearTiempoTotal(startedAt, endedAt);
+  const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, startedAt, endedAt);
 
   return (
     <ModoLlegada
       progreso={progreso}
       mensajeLlegada={mensajeLlegada ?? TEXTOS_POR_DEFECTO.mensaje_llegada_default}
       tiempoTotal={tiempoTotal}
+      ritmoMedio={ritmoMedio}
       trazaCoords={trazaCoords}
     />
   );
