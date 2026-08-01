@@ -1,12 +1,23 @@
 // Modo "llegada": mapa y stats congelados en el momento de llegar + mensaje
 // editable, formularios de comentario (las intenciones ya no se ofrecen tras
-// llegar), muro de comentarios. Sigue fielmente el mockup, incluido el logo
-// correcto (componente Logo, mojón + monigote rojiblanco — no VieiraMark).
+// llegar), muro de comentarios, recopilatorio "minuto a minuto" (sin polling,
+// modo ya congelado). Sigue fielmente el mockup, incluido el logo correcto
+// (componente Logo, mojón + monigote rojiblanco — no VieiraMark).
+//
+// Client Component (a diferencia de la versión anterior a DT-013): necesita
+// estado local (puntoResaltado) para la misma interacción de clic → mapa que
+// ModoDurante.tsx. Las entradas del feed llegan ya cargadas server-side
+// (app/page.tsx) como prop, para no hacer un fetch de cliente redundante en
+// un modo que no cambia tras la carga inicial.
 
+"use client";
+
+import { useState } from "react";
 import Mapa from "@/components/mapa/Mapa";
 import Stats from "@/components/publico/Stats";
 import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
+import MinutoAMinuto, { type EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
 import type { ProgresoPublico } from "@/lib/types";
 
 const C = { ink: "#1B211D", gold: "#C9A24B" };
@@ -19,9 +30,23 @@ interface ModoLlegadaProps {
   /** Ritmo medio del intento completo, ya formateado (km/h). */
   ritmoMedio: string;
   trazaCoords: [number, number][];
+  entradasMinutoAMinuto: EntradaMinutoAMinutoPublica[];
 }
 
-export default function ModoLlegada({ progreso, mensajeLlegada, tiempoTotal, ritmoMedio, trazaCoords }: ModoLlegadaProps) {
+export default function ModoLlegada({
+  progreso,
+  mensajeLlegada,
+  tiempoTotal,
+  ritmoMedio,
+  trazaCoords,
+  entradasMinutoAMinuto,
+}: ModoLlegadaProps) {
+  const [puntoResaltado, setPuntoResaltado] = useState<{
+    lat: number;
+    lon: number;
+    hora: string;
+  } | null>(null);
+
   return (
     <section className="space-y-5 pt-6">
       <div className="relative overflow-hidden rounded-2xl p-6 text-center" style={{ background: "linear-gradient(180deg,#F3E6C9,#EFE8DA)", border: `1px solid ${C.gold}44` }}>
@@ -43,8 +68,20 @@ export default function ModoLlegada({ progreso, mensajeLlegada, tiempoTotal, rit
 
       <div className="space-y-3">
         <div className="relative overflow-hidden rounded-2xl border shadow-sm" style={{ borderColor: "#00000012" }}>
-          <Mapa trazaCoords={trazaCoords} hora="dia" modo="directo" posicionActual={progreso.ultimaPosicion} ultimaSenalTexto={null} />
+          <Mapa
+            trazaCoords={trazaCoords}
+            hora="dia"
+            modo="directo"
+            posicionActual={progreso.ultimaPosicion}
+            ultimaSenalTexto={null}
+            puntoResaltado={puntoResaltado}
+          />
         </div>
+        <MinutoAMinuto
+          polling={false}
+          entradasIniciales={entradasMinutoAMinuto}
+          onSeleccionarPunto={setPuntoResaltado}
+        />
         <Stats tiempoEnMarcha={tiempoTotal} kmAndados={formatearKm(progreso.odometroKm)} ritmoMedio={ritmoMedio} />
       </div>
 

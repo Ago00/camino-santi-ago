@@ -71,6 +71,22 @@ export interface Texto {
   updated_at: string; // ISO 8601
 }
 
+/**
+ * Una entrada del feed "minuto a minuto": texto corto + foto opcional,
+ * publicada solo por el admin, con snapshot de la última posición conocida
+ * en el momento de publicar (no recalculada nunca después).
+ */
+export interface MinutoAMinuto {
+  id: number;
+  intento_id: number;
+  texto: string; // 1-500 chars
+  foto_url: string | null; // URL pública de Supabase Storage; null = sin foto
+  lat: number | null; // snapshot al publicar; null si aún no había posición
+  lon: number | null;
+  created_at: string; // ISO 8601
+  updated_at: string; // ISO 8601
+}
+
 // ---------------------------------------------------------------------------
 // Tipos del dominio de progreso (proyeccion.ts)
 // ---------------------------------------------------------------------------

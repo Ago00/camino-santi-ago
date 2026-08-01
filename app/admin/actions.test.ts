@@ -37,10 +37,12 @@ interface IntentoMock {
 }
 
 let intentoActivoMock: IntentoMock | null = null;
+let ultimaPosicionMock: { lat: number; lon: number } | null = null;
 const updateSpy = vi.fn().mockReturnValue({
   eq: vi.fn().mockResolvedValue({ error: null }),
 });
 const insertIntentoSpy = vi.fn().mockResolvedValue({ error: null });
+const insertMinutoAMinutoSpy = vi.fn().mockResolvedValue({ error: null });
 const deleteSpy = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) });
 const upsertSpy = vi.fn().mockResolvedValue({ error: null });
 
@@ -56,7 +58,17 @@ function crearBuilderFalso() {
           insert: insertIntentoSpy,
         };
       }
-      if (tabla === "posiciones" || tabla === "comentarios") {
+      if (tabla === "posiciones") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: ultimaPosicionMock, error: null }),
+          update: updateSpy,
+        };
+      }
+      if (tabla === "comentarios") {
         return { update: updateSpy, delete: deleteSpy };
       }
       if (tabla === "intenciones") {
@@ -65,6 +77,13 @@ function crearBuilderFalso() {
       if (tabla === "textos") {
         return { upsert: upsertSpy };
       }
+      if (tabla === "minuto_a_minuto") {
+        return {
+          insert: insertMinutoAMinutoSpy,
+          update: updateSpy,
+          delete: deleteSpy,
+        };
+      }
       throw new Error(`Tabla no mockada: ${tabla}`);
     }),
   };
@@ -72,6 +91,11 @@ function crearBuilderFalso() {
 
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(() => crearBuilderFalso()),
+}));
+
+const subirFotoSpy = vi.fn().mockResolvedValue("https://example.com/foto.jpg");
+vi.mock("@/lib/supabase/storage", () => ({
+  subirFotoMinutoAMinuto: (...args: unknown[]) => subirFotoSpy(...args),
 }));
 
 vi.mock("@/lib/auth/admin-session", async () => {
@@ -93,6 +117,9 @@ const {
   mostrarComentario,
   eliminarComentario,
   guardarTexto,
+  crearMinutoAMinuto,
+  editarMinutoAMinuto,
+  eliminarMinutoAMinuto,
 } = await import("@/app/admin/actions");
 const { crearSesion } = await import("@/lib/auth/admin-session");
 
@@ -100,10 +127,13 @@ beforeEach(() => {
   vi.stubEnv("ADMIN_SESSION_SECRET", "secreto-de-test-largo-y-suficiente");
   cookieSesionMock = crearSesion();
   intentoActivoMock = null;
+  ultimaPosicionMock = null;
   updateSpy.mockClear();
   insertIntentoSpy.mockClear();
+  insertMinutoAMinutoSpy.mockClear();
   deleteSpy.mockClear();
   upsertSpy.mockClear();
+  subirFotoSpy.mockClear();
 });
 
 describe("verificación de sesión (defensa independiente de proxy.ts)", () => {
@@ -255,5 +285,99 @@ describe("Textos", () => {
   it("guardarTexto lanza con una clave desconocida (defensa contra claves arbitrarias)", async () => {
     await expect(guardarTexto("clave_inventada", "valor")).rejects.toThrow(/desconocida/i);
     expect(upsertSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("Minuto a minuto (DT-013)", () => {
+  function formDataConTexto(texto: string, foto?: File): FormData {
+    const formData = new FormData();
+    formData.set("texto", texto);
+    if (foto) formData.set("foto", foto);
+    return formData;
+  }
+
+  it("crearMinutoAMinuto inserta con snapshot de la última posición conocida", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    ultimaPosicionMock = { lat: 42.3, lon: -8.6 };
+
+    await crearMinutoAMinuto(formDataConTexto("Cruzando el puente"));
+
+    expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith({
+      intento_id: 4,
+      texto: "Cruzando el puente",
+      foto_url: null,
+      lat: 42.3,
+      lon: -8.6,
+    });
+    expect(subirFotoSpy).not.toHaveBeenCalled();
+  });
+
+  it("crearMinutoAMinuto deja lat/lon a null si todavía no hay ninguna posición registrada", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    ultimaPosicionMock = null;
+
+    await crearMinutoAMinuto(formDataConTexto("¡Arrancamos!"));
+
+    expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ lat: null, lon: null })
+    );
+  });
+
+  it("crearMinutoAMinuto sube la foto antes de insertar cuando se adjunta una", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    const foto = new File([new Uint8Array(10)], "foto.jpg", { type: "image/jpeg" });
+
+    await crearMinutoAMinuto(formDataConTexto("Con foto", foto));
+
+    expect(subirFotoSpy).toHaveBeenCalledWith(foto);
+    expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ foto_url: "https://example.com/foto.jpg" })
+    );
+  });
+
+  it("crearMinutoAMinuto lanza sin insertar si el texto está vacío", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    await expect(crearMinutoAMinuto(formDataConTexto("   "))).rejects.toThrow(/vacío/i);
+    expect(insertMinutoAMinutoSpy).not.toHaveBeenCalled();
+  });
+
+  it("crearMinutoAMinuto lanza sin insertar si el texto supera 500 caracteres", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    await expect(crearMinutoAMinuto(formDataConTexto("a".repeat(501)))).rejects.toThrow(/500/);
+    expect(insertMinutoAMinutoSpy).not.toHaveBeenCalled();
+  });
+
+  it("crearMinutoAMinuto lanza sin insertar si no hay ningún intento activo", async () => {
+    intentoActivoMock = null;
+    await expect(crearMinutoAMinuto(formDataConTexto("texto"))).rejects.toThrow(/activo/i);
+    expect(insertMinutoAMinutoSpy).not.toHaveBeenCalled();
+  });
+
+  it("crearMinutoAMinuto lanza si no hay cookie de sesión", async () => {
+    cookieSesionMock = undefined;
+    await expect(crearMinutoAMinuto(formDataConTexto("texto"))).rejects.toThrow(/sesión/i);
+    expect(insertMinutoAMinutoSpy).not.toHaveBeenCalled();
+  });
+
+  it("editarMinutoAMinuto actualiza solo texto y updated_at", async () => {
+    await editarMinutoAMinuto(9, "  Texto corregido  ");
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ texto: "Texto corregido", updated_at: expect.any(String) })
+    );
+  });
+
+  it("editarMinutoAMinuto lanza sin actualizar con texto vacío", async () => {
+    await expect(editarMinutoAMinuto(9, "   ")).rejects.toThrow(/vacío/i);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("editarMinutoAMinuto lanza sin actualizar con texto de más de 500 caracteres", async () => {
+    await expect(editarMinutoAMinuto(9, "a".repeat(501))).rejects.toThrow(/500/);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("eliminarMinutoAMinuto llama a delete() (hard delete, sin tocar Storage)", async () => {
+    await eliminarMinutoAMinuto(9);
+    expect(deleteSpy).toHaveBeenCalled();
   });
 });

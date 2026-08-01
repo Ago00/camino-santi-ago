@@ -2,6 +2,28 @@
 
 ---
 
+## 2026-08-02 — Minuto a minuto: feed en directo con fotos
+
+**Tipo:** Feature
+
+Nueva sección "Minuto a minuto" en el panel de administración, donde Santi
+puede publicar entradas cortas de texto con una foto opcional mientras hace
+el Camino. Cada entrada guarda automáticamente dónde estaba en ese momento.
+En la web pública, durante el reto estas entradas aparecen solas en
+directo (como un comentario en vivo) justo junto al mapa; al pinchar una
+entrada, el mapa se centra ahí y muestra un marcador temporal con la hora.
+En la pantalla de llegada, el feed completo queda visible como recopilatorio
+del recorrido, con la misma interacción de clic para ver la posición. El
+admin puede editar el texto de sus entradas o eliminarlas en cualquier
+momento.
+
+**Fix (mismo día, hallazgo del Agente de Seguridad):** se corrige el límite
+de subida de fotos, que por defecto en Next.js rechazaba cualquier foto de
+móvil normal (2-8 MB) antes de que llegara a publicarse, pese a que la
+funcionalidad estaba pensada para admitir fotos de hasta 8 MB.
+
+---
+
 ## 2026-08-01 — Estadísticas de tiempo, distancia y ritmo en la pantalla de llegada
 
 **Tipo:** Feature

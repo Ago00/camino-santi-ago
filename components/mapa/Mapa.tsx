@@ -64,6 +64,13 @@ interface MapaProps {
   posicionActual?: { lat: number; lon: number } | null;
   /** Texto de "última señal hace…", ya formateado. Solo modo "directo". */
   ultimaSenalTexto?: string | null;
+  /**
+   * Punto del feed "minuto a minuto" seleccionado para resaltar temporalmente
+   * (DT-013): marcador con etiqueta de hora, distinto del marcador de
+   * posición actual. `null`/ausente no cambia el comportamiento existente
+   * del mapa — prop aditiva.
+   */
+  puntoResaltado?: { lat: number; lon: number; hora: string } | null;
 }
 
 export default function Mapa({
@@ -72,6 +79,7 @@ export default function Mapa({
   modo = "directo",
   posicionActual = null,
   ultimaSenalTexto = null,
+  puntoResaltado = null,
 }: MapaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("maplibre-gl").Map | null>(null);
@@ -85,17 +93,20 @@ export default function Mapa({
   const posicionRef = useRef(posicionActual);
   const modoRef = useRef(modo);
   const trazaCoordsRef = useRef(trazaCoords);
+  const puntoResaltadoRef = useRef(puntoResaltado);
   useEffect(() => {
     posicionRef.current = posicionActual;
     modoRef.current = modo;
     trazaCoordsRef.current = trazaCoords;
-  }, [posicionActual, modo, trazaCoords]);
+    puntoResaltadoRef.current = puntoResaltado;
+  }, [posicionActual, modo, trazaCoords, puntoResaltado]);
 
   const [inicioPx, setInicioPx] = useState<PuntoPx | null>(null);
   const [finPx, setFinPx] = useState<PuntoPx | null>(null);
   const [posicionPx, setPosicionPx] = useState<PuntoPx | null>(null);
   const [trazaAndadaPx, setTrazaAndadaPx] = useState<PuntoPx[]>([]);
   const [trazaRestantePx, setTrazaRestantePx] = useState<PuntoPx[]>([]);
+  const [puntoResaltadoPx, setPuntoResaltadoPx] = useState<PuntoPx | null>(null);
 
   const recalcularOverlay = useCallback(() => {
     const map = mapRef.current;
@@ -127,6 +138,9 @@ export default function Mapa({
       setTrazaAndadaPx([]);
       setTrazaRestantePx(traza.map(proyectar));
     }
+
+    const punto = puntoResaltadoRef.current;
+    setPuntoResaltadoPx(punto ? proyectar([punto.lon, punto.lat]) : null);
   }, []);
 
   useEffect(() => {
@@ -209,10 +223,10 @@ export default function Mapa({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Recalcula cuando cambian posición/modo (aunque el mapa no se mueva).
+  // Recalcula cuando cambian posición/modo/puntoResaltado (aunque el mapa no se mueva).
   useEffect(() => {
     if (listo) recalcularOverlay();
-  }, [listo, posicionActual, modo, recalcularOverlay]);
+  }, [listo, posicionActual, modo, puntoResaltado, recalcularOverlay]);
 
   // Ampliar/plegar.
   useEffect(() => {
@@ -310,6 +324,37 @@ export default function Mapa({
               <animate attributeName="opacity" values="0.5;0;0.5" dur="1.6s" repeatCount="indefinite" />
             </circle>
             <circle cx={posicionPx.x} cy={posicionPx.y} r={8} fill="#D9773B" stroke="#fff" strokeWidth={2} />
+          </g>
+        )}
+        {puntoResaltadoPx && puntoResaltado && (
+          <g>
+            <rect
+              x={puntoResaltadoPx.x - 20}
+              y={puntoResaltadoPx.y - 34}
+              width={40}
+              height={20}
+              rx={10}
+              fill="#D9773B"
+            />
+            <text
+              x={puntoResaltadoPx.x}
+              y={puntoResaltadoPx.y - 20}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize={11}
+              fontWeight={600}
+              fill="#fff"
+            >
+              {puntoResaltado.hora}
+            </text>
+            <rect
+              x={puntoResaltadoPx.x - 4}
+              y={puntoResaltadoPx.y - 16}
+              width={8}
+              height={8}
+              fill="#D9773B"
+              transform={`rotate(45 ${puntoResaltadoPx.x} ${puntoResaltadoPx.y - 12})`}
+            />
           </g>
         )}
       </svg>

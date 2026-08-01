@@ -22,6 +22,7 @@ import SeccionActividad from "@/components/admin/SeccionActividad";
 import SeccionPosicion from "@/components/admin/SeccionPosicion";
 import SeccionIntenciones from "@/components/admin/SeccionIntenciones";
 import SeccionComentarios from "@/components/admin/SeccionComentarios";
+import SeccionMinutoAMinuto from "@/components/admin/SeccionMinutoAMinuto";
 import SeccionTextos from "@/components/admin/SeccionTextos";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +63,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           {tab === "posicion" && <SeccionPosicion offset={posOffset} />}
           {tab === "intenciones" && <SeccionIntenciones offset={intOffset} />}
           {tab === "comentarios" && <SeccionComentarios filtro={filtroComentarios} />}
+          {tab === "minutoaminuto" && <SeccionMinutoAMinuto />}
           {tab === "textos" && <SeccionTextos />}
         </main>
       </div>

@@ -14,12 +14,25 @@ o con nombre, siempre privadas). Formulario para dejar comentarios públicos.
 
 **Durante** — pantalla principal. Mapa en directo con la posición de Santi,
 la traza y el tramo ya andado encendido. Barra de progreso (monótona: solo sube).
-Estadísticas: km andados, km restantes, tiempo, velocidad media. Hilo de
+Estadísticas: km andados, km restantes, tiempo, velocidad media. Feed
+"Minuto a minuto" (ver abajo) con lo último que ha publicado Santi. Hilo de
 comentarios públicos.
 
 **Llegada** — el mapa y las estadísticas quedan congeladas en el momento de
-llegar. Aparece el mensaje de llegada. Los formularios de intención/comentario
+llegar. Aparece el mensaje de llegada. El feed "Minuto a minuto" queda visible
+completo como recopilatorio del reto. Los formularios de intención/comentario
 siguen disponibles.
+
+### Minuto a minuto
+
+Feed en directo (estilo comentario de fútbol) con lo que Santi va publicando
+durante la caminata: texto corto y, si quiere, una foto. Cada entrada muestra
+la hora y, si tiene posición asociada, se puede pinchar para ver en el mapa
+dónde estaba Santi al publicarla — el mapa resalta solo ese punto de forma
+temporal, no hay marcadores permanentes de todas las entradas (para no
+saturar el mapa). En "durante" las entradas nuevas aparecen solas, sin
+necesidad de refrescar; en "llegada" queda como recopilatorio fijo de todo lo
+publicado.
 
 ### Progreso
 
@@ -74,6 +87,15 @@ Protegido por contraseña única (env var) y cookie firmada HttpOnly.
 No incluye geolocalización manual de respaldo ("fichar posición a mano"): se
 confía en que la app de tracking del móvil (OwnTracks) es suficiente, así
 que se ha decidido no construir esa red de seguridad adicional.
+
+### Minuto a minuto
+
+- Publicar una entrada nueva: texto + foto opcional (se sube directamente
+  desde el móvil/ordenador, sin necesidad de alojarla en otro sitio antes).
+  Se guarda automáticamente con la última posición conocida de Santi.
+- Editar el texto de una entrada ya publicada (la foto no se puede cambiar
+  una vez subida — si está mal, se borra la entrada y se publica de nuevo).
+- Eliminar una entrada.
 
 ### Intenciones
 

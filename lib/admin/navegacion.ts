@@ -14,6 +14,7 @@ export const TABS_ADMIN = [
   { valor: "posicion", etiqueta: "Posición" },
   { valor: "intenciones", etiqueta: "Intenciones" },
   { valor: "comentarios", etiqueta: "Comentarios" },
+  { valor: "minutoaminuto", etiqueta: "Minuto a minuto" },
   { valor: "textos", etiqueta: "Textos" },
 ] as const;
 

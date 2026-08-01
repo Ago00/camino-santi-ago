@@ -19,6 +19,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { subirFotoMinutoAMinuto } from "@/lib/supabase/storage";
 import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
 import type { ClaveTexto } from "@/lib/textos/defaults";
 import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
@@ -284,5 +285,102 @@ export async function guardarTexto(clave: string, valor: string): Promise<void> 
   const { error } = await supabase.from("textos").upsert({ clave, valor });
 
   if (error) throw new Error("No se pudo guardar el texto.");
+  revalidarAdmin();
+}
+
+// ---------------------------------------------------------------------------
+// Minuto a minuto (DT-013)
+// ---------------------------------------------------------------------------
+
+/**
+ * Crea una entrada del feed "minuto a minuto" sobre el intento activo, con
+ * snapshot de la última posición conocida (puede quedar lat/lon a null si
+ * todavía no hay ninguna posición registrada). La foto es opcional: si se
+ * adjunta, se sube primero a Storage y solo si eso tiene éxito se inserta la
+ * fila — así nunca queda una entrada con una subida a medias.
+ */
+export async function crearMinutoAMinuto(formData: FormData): Promise<void> {
+  await requerirSesion();
+
+  const texto = String(formData.get("texto") ?? "").trim();
+  if (texto.length === 0) {
+    throw new Error("El texto no puede estar vacío.");
+  }
+  if (texto.length > 500) {
+    throw new Error("El texto no puede superar 500 caracteres.");
+  }
+
+  const foto = formData.get("foto");
+  const fotoUrl = foto instanceof File && foto.size > 0 ? await subirFotoMinutoAMinuto(foto) : null;
+
+  const supabase = getSupabaseAdmin();
+
+  const { data: intentoActivo, error: errorBusquedaIntento } = await supabase
+    .from("intentos")
+    .select("id")
+    .eq("cerrado", false)
+    .maybeSingle();
+
+  if (errorBusquedaIntento || !intentoActivo) {
+    throw new Error("No hay ningún intento activo sobre el que publicar.");
+  }
+
+  const { data: ultimaPosicion } = await supabase
+    .from("posiciones")
+    .select("lat, lon")
+    .eq("intento_id", intentoActivo.id)
+    .eq("descartado", false)
+    .order("ts", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error: errorInsercion } = await supabase.from("minuto_a_minuto").insert({
+    intento_id: intentoActivo.id,
+    texto,
+    foto_url: fotoUrl,
+    lat: ultimaPosicion?.lat ?? null,
+    lon: ultimaPosicion?.lon ?? null,
+  });
+
+  if (errorInsercion) throw new Error("No se pudo publicar la entrada.");
+  revalidarAdmin();
+}
+
+/**
+ * Corrige solo el texto de una entrada existente. La foto no se puede editar
+ * (DT-013): si está mal, la solución es borrar la entrada y publicarla de
+ * nuevo — evita gestionar borrado/reemplazo de objetos huérfanos en Storage.
+ */
+export async function editarMinutoAMinuto(id: number, texto: string): Promise<void> {
+  await requerirSesion();
+
+  const textoLimpio = texto.trim();
+  if (textoLimpio.length === 0) {
+    throw new Error("El texto no puede estar vacío.");
+  }
+  if (textoLimpio.length > 500) {
+    throw new Error("El texto no puede superar 500 caracteres.");
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("minuto_a_minuto")
+    .update({ texto: textoLimpio, updated_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) throw new Error("No se pudo editar la entrada.");
+  revalidarAdmin();
+}
+
+/**
+ * Hard delete, igual que `intenciones` — sin soft-delete. No borra el objeto
+ * de Storage asociado (deuda aceptada explícitamente en DT-013).
+ */
+export async function eliminarMinutoAMinuto(id: number): Promise<void> {
+  await requerirSesion();
+  const supabase = getSupabaseAdmin();
+
+  const { error } = await supabase.from("minuto_a_minuto").delete().eq("id", id);
+  if (error) throw new Error("No se pudo eliminar la entrada.");
   revalidarAdmin();
 }

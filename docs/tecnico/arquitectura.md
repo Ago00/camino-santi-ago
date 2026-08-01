@@ -17,19 +17,24 @@ camino-santi-ago/
 │   ├── admin/
 │   │   ├── login/page.tsx    # F4
 │   │   ├── page.tsx          # F4: panel admin
-│   │   └── actions.ts        # F4: server actions de admin
+│   │   └── actions.ts        # F4: server actions de admin (incluye minuto a minuto, DT-013)
 │   └── api/
 │       ├── track/route.ts    # F2: ingesta OwnTracks
 │       ├── progreso/route.ts     # F3: GET, caché TTL en memoria (DT-007)
 │       ├── comentarios/route.ts  # F3: GET paginado + POST
 │       ├── intenciones/route.ts  # F3: POST (cliente admin)
 │       ├── admin/login/route.ts  # F4
-│       └── fase/route.ts         # auto-refresco de fase: GET mínimo, sin caché (DT-012)
+│       ├── fase/route.ts         # auto-refresco de fase: GET mínimo, sin caché (DT-012)
+│       └── minuto-a-minuto/route.ts  # DT-013: GET paginado (offset/limit) + poll incremental (despuesDeId)
 ├── components/
-│   ├── mapa/Mapa.tsx         # F3: overlay SVG (patrón de la POC)
+│   ├── mapa/Mapa.tsx         # F3: overlay SVG (patrón de la POC); prop puntoResaltado (DT-013)
 │   ├── publico/              # F3: hero, stats, formularios, hilo
-│   │   └── RefrescoAlCambiarFase.tsx  # auto-refresco: polling 30 s a /api/fase, reload si cambia (DT-012)
+│   │   ├── RefrescoAlCambiarFase.tsx  # auto-refresco: polling 30 s a /api/fase, reload si cambia (DT-012)
+│   │   └── MinutoAMinuto.tsx  # DT-013: feed en directo, paginado + poll opcional, clic → mapa
 │   └── admin/               # F4: secciones del panel
+│       ├── ComposerMinutoAMinuto.tsx  # DT-013: texto + foto opcional, Server Action nativa
+│       ├── EntradaMinutoAMinuto.tsx   # DT-013: fila con editar inline (solo texto) + eliminar
+│       └── SeccionMinutoAMinuto.tsx   # DT-013: lista del intento activo (Server Component)
 ├── lib/
 │   ├── types.ts              # tipos de dominio (contrato para todas las capas)
 │   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
@@ -45,7 +50,8 @@ camino-santi-ago/
 │   │   └── umbrales.ts           # constantes del dominio (EN_RUTA_MAX_M, etc.)
 │   ├── supabase/             # F2
 │   │   ├── admin.ts          # cliente service role (solo servidor)
-│   │   └── public.ts         # cliente anon (peticiones públicas)
+│   │   ├── public.ts         # cliente anon (peticiones públicas)
+│   │   └── storage.ts        # DT-013: subida de fotos a Storage (validación MIME/tamaño)
 │   ├── textos/               # F3
 │   │   ├── defaults.ts       # textos por defecto (override desde BD)
 │   │   └── obtener-textos.ts # server: fusiona defaults con la tabla `textos`
