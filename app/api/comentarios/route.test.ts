@@ -1,10 +1,15 @@
 /**
  * Tests de GET/POST /api/comentarios con el cliente Supabase público mockado.
  * Mismo patrón que app/api/track/route.test.ts.
+ *
+ * El rate limiting (DT-011) agrupa por IP; las peticiones de este fichero que
+ * no fijan `x-forwarded-for` comparten la clave "ip-desconocida" (ver
+ * lib/rate-limit.ts), por eso se resetea el limitador en cada test.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import { reiniciarRateLimit } from "@/lib/rate-limit";
 
 let selectResultado: { data: unknown[] | null; error: Error | null } = {
   data: [],
@@ -38,10 +43,30 @@ function crearPeticionPost(body: unknown): NextRequest {
   });
 }
 
+function crearPeticionConIp(
+  metodo: "GET" | "POST",
+  ip: string,
+  body?: unknown
+): NextRequest {
+  return new NextRequest("http://localhost/api/comentarios", {
+    method: metodo,
+    headers: {
+      "x-forwarded-for": ip,
+      ...(body ? { "content-type": "application/json" } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+}
+
+function comentarioValido() {
+  return { nombre: "Ana", texto: "¡Ánimo Santi!", visibilidad: "publico" as const };
+}
+
 beforeEach(() => {
   selectResultado = { data: [], error: null };
   insertSpy.mockClear();
   rangeSpy.mockClear();
+  reiniciarRateLimit();
 });
 
 describe("GET /api/comentarios", () => {
@@ -134,6 +159,42 @@ describe("POST /api/comentarios", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/comentarios — rate limiting (DT-011)", () => {
+  it("responde 429 al superar 60 peticiones en un minuto desde la misma IP", async () => {
+    for (let i = 0; i < 60; i++) {
+      const response = await GET(crearPeticionConIp("GET", "198.51.100.1"));
+      expect(response.status).toBe(200);
+    }
+
+    const response = await GET(crearPeticionConIp("GET", "198.51.100.1"));
+    expect(response.status).toBe(429);
+  });
+
+  it("no limita a una IP distinta aunque otra haya agotado su cupo", async () => {
+    for (let i = 0; i < 60; i++) {
+      await GET(crearPeticionConIp("GET", "198.51.100.1"));
+    }
+
+    const response = await GET(crearPeticionConIp("GET", "198.51.100.2"));
+    expect(response.status).toBe(200);
+  });
+});
+
+describe("POST /api/comentarios — rate limiting (DT-011)", () => {
+  it("responde 429 sin insertar al superar 10 peticiones en un minuto desde la misma IP", async () => {
+    for (let i = 0; i < 10; i++) {
+      const response = await POST(crearPeticionConIp("POST", "198.51.100.5", comentarioValido()));
+      expect(response.status).toBe(201);
+    }
+
+    insertSpy.mockClear();
+    const response = await POST(crearPeticionConIp("POST", "198.51.100.5", comentarioValido()));
+
+    expect(response.status).toBe(429);
     expect(insertSpy).not.toHaveBeenCalled();
   });
 });

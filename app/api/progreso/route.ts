@@ -14,9 +14,13 @@
  * calcularProgreso() en cada petición durante ráfagas de polling client-side
  * (cada 30 s, varios seguidores). No se persiste nada en BD ni se toca el
  * esquema — la caché vive únicamente mientras el proceso de Next.js esté vivo.
+ *
+ * Rate limiting por IP (DT-011): 60 req/min. Responde 429 sin cuerpo al
+ * exceder el límite, antes de consultar la caché o recalcular.
  */
 
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
+import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
 import { getSupabasePublic } from "@/lib/supabase/public";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
@@ -26,6 +30,8 @@ import type { Posicion, ProgresoPublico } from "@/lib/types";
 export const runtime = "nodejs";
 
 const CACHE_TTL_MS = 20_000;
+const LIMITE_POR_MINUTO = 60;
+const VENTANA_MS = 60_000;
 
 interface EntradaCache {
   timestamp: number;
@@ -39,7 +45,11 @@ export function limpiarCacheProgreso(): void {
   cache = null;
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  if (!consumir(obtenerIpCliente(request), LIMITE_POR_MINUTO, VENTANA_MS)) {
+    return new NextResponse(null, { status: 429 });
+  }
+
   if (cache && Date.now() - cache.timestamp < CACHE_TTL_MS) {
     return NextResponse.json(cache.valor);
   }

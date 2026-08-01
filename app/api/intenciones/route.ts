@@ -6,13 +6,20 @@
  * las intenciones son siempre privadas). El route handler es el único camino
  * de escritura posible desde el cliente público, con validación Zod en la
  * frontera.
+ *
+ * Rate limiting por IP (DT-011): 10 req/min. Responde 429 sin cuerpo al
+ * exceder el límite.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
+
+const LIMITE_POR_MINUTO = 10;
+const VENTANA_MS = 60_000;
 
 const nuevaIntencion = z.object({
   texto: z.string().trim().min(1).max(1000),
@@ -20,6 +27,10 @@ const nuevaIntencion = z.object({
 });
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (!consumir(obtenerIpCliente(request), LIMITE_POR_MINUTO, VENTANA_MS)) {
+    return new NextResponse(null, { status: 429 });
+  }
+
   let bodyJson: unknown;
   try {
     bodyJson = await request.json();

@@ -2,6 +2,33 @@
 
 ---
 
+## 2026-08-01 — Refuerzo de la protección de acceso al panel de administración
+
+**Tipo:** Fix
+
+El panel de administración (donde se gestionan las intenciones y comentarios
+enviados por terceros, entre otros datos) ahora comprueba la sesión de admin
+por sí mismo antes de mostrar cualquier información, además de la protección
+que ya existía a la entrada de la web. Es una segunda capa de seguridad para
+el dato más privado del proyecto: aunque la primera protección fallara por
+cualquier motivo, la página seguiría sin mostrar nada a quien no haya
+iniciado sesión.
+
+---
+
+## 2026-08-01 — Protección frente a exceso de peticiones antes del reto
+
+**Tipo:** Mejora
+
+Los endpoints públicos de la web (envío de posición GPS, comentarios,
+intenciones, progreso y el login del panel de administración) ahora limitan
+cuántas veces se pueden usar en poco tiempo desde el mismo origen. Si alguien
+—o algo automatizado— hace un uso anómalamente intensivo de uno de estos
+puntos, las peticiones de más se rechazan sin afectar al resto de visitantes.
+Preparación de cara al día del reto, sin coste ni cuentas adicionales.
+
+---
+
 ## 2026-08-01 — Arrancar el reto por primera vez desde el panel, sin tocar la base de datos
 
 **Tipo:** Fix

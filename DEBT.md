@@ -121,7 +121,7 @@ de los campos internos aparece en el objeto resultante.
 
 ## Sin rate limiting en `/api/track`
 
-**Fecha:** 2026-07-30 · **Ampliada:** 2026-07-31, tarea F3
+**Fecha:** 2026-07-30 · **Ampliada:** 2026-07-31, tarea F3 · **Cerrada:** 2026-08-01, tarea F5
 **Contexto:** Detectado por el Agente de Seguridad en la revisión de F2 (auditoría OWASP Top 10, A04).
 **Problema:** El endpoint de ingesta no tiene ningún límite de peticiones. No es bloqueante mientras el proyecto no esté desplegado (F0/Vercel pendiente), pero es condición explícita antes de exponer el endpoint a internet: un token filtrado sin límite permite spam de inserciones en `posiciones`, degradando el rendimiento y ensuciando el histórico (con impacto directo en el cálculo de progreso).
 **Impacto:** No compromete la integridad del ancla (eso ya lo cubre DT-006), pero permite agotar cuota de BD y ensuciar el histórico visible en el panel de admin si el token se filtra (captura de la config de OwnTracks en el móvil, logs de Vercel, etc.).
@@ -133,7 +133,24 @@ bruta). La comparación en tiempo constante (`timingSafeEqual`) evita fugar
 información por timing, pero no sustituye a un límite de intentos. Explícitamente
 fuera de alcance de F4 según `docs/tareas/CURRENT.md`, agrupado con los demás
 endpoints pendientes de F5.
-**Prioridad:** Media — no bloquea F2-F4, sí bloquea el despliegue real.
+**Resolución (F5):** implementado rate limiting en memoria de proceso (DT-011,
+`docs/tecnico/decisiones-tecnicas.md`) en los 6 endpoints listados: módulo
+compartido `lib/rate-limit.ts` (función `consumir(clave, limite, ventanaMs)`
+sobre un `Map` en scope de módulo, mismo patrón que la caché TTL de DT-007).
+`POST /api/track` limita por token (40 req/min); `POST /api/comentarios`,
+`POST /api/intenciones`, `GET /api/progreso`, `GET /api/comentarios` y
+`POST /api/admin/login` limitan por IP (`x-forwarded-for`) con sus propios
+límites (ver tabla en DT-011). Al exceder el límite se responde `429` sin
+cuerpo, mismo criterio de rechazo silencioso que el resto del proyecto.
+Cubierto con tests unitarios de `lib/rate-limit.ts` (ventana que expira,
+contador que resetea, claves independientes, borde exacto del límite) y
+tests de integración por ruta que verifican el `429` al superar el cupo.
+**Limitación conocida, aceptada en DT-011:** el contador es por instancia de
+función serverless — no se comparte entre regiones ni sobrevive a un cold
+start. Suficiente para el tráfico esperado (evento de un día, audiencia
+familiar/amigos); si no bastara, la solución de fondo es un contador
+compartido (Upstash u otro).
+**Prioridad:** Cerrada.
 
 ---
 
@@ -187,6 +204,28 @@ endpoints pendientes de F5.
 **Problema:** El comentario no describe la implementación real. No es incorrecto en el efecto (navega actualizando la query string) pero induce a pensar que hay un `<Link>` de Next debajo, lo que puede confundir a quien lo lea para depurar o extender el patrón de paginación en otra sección.
 **Impacto:** Puramente documental — cero efecto en comportamiento.
 **Solución propuesta:** Ajustar el comentario para reflejar que es un botón con `router.push()`, no un `<Link>`.
+**Prioridad:** Baja.
+
+---
+
+## Comentarios de cabecera obsoletos: "no probado contra Supabase real" / "bloqueado por F0" en 3 ficheros de producción
+
+**Fecha:** 2026-08-01
+**Contexto:** Detectado por el Reviewer en la auditoría completa de F5 (F1-F5). `app/api/track/route.ts`, `lib/supabase/admin.ts` y `lib/supabase/public.ts` conservan comentarios de cabecera escritos en F2, cuando el proyecto Supabase todavía no existía (bloqueado por F0): afirman literalmente "NO SE HA PROBADO CONTRA UNA BASE DE DATOS REAL", "no existe proyecto Supabase todavía" y "bloqueado por F0". El proyecto lleva desplegado en producción con Supabase real desde F2 y ha pasado por F3 y F4 sin que nadie actualizara estos tres comentarios.
+**Problema:** Documentación embebida en el código que contradice el estado real del sistema. Un agente o desarrollador que lea estos ficheros por primera vez (por ejemplo para depurar un incidente en producción) puede concluir erróneamente que el cliente Supabase nunca se ha verificado contra una BD real, cuando de hecho lleva en producción real varias fases.
+**Impacto:** Puramente documental — cero efecto en comportamiento. Pero es el mismo patrón que ya causó una entrada de deuda en F4 (`EnlacePaginacion.tsx`) y ahora aparece de forma recurrente en 3 ficheros más — ver nueva entrada en `docs/LESSONS.md`.
+**Solución propuesta:** Actualizar los tres comentarios de cabecera para reflejar el estado real (Supabase en producción, verificado en integración desde F2 según `docs/bugs/BUGS.md`), eliminando cualquier referencia a "bloqueado por F0" o "no probado".
+**Prioridad:** Baja — documental, pero recurrente; conviene resolver en la próxima tarea que toque cualquiera de estos tres ficheros.
+
+---
+
+## `docs/tecnico/arquitectura.md` no incluye `lib/rate-limit.ts` en la tabla de estructura
+
+**Fecha:** 2026-08-01
+**Contexto:** Detectado por el Reviewer en la auditoría completa de F5. La tabla de estructura de carpetas de `arquitectura.md` no lista `lib/rate-limit.ts`, pese a ser un módulo de infraestructura compartida (DT-011) usado activamente por las 6 rutas públicas del proyecto.
+**Problema:** Mismo patrón ya registrado para el perfil de elevación (ver entrada anterior en este archivo): la tabla de estructura no es fuente de verdad completa de dónde vive cada tipo de código.
+**Impacto:** Puramente documental. La decisión sí está bien documentada en DT-011 (`decisiones-tecnicas.md`), solo falta el reflejo en la tabla de `arquitectura.md`.
+**Solución propuesta:** Añadir una fila para `lib/rate-limit.ts` en la tabla de estructura de `arquitectura.md`, junto a las demás pendientes de la misma naturaleza (perfil de elevación).
 **Prioridad:** Baja.
 
 ---
