@@ -247,12 +247,15 @@ export function calcularProgreso(
     ? Math.min(100, (numerador / denominador) * 100)
     : 100; // si el ancla ya está en el final, el reto empieza en 100%
 
-  // km restantes return-aware: separación a la traza + tramo de plan que queda
+  // km restantes: solo el tramo de plan que queda desde el punto proyectado
+  // más cercano hasta el final de la traza oficial. No suma el coste de
+  // volver a la ruta si Santi está desviado (separacionM se usa solo para
+  // clasificarEstado, no aquí).
   const planRestanteKm = Math.max(
     0,
     traza.longitudTotalKm - maxKmAvanzados
   );
-  const kmRestantes = separacionM / 1000 + planRestanteKm;
+  const kmRestantes = planRestanteKm;
 
   const estado = clasificarEstado(separacionM);
 

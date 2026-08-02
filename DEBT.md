@@ -219,6 +219,16 @@ compartido (Upstash u otro).
 
 ---
 
+## Nombre de test en `proyeccion.test.ts` puede quedar incompleto tras añadir assertion de `kmRestantes`
+
+**Fecha:** 2026-08-02 · **Cerrada:** 2026-08-02, fix de Ronda 1 de la misma tarea
+**Contexto:** Detectado por el Reviewer en la revisión de "Km restantes: solo plan restante desde el punto más cercano (sin sumar la vuelta)". El bloqueante de esa revisión pide añadir una assertion de `kmRestantes` al test de "desvío grande (~2 km)" (`lib/traza/proyeccion.test.ts`, línea ~304-319, `it("clasifica como desvio-mayor cuando la separación es ~2 km"...)`).
+**Problema:** Si el Implementador amplía las assertions de ese test sin renombrarlo, el nombre deja de describir con precisión todo lo que el test verifica (framework, sección Tests: "los nombres de los tests describen el comportamiento que verifican").
+**Resolución:** Al aplicar el fix del bloqueante de Ronda 1, el test se renombró a "clasifica como desvio-mayor y kmRestantes no suma la separación cuando la separación es ~2 km", reflejando ambas assertions.
+**Prioridad:** Cerrada.
+
+---
+
 ## `docs/producto/roadmap.md` y `funcionalidades.md` no reflejan "Minuto a minuto" como implementado
 
 **Fecha:** 2026-08-02

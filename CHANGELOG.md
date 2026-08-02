@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-08-02 — Km restantes: ya no incluyen la vuelta al camino si Santi se desvía
+
+**Tipo:** Fix
+
+Si Santi se desvía de la ruta oficial, los "km restantes" mostrados en la
+web ya no incluyen la distancia extra para volver al camino — ahora
+muestran solo lo que queda de ruta oficial desde el punto más cercano hasta
+Santiago. La barra de progreso, los km andados, el odómetro y el estado
+de desvío no cambian.
+
+---
+
 ## 2026-08-02 — Ajustes visuales del feed "Minuto a minuto" tras feedback real
 
 **Tipo:** Mejora

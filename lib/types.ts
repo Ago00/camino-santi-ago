@@ -107,14 +107,16 @@ export type EstadoRuta = "en-ruta" | "desvio-menor" | "desvio-mayor";
  * Notas de diseño:
  * - `porcentaje` es monótono: nunca baja aunque Santi retroceda.
  * - `odometroKm` es la distancia real andada (haversine acumulado), sí sube al retroceder.
- * - `kmRestantes` es return-aware: separacion de la ruta + plan restante.
+ * - `kmRestantes` es el tramo de ruta oficial que queda desde el punto
+ *   proyectado más cercano hasta el final, sin sumar el coste de volver a
+ *   la ruta si Santi está desviado (eso lo indica `separacionM`/`estado`).
  *   Puede no sumar 100 con `kmAvanzados`; es correcto — mide cosas distintas.
  * - `puntosDescartados` cuenta rechazos por velocidad imposible en esta sesión.
  */
 export interface Progreso {
   porcentaje: number; // 0-100, monótono
   kmAvanzados: number; // proyectado sobre el plan (no el andado real)
-  kmRestantes: number; // return-aware: separacion + plan restante
+  kmRestantes: number; // plan restante desde el punto proyectado más cercano
   odometroKm: number; // haversine real, rodeos incluidos
   estado: EstadoRuta;
   separacionM: number; // distancia perpendicular a la traza en metros

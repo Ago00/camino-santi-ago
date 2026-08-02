@@ -42,7 +42,7 @@
 - **Proyección sobre la traza con Turf** (una operación por punto): devuelve avance-a-lo-largo + separación de la ruta.
 - **Barra / %** = avance *hacia Santiago* (componente proyectado sobre el plan), **monótono** (seguro anti-ruido).
 - **Km caminados** = odómetro real (rodeos incluidos).
-- **Km restantes** = separación de la ruta ("return-aware") + plan restante. Puede no sumar 100 con la barra: es correcto.
+- **Km restantes** = plan restante desde el punto proyectado más cercano hasta Santiago (no suma la separación/vuelta a la ruta si Santi está desviado). Puede no sumar 100 con la barra: es correcto.
 - **Desvíos**: pequeño → pinta sobre el plan; grande → pinta la traza real; al reenganchar, el tramo previsto saltado se da por avanzado.
 - **Por cada punto guardar**: `lat, lon, timestamp, fuente (app|manual)`.
 - Umbral "fuera de ruta"; rechazo de saltos imposibles (velocidad); **descartar último punto** (soft, reversible); corrección manual.

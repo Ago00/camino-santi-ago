@@ -302,7 +302,7 @@ describe("calcularProgreso — desvío pequeño (~80 m)", () => {
 });
 
 describe("calcularProgreso — desvío grande (~2 km)", () => {
-  it("clasifica como desvio-mayor cuando la separación es ~2 km", () => {
+  it("clasifica como desvio-mayor y kmRestantes no suma la separación cuando la separación es ~2 km", () => {
     // ~2 km lateral = ~0.018° de lon en el ecuador
     const historico = [
       posicion({ lat: 0, lon: 0, ts: "2026-07-30T08:00:00Z" }),
@@ -315,6 +315,23 @@ describe("calcularProgreso — desvío grande (~2 km)", () => {
     // 0.018° de lon en el ecuador ≈ 2001 m (calculado con haversine).
     // Se tolera por debajo de 1.500 m para descartar falsos positivos de umbral.
     expect(result.separacionM).toBeGreaterThan(1500);
+
+    // kmRestantes debe ser solo el plan restante desde el punto proyectado
+    // más cercano hasta el final, SIN sumar separacionM/1000 (regresión a la
+    // fórmula vieja "return-aware").
+    //
+    // Cálculo independiente (fuera de proyeccion.ts, con haversine a mano
+    // sobre los mismos 3 vértices de TRAZA_100KM):
+    // - La proyección perpendicular de (lat=0.22, lon=0.018) sobre el tramo
+    //   recto en lon=0 cae aproximadamente en (lat≈0.22, lon≈0).
+    // - Longitud total de la traza [0,0]→[0,0.45049]→[0,0.90099] ≈ 100,19 km.
+    // - Distancia acumulada desde el inicio hasta lat=0.22 ≈ 24,46 km.
+    // - planRestanteKm esperado ≈ 100,19 − 24,46 ≈ 75,72 km.
+    // La fórmula vieja (separacionM/1000 + planRestanteKm) daría ≈ 77,72 km:
+    // una diferencia de ~2 km, exactamente separacionM/1000. La tolerancia
+    // (±1 km) es lo bastante ajustada para distinguir ambos resultados.
+    expect(result.kmRestantes).toBeGreaterThan(74.7);
+    expect(result.kmRestantes).toBeLessThan(76.7);
   });
 });
 
