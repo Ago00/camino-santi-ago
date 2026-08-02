@@ -144,24 +144,43 @@ export default function MinutoAMinuto({
               transition={{ duration: 0.35 }}
               onClick={() => alPulsar(entrada)}
               disabled={!tienePosicion}
-              className="flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition-colors disabled:cursor-default"
+              className={
+                entrada.foto_url
+                  ? "w-full overflow-hidden rounded-xl border text-left transition-colors disabled:cursor-default"
+                  : "flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition-colors disabled:cursor-default"
+              }
               style={{
                 borderColor: esActiva ? C.ember : "#00000010",
                 background: esActiva ? "#D9773B0D" : "white",
               }}
             >
-              {entrada.foto_url && (
-                // eslint-disable-next-line @next/next/no-img-element -- URL pública de Supabase Storage
-                <img src={entrada.foto_url} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+              {entrada.foto_url ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- URL pública de Supabase Storage */}
+                  <img
+                    src={entrada.foto_url}
+                    alt=""
+                    className="w-full h-auto"
+                  />
+                  <div className="min-w-0 px-4 py-3">
+                    <div className="font-mono text-[11px]" style={{ color: C.muted }}>
+                      {formatearHora(entrada.created_at)}
+                    </div>
+                    <div className="mt-0.5 text-[14px] leading-snug" style={{ color: C.ink }}>
+                      {entrada.texto}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="min-w-0 flex-1">
+                  <div className="font-mono text-[11px]" style={{ color: C.muted }}>
+                    {formatearHora(entrada.created_at)}
+                  </div>
+                  <div className="mt-0.5 text-[14px] leading-snug" style={{ color: C.ink }}>
+                    {entrada.texto}
+                  </div>
+                </div>
               )}
-              <div className="min-w-0 flex-1">
-                <div className="font-mono text-[11px]" style={{ color: C.muted }}>
-                  {formatearHora(entrada.created_at)}
-                </div>
-                <div className="mt-0.5 text-[14px] leading-snug" style={{ color: C.ink }}>
-                  {entrada.texto}
-                </div>
-              </div>
             </motion.button>
           );
         })}

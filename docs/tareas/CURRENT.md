@@ -1,8 +1,8 @@
 # Tarea en curso
 
-Ninguna tarea en curso. Última cerrada: **Minuto a minuto (feed en directo
-con fotos)** (2026-08-02), archivada en
-`historico/2026-08-02-minuto-a-minuto.md`.
+Ninguna tarea en curso. Última cerrada: **Fotos del feed "Minuto a minuto"
+sin recortar** (2026-08-02), archivada en
+`historico/2026-08-02-fotos-sin-recortar.md`.
 
 ---
 

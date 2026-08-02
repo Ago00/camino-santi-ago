@@ -77,12 +77,12 @@ export default function ModoLlegada({
             puntoResaltado={puntoResaltado}
           />
         </div>
+        <Stats tiempoEnMarcha={tiempoTotal} kmAndados={formatearKm(progreso.odometroKm)} ritmoMedio={ritmoMedio} />
         <MinutoAMinuto
           polling={false}
           entradasIniciales={entradasMinutoAMinuto}
           onSeleccionarPunto={setPuntoResaltado}
         />
-        <Stats tiempoEnMarcha={tiempoTotal} kmAndados={formatearKm(progreso.odometroKm)} ritmoMedio={ritmoMedio} />
       </div>
 
       {/* tras llegar ya no se ofrecen intenciones; solo mensajes / felicitaciones */}

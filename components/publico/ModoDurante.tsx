@@ -79,13 +79,13 @@ export default function ModoDurante({ progresoInicial, iniciadoEn, trazaCoords }
             puntoResaltado={puntoResaltado}
           />
         </div>
-        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} />
         <Mojon kmRestantes={formatearKm(progreso.kmRestantes)} pct={progreso.porcentaje} />
         <Stats
           tiempoEnMarcha={tiempoEnMarcha}
           kmAndados={formatearKm(progreso.odometroKm)}
           ritmoMedio={ritmoMedio}
         />
+        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} />
       </div>
 
       <IntencionForm />
