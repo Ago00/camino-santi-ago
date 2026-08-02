@@ -160,7 +160,7 @@ export default function MinutoAMinuto({
                   <img
                     src={entrada.foto_url}
                     alt=""
-                    className="h-48 w-full object-cover"
+                    className="w-full h-auto"
                   />
                   <div className="min-w-0 px-4 py-3">
                     <div className="font-mono text-[11px]" style={{ color: C.muted }}>
