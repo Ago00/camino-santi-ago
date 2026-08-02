@@ -104,3 +104,30 @@ free) y la lista de pueblos por km. Se aparca para no bloquear la v1.
 **Por qué:** el ritmo de Santi bajará con el cansancio de manera no lineal
 durante el reto, haciendo cualquier estimación engañosa. Sí se muestra el
 ritmo medio global, que es descriptivo sin prometer un tiempo.
+
+---
+
+## Km restantes ya no incluye la vuelta a la ruta si hay desvío
+
+**Fecha:** 2026-08-02
+**Decidido por:** Santi
+
+**Decisión.** `kmRestantes` pasa a ser solo el plan restante desde el punto
+más cercano de la ruta oficial hasta Santiago. Ya no suma la distancia que
+haría falta andar para volver a esa ruta si Santi está desviado.
+
+**Contexto.** La especificación original (2026-07-30) decidió un cálculo
+"return-aware" (separación a la ruta + plan restante), sin más justificación
+documentada que "es correcto". Al revisarlo con más perspectiva, Santi
+prefiere que la cifra sea directamente comparable con "lo que queda de
+camino oficial", sin penalizar visualmente un desvío que puede ser
+completamente legítimo (p. ej. un tramo cortado que obliga a una variación).
+
+**Alternativas valoradas:**
+- Mantener "return-aware" → descartado, es la decisión que se revisa.
+- Mostrar ambas cifras (con y sin vuelta) → descartado por complejidad
+  visual innecesaria para lo que aporta.
+
+**No cambia:** el estado en-ruta/desvío-menor/desvío-mayor sigue
+reflejando si Santi está desviado y cuánto; solo cambia qué cuenta
+`kmRestantes`.

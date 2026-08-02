@@ -40,8 +40,10 @@ publicado.
   nunca baja aunque Santi retroceda o se desvíe brevemente.
 - **Km andados** — odómetro haversine real. Sí sube al retroceder (mide distancia
   real, no solo avance sobre el plan).
-- **Km restantes** — return-aware: separación a la traza + plan restante.
-  Puede no sumar 100 con la barra: es correcto, miden cosas distintas.
+- **Km restantes** — lo que queda de ruta oficial desde el punto proyectado
+  más cercano hasta Santiago. Si Santi está desviado, no suma el coste de
+  volver a la ruta (eso ya lo refleja el estado en-ruta/desvío). Puede no
+  sumar 100 con la barra: es correcto, miden cosas distintas.
 
 ### Intenciones
 
