@@ -80,9 +80,12 @@ beforeEach(async () => {
   intentoActivoMock = null;
   posicionesMock = [];
   reiniciarRateLimit();
-  // La caché TTL vive a nivel de módulo (DT-007): hay que limpiarla
+  // La caché TTL vive en el módulo compartido lib/progreso-cache.ts (DT-014,
+  // antes a nivel de módulo local aquí mismo, DT-007) — hay que limpiarla
   // explícitamente entre tests, `vi.resetModules()` no reimporta el módulo
   // ya cacheado por Node/Vitest a través de imports estáticos previos.
+  // `route.ts` sigue reexportando `limpiarCacheProgreso`, así que este test
+  // no cambia su forma de invalidarla (comportamiento externo intacto).
   const { limpiarCacheProgreso } = await import("@/app/api/progreso/route");
   limpiarCacheProgreso();
 });

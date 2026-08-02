@@ -272,3 +272,14 @@ compartido (Upstash u otro).
 **Prioridad:** Cerrada.
 
 ---
+
+## `crearMinutoAMinuto` puede guardar `lat`/`lon` a `null` si la caché compartida de progreso está vacía en esa instancia serverless
+
+**Fecha:** 2026-08-02
+**Contexto:** Generado al implementar DT-014 (`docs/tecnico/decisiones-tecnicas.md`) — fix para que el snapshot de posición de "Minuto a minuto" coincida con lo que el mapa público está mostrando, leyendo de la caché compartida `lib/progreso-cache.ts` en vez de una lectura fresca de `posiciones`.
+**Problema:** La caché vive en memoria de proceso, igual que DT-007/DT-011 — no se comparte entre instancias serverless de Vercel ni sobrevive a un cold start. Si `crearMinutoAMinuto` se ejecuta en una instancia que todavía no ha atendido ninguna petición `GET /api/progreso` (arranque en frío, poco tráfico reciente), la caché está vacía y la entrada se guarda con `lat: null, lon: null` aunque existan posiciones reales en BD — deliberado (sin fallback a `posiciones`, ver DT-014), pero significa que alguna entrada del feed puede quedar sin posición asociada aunque Santi sí tuviera GPS reciente.
+**Impacto:** Cosmético — la entrada simplemente no tiene marcador en el mapa al pincharla (mismo comportamiento ya existente hoy para "aún no hay ninguna posición registrada"). No afecta a ningún otro dato del intento ni al cálculo de progreso. La frecuencia esperada es baja: `/api/progreso` recibe polling cada 30 s desde cualquier visitante de la web pública en "durante", así que la caché rara vez estará realmente vacía salvo en los primeros segundos tras un cold start o justo tras "Iniciar" antes de la primera visita.
+**Solución propuesta:** Si en producción (día del reto) se observa que ocurre con demasiada frecuencia, escalar a la Opción B descartada en DT-014: persistir el último snapshot de posición en la tabla `intentos`, actualizado por `/api/progreso` en cada recálculo, con su propia migración.
+**Prioridad:** Baja — riesgo cosmético, mismo patrón ya aceptado en DT-007/DT-011 para este proyecto.
+
+---

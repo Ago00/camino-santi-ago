@@ -14,12 +14,21 @@
  * calcularProgreso() en cada petición durante ráfagas de polling client-side
  * (cada 30 s, varios seguidores). No se persiste nada en BD ni se toca el
  * esquema — la caché vive únicamente mientras el proceso de Next.js esté vivo.
+ * El estado de caché vive en `lib/progreso-cache.ts` (DT-014), compartido con
+ * `crearMinutoAMinuto` (`app/admin/actions.ts`), que lo usa como snapshot de
+ * la posición que la web pública está mostrando realmente.
  *
  * Rate limiting por IP (DT-011): 60 req/min. Responde 429 sin cuerpo al
  * exceder el límite, antes de consultar la caché o recalcular.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  CACHE_TTL_MS,
+  guardarCacheProgreso,
+  limpiarCacheProgreso,
+  obtenerCacheProgreso,
+} from "@/lib/progreso-cache";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
 import { getSupabasePublic } from "@/lib/supabase/public";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
@@ -29,34 +38,24 @@ import type { Posicion, ProgresoPublico } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-const CACHE_TTL_MS = 20_000;
 const LIMITE_POR_MINUTO = 60;
 const VENTANA_MS = 60_000;
 
-interface EntradaCache {
-  timestamp: number;
-  valor: ProgresoPublico;
-}
-
-let cache: EntradaCache | null = null;
-
-/** Invalidable en tests: fuerza el recálculo en la siguiente petición. */
-export function limpiarCacheProgreso(): void {
-  cache = null;
-}
+export { limpiarCacheProgreso };
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!consumir(obtenerIpCliente(request), LIMITE_POR_MINUTO, VENTANA_MS)) {
     return new NextResponse(null, { status: 429 });
   }
 
+  const cache = obtenerCacheProgreso();
   if (cache && Date.now() - cache.timestamp < CACHE_TTL_MS) {
     return NextResponse.json(cache.valor);
   }
 
   const progresoPublico = await calcularProgresoActual();
 
-  cache = { timestamp: Date.now(), valor: progresoPublico };
+  guardarCacheProgreso(progresoPublico);
 
   return NextResponse.json(progresoPublico);
 }

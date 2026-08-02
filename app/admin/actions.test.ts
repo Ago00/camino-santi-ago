@@ -7,9 +7,17 @@
  *
  * Mock de lib/supabase/admin (mismo patrón que app/api/track/route.test.ts) y
  * de next/headers (cookies()) y next/cache (revalidatePath()).
+ *
+ * `crearMinutoAMinuto` (DT-014) lee su snapshot de posición de la caché
+ * compartida `lib/progreso-cache.ts` (no de `posiciones`, que ya no se
+ * consulta desde esta Server Action) — se usa la implementación real del
+ * módulo, escribiéndola/limpiándola directamente en cada test con
+ * `guardarCacheProgreso`/`limpiarCacheProgreso`.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { guardarCacheProgreso, limpiarCacheProgreso } from "@/lib/progreso-cache";
+import type { ProgresoPublico } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -37,7 +45,6 @@ interface IntentoMock {
 }
 
 let intentoActivoMock: IntentoMock | null = null;
-let ultimaPosicionMock: { lat: number; lon: number } | null = null;
 const updateSpy = vi.fn().mockReturnValue({
   eq: vi.fn().mockResolvedValue({ error: null }),
 });
@@ -59,12 +66,10 @@ function crearBuilderFalso() {
         };
       }
       if (tabla === "posiciones") {
+        // crearMinutoAMinuto ya no consulta esta tabla (DT-014): el snapshot
+        // de posición sale de la caché compartida (lib/progreso-cache.ts).
+        // Se mantiene el builder mínimo por si otra acción futura la usa.
         return {
-          select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockReturnThis(),
-          order: vi.fn().mockReturnThis(),
-          limit: vi.fn().mockReturnThis(),
-          maybeSingle: vi.fn().mockResolvedValue({ data: ultimaPosicionMock, error: null }),
           update: updateSpy,
         };
       }
@@ -127,7 +132,7 @@ beforeEach(() => {
   vi.stubEnv("ADMIN_SESSION_SECRET", "secreto-de-test-largo-y-suficiente");
   cookieSesionMock = crearSesion();
   intentoActivoMock = null;
-  ultimaPosicionMock = null;
+  limpiarCacheProgreso();
   updateSpy.mockClear();
   insertIntentoSpy.mockClear();
   insertMinutoAMinutoSpy.mockClear();
@@ -288,7 +293,7 @@ describe("Textos", () => {
   });
 });
 
-describe("Minuto a minuto (DT-013)", () => {
+describe("Minuto a minuto (DT-013, snapshot de posición vía DT-014)", () => {
   function formDataConTexto(texto: string, foto?: File): FormData {
     const formData = new FormData();
     formData.set("texto", texto);
@@ -296,9 +301,25 @@ describe("Minuto a minuto (DT-013)", () => {
     return formData;
   }
 
-  it("crearMinutoAMinuto inserta con snapshot de la última posición conocida", async () => {
+  /** Progreso público de test mínimo, solo con la posición que interesa a estos tests. */
+  function progresoPublicoConPosicion(
+    ultimaPosicion: ProgresoPublico["ultimaPosicion"]
+  ): ProgresoPublico {
+    return {
+      porcentaje: 10,
+      kmAvanzados: 10,
+      kmRestantes: 90,
+      odometroKm: 10,
+      estado: "en-ruta",
+      ultimaPosicion,
+    };
+  }
+
+  it("crearMinutoAMinuto inserta con el snapshot de posición de la caché compartida de /api/progreso", async () => {
     intentoActivoMock = { id: 4, fase: "durante" };
-    ultimaPosicionMock = { lat: 42.3, lon: -8.6 };
+    guardarCacheProgreso(
+      progresoPublicoConPosicion({ lat: 42.3, lon: -8.6, ts: "2026-08-02T10:00:00.000Z" })
+    );
 
     await crearMinutoAMinuto(formDataConTexto("Cruzando el puente"));
 
@@ -312,15 +333,45 @@ describe("Minuto a minuto (DT-013)", () => {
     expect(subirFotoSpy).not.toHaveBeenCalled();
   });
 
-  it("crearMinutoAMinuto deja lat/lon a null si todavía no hay ninguna posición registrada", async () => {
+  it("crearMinutoAMinuto deja lat/lon a null si la caché de progreso no tiene ultimaPosicion todavía", async () => {
     intentoActivoMock = { id: 4, fase: "durante" };
-    ultimaPosicionMock = null;
+    guardarCacheProgreso(progresoPublicoConPosicion(null));
 
     await crearMinutoAMinuto(formDataConTexto("¡Arrancamos!"));
 
     expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith(
       expect.objectContaining({ lat: null, lon: null })
     );
+  });
+
+  it("crearMinutoAMinuto deja lat/lon a null si la caché de progreso está vacía (sin fallback a posiciones)", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    limpiarCacheProgreso(); // caché vacía: ya limpiada en beforeEach, explícito por claridad
+
+    await crearMinutoAMinuto(formDataConTexto("Sin caché todavía"));
+
+    expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ lat: null, lon: null })
+    );
+  });
+
+  it("crearMinutoAMinuto usa el valor cacheado aunque esté fuera de su TTL de 20 s (no se revalida aquí)", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    guardarCacheProgreso(
+      progresoPublicoConPosicion({ lat: 42.1, lon: -8.5, ts: "2026-08-02T09:00:00.000Z" })
+    );
+    // No se comprueba el TTL al leer la caché desde crearMinutoAMinuto (ver
+    // DT-014): basta con que exista un valor, esté o no dentro de los 20 s.
+    // Se simula "tiempo transcurrido" avanzando Date.now, sin usar
+    // vi.restoreAllMocks() (rompería los spies globales de este fichero).
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
+
+    await crearMinutoAMinuto(formDataConTexto("Sigo aquí"));
+
+    expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ lat: 42.1, lon: -8.5 })
+    );
+    dateNowSpy.mockRestore();
   });
 
   it("crearMinutoAMinuto sube la foto antes de insertar cuando se adjunta una", async () => {

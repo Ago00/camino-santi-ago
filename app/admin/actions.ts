@@ -21,6 +21,7 @@ import { cookies } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subirFotoMinutoAMinuto } from "@/lib/supabase/storage";
 import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
+import { obtenerCacheProgreso } from "@/lib/progreso-cache";
 import type { ClaveTexto } from "@/lib/textos/defaults";
 import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
 
@@ -298,6 +299,14 @@ export async function guardarTexto(clave: string, valor: string): Promise<void> 
  * todavía no hay ninguna posición registrada). La foto es opcional: si se
  * adjunta, se sube primero a Storage y solo si eso tiene éxito se inserta la
  * fila — así nunca queda una entrada con una subida a medias.
+ *
+ * El snapshot de posición sale de la caché compartida de `/api/progreso`
+ * (`lib/progreso-cache.ts`, DT-014), no de una lectura fresca de
+ * `posiciones`: así la coordenada guardada coincide con lo que el mapa
+ * público está mostrando en ese momento, en vez de ir "por delante" de la
+ * caché de 20 s + polling de 30 s del cliente. Si la caché está vacía o sin
+ * `ultimaPosicion`, la entrada se guarda con `lat`/`lon` a null — deliberado,
+ * sin fallback a `posiciones` (reintroduciría el problema original).
  */
 export async function crearMinutoAMinuto(formData: FormData): Promise<void> {
   await requerirSesion();
@@ -325,14 +334,7 @@ export async function crearMinutoAMinuto(formData: FormData): Promise<void> {
     throw new Error("No hay ningún intento activo sobre el que publicar.");
   }
 
-  const { data: ultimaPosicion } = await supabase
-    .from("posiciones")
-    .select("lat, lon")
-    .eq("intento_id", intentoActivo.id)
-    .eq("descartado", false)
-    .order("ts", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const ultimaPosicion = obtenerCacheProgreso()?.valor.ultimaPosicion ?? null;
 
   const { error: errorInsercion } = await supabase.from("minuto_a_minuto").insert({
     intento_id: intentoActivo.id,

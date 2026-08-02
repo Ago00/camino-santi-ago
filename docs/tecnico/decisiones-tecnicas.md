@@ -639,3 +639,78 @@ explícitamente por no aportar nada real a esta audiencia (30 s es
 imperceptible para audiencia familiar/amigos mirando el móvil de vez en
 cuando). En "llegada" el feed se carga una vez, sin polling (modo ya
 diseñado para quedar congelado, ver `ModoLlegada.tsx`).
+
+---
+
+## DT-014 — Snapshot de posición de `crearMinutoAMinuto` desde la caché compartida de `/api/progreso`, no de una lectura fresca de `posiciones`
+
+**Fecha:** 2026-08-02 · **Tarea:** Fix — coherencia entre el snapshot de "Minuto a minuto" y el mapa público · **Decisión de arquitectura (Opción A)**
+
+**Contexto.** `crearMinutoAMinuto` (`app/admin/actions.ts`, DT-013) guardaba
+el `lat`/`lon` de cada entrada nueva leyendo en fresco y sin caché la última
+fila de `posiciones` (`SELECT lat, lon ... ORDER BY ts DESC LIMIT 1`). Pero
+el mapa público muestra la posición servida por `GET /api/progreso`, que
+tiene caché de hasta 20 s en servidor (DT-007) más polling de 30 s en
+cliente. El resultado: una entrada podía quedar con una coordenada más
+"adelantada" que la que el mapa está pintando en ese instante para
+cualquier espectador — inconsistencia visible entre el feed y el mapa al
+pinchar la entrada (`puntoResaltado`, DT-013).
+
+**Decisión.** Extraer el estado de caché de `app/api/progreso/route.ts` a un
+módulo compartido, `lib/progreso-cache.ts` (misma forma de datos
+`{timestamp, valor: ProgresoPublico}`, mismas funciones de lectura/
+escritura/limpieza, mismo `CACHE_TTL_MS = 20_000`). `route.ts` pasa a usar
+ese módulo — su comportamiento externo (respuesta HTTP, TTL, rate limiting)
+no cambia. `crearMinutoAMinuto` deja de consultar `posiciones` y lee en su
+lugar `obtenerCacheProgreso()?.valor.ultimaPosicion`:
+
+- Si hay caché con `ultimaPosicion` no nulo → usa ese `lat`/`lon`: es
+  exactamente la coordenada que el mapa público está mostrando ahora mismo.
+- Si no hay caché, o `ultimaPosicion` es `null` (nadie ha llamado a
+  `/api/progreso` todavía en este proceso, o el intento no tiene ninguna
+  posición aún) → la entrada se guarda con `lat: null, lon: null`, igual que
+  el caso ya existente hoy de "aún no hay ninguna posición registrada".
+  **Sin fallback a una lectura fresca de `posiciones`** — reintroducir ese
+  fallback deshace el fix.
+- No se comprueba el TTL al leer: cualquier valor presente es "lo último
+  calculado/pintado" y es válido usarlo tal cual, esté o no dentro de su
+  ventana de 20 s. El TTL solo determina si `/api/progreso` recalcula en la
+  siguiente petición GET, no invalida retroactivamente un dato ya servido.
+
+**Por qué.** Es la solución más simple que resuelve la causa raíz real (dos
+fuentes de verdad para "la posición actual de Santi": la caché de
+`/api/progreso` que ve el público, y una query directa que veía el admin)
+sin tocar el esquema de BD ni el contrato de `/api/progreso`.
+
+**Riesgo aceptado — no hay garantía entre invocaciones de funciones
+serverless en Vercel.** Igual que DT-007/DT-011, esta caché vive en memoria
+de proceso: no se comparte entre instancias ni regiones, no sobrevive a un
+cold start. Si `crearMinutoAMinuto` se ejecuta en una instancia serverless
+que nunca ha atendido una petición `GET /api/progreso` (o que tuvo un cold
+start reciente), la caché está vacía y la entrada se guarda con `lat`/`lon`
+a `null` — aunque haya posiciones reales en BD. Este es el mismo tipo de
+limitación ya aceptada en DT-007 y DT-011, no una nueva categoría de riesgo
+para el proyecto.
+
+**Alternativas valoradas.**
+- **Opción B (descartada por ahora): persistir el último snapshot en BD**
+  (por ejemplo una fila `ultima_posicion_publica` en `intentos`, actualizada
+  por `/api/progreso` en cada recálculo). Resolvería el riesgo de caché vacía
+  entre instancias con garantía real, pero exige migración de esquema y
+  escritura desde un GET público — mayor alcance para un fix cuyo síntoma es
+  cosmético (desalineación de unos pocos metros/segundos entre feed y mapa,
+  nunca datos incorrectos ni de otro intento).
+- **Fallback a `posiciones` si la caché está vacía.** Descartada
+  explícitamente: es exactamente el comportamiento que causaba el problema
+  original — reintroduce la posibilidad de que la entrada quede "por
+  delante" del mapa.
+
+**Si en producción se observa demasiada frecuencia de `lat`/`lon` a `null`**
+(por ejemplo, cold starts frecuentes en el entorno serverless de Vercel
+durante el reto) habría que escalar a la Opción B — persistencia del
+snapshot en `intentos`, con su propia migración y actualización desde
+`/api/progreso`.
+
+**Actualiza `arquitectura.md`**: se añade `lib/progreso-cache.ts` a la tabla
+de estructura, y se documenta que es la fuente del snapshot de posición de
+`crearMinutoAMinuto`, no `posiciones` directamente.

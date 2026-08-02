@@ -39,6 +39,10 @@ camino-santi-ago/
 │   ├── types.ts              # tipos de dominio (contrato para todas las capas)
 │   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
 │   ├── rate-limit.ts          # F5: rate limiting en memoria de proceso (DT-011), usado por todos los endpoints públicos
+│   ├── progreso-cache.ts      # DT-014: caché compartida de ProgresoPublico (antes vivía
+│   │                          # solo en app/api/progreso/route.ts, DT-007); GET /api/progreso
+│   │                          # la lee/escribe, crearMinutoAMinuto solo la lee (snapshot
+│   │                          # de posición coherente con lo que ve el mapa público)
 │   ├── traza/
 │   │   ├── traza.geojson         # traza de CÁLCULO (7.121 puntos, sin simplificar)
 │   │   ├── traza-mapa.geojson    # traza de PINTADO (Douglas-Peucker 3 m, ~2.011 pts)

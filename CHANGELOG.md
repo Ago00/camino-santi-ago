@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-08-02 — Minuto a minuto: la posición guardada en cada entrada coincide con la que ve el mapa público
+
+**Tipo:** Fix
+
+Cada entrada nueva del feed "Minuto a minuto" guarda ahora la misma posición
+que en ese momento está mostrando el mapa público, en vez de la posición
+más reciente registrada en el sistema. Antes podía darse una pequeña
+descoordinación: como el mapa público tarda hasta medio minuto en
+actualizarse, una entrada podía quedar con una coordenada ligeramente "más
+adelantada" que lo que los espectadores veían pintado al pinchar en ella.
+Sin cambios visibles en el mapa, en el resto del panel de admin ni en el
+resto de la web pública.
+
+---
+
 ## 2026-08-02 — Km restantes: ya no incluyen la vuelta al camino si Santi se desvía
 
 **Tipo:** Fix
