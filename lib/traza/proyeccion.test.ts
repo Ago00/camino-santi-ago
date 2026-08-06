@@ -2,10 +2,10 @@
  * Tests unitarios de proyeccion.ts.
  *
  * Fixtures sintéticas de 3-5 puntos con distancias conocidas.
- * El GeoJSON real de 7.121 vértices no se usa aquí: los tests deben ser
- * rápidos y sus fallos deben señalar la línea exacta del bug.
+ * El GeoJSON real de 7.951 vértices (DT-015) no se usa aquí: los tests deben
+ * ser rápidos y sus fallos deben señalar la línea exacta del bug.
  *
- * Al final hay tests de integridad de la traza real (guardarraíl de DT-001/DT-002/DT-005).
+ * Al final hay tests de integridad de la traza real (guardarraíl de DT-001/DT-002/DT-005/DT-015).
  */
 
 import { describe, it, expect } from "vitest";
@@ -96,7 +96,7 @@ const TRAZA_5P = prepararTraza(TRAZA_100KM_5P);
 // ---------------------------------------------------------------------------
 
 describe("Integridad de la traza real", () => {
-  it("traza.geojson mide entre 104,92 km y 105,02 km (DT-005: corredor extendido ~4,7 km al sur)", () => {
+  it("traza.geojson mide entre 110,38 km y 110,48 km (DT-015: extensión sur por t03v, ~10,2 km al sur de O Porriño)", () => {
     const raw = readFileSync(
       join(__dirname, "traza.geojson"),
       "utf-8"
@@ -112,9 +112,9 @@ describe("Integridad de la traza real", () => {
 
     const trazaReal = prepararTraza(geojson as Parameters<typeof prepararTraza>[0]);
 
-    // DT-005: traza extendida debe medir ≈ 104,97 km (±50 m = ±0,05 km)
-    expect(trazaReal.longitudTotalKm).toBeGreaterThan(104.92);
-    expect(trazaReal.longitudTotalKm).toBeLessThan(105.02);
+    // DT-015: traza extendida debe medir ≈ 110,43 km (±50 m = ±0,05 km)
+    expect(trazaReal.longitudTotalKm).toBeGreaterThan(110.38);
+    expect(trazaReal.longitudTotalKm).toBeLessThan(110.48);
   });
 
   it("el último punto de traza.geojson es la Praza do Obradoiro (≈ -8.5448, 42.8806)", () => {

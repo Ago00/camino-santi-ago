@@ -1,8 +1,8 @@
 /**
  * Tests de GET /api/progreso con el cliente Supabase público y la traza
  * mockados (traza sintética de 3 puntos, mismo patrón que
- * lib/traza/proyeccion.test.ts, para no depender del GeoJSON real de 7.121
- * vértices en un test unitario).
+ * lib/traza/proyeccion.test.ts, para no depender del GeoJSON real de 7.951
+ * vértices (DT-015) en un test unitario).
  *
  * Cubre: caso sin intento activo, caso con histórico, la proyección a
  * ProgresoPublico (nunca campos internos de Posicion), el comportamiento

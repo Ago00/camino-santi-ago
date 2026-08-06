@@ -37,11 +37,12 @@ importan.
 ## Traza
 
 La traza es un **corredor** que cubre más de 100 km del Camino Portugués
-Central, desde ~3 km al sur de O Porriño hasta la **Praza do Obradoiro** de
-Santiago de Compostela. Total: **~104,97 km** (el corredor tiene margen sur
+Central, desde ~10 km al sur de O Porriño hasta la **Praza do Obradoiro** de
+Santiago de Compostela. Total: **~110,43 km** (el corredor tiene margen sur
 para que el mojón físico del km 100 quede siempre dentro, sea cual sea el
 desfase entre nuestra medición y las piedras). El recorrido real lo define
-Santi al pulsar Iniciar — ver DT-005.
+Santi al pulsar Iniciar — ver DT-005 y DT-015 (extensión sur corregida con
+el tramo `t03v`, verificado contra un track GPS real).
 
 Los últimos ~210 m (Quintana → Obradoiro) son geometría manual pendiente
 de validar sobre el terreno — ver `DEBT.md`.

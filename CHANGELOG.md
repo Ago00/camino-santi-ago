@@ -2,6 +2,23 @@
 
 ---
 
+## 2026-08-07 — El corredor sur pasa por el camino que la gente anda de verdad, no por la carretera antigua
+
+**Tipo:** Fix
+
+El tramo sur del corredor (al sur de O Porriño) usaba un trazado del mapa
+oficial que, verificado contra un track GPS real de un peregrino, se
+desviaba hasta 800 m del camino que se anda de verdad en esa zona. Se ha
+sustituido por la variante alternativa que sí coincide con el track real —
+el mismo mapa oficial la incluye y empalma de forma exacta con el trazado
+anterior, sin ningún salto. Como consecuencia, el corredor gana margen sur
+(pasa de ~105 km a ~110 km en total): sigue siendo un margen deliberadamente
+generoso, no una medición exacta — el recorrido real y el porcentaje
+mostrado siguen fijados por dónde Santi pulse "Iniciar", no por este ajuste.
+Sin cambios visibles para quien no compare el mapa con detalle.
+
+---
+
 ## 2026-08-02 — Minuto a minuto: la posición guardada en cada entrada coincide con la que ve el mapa público
 
 **Tipo:** Fix

@@ -6,8 +6,8 @@
  * misma `TrazaPreparada`; centralizarlo aquí evita que cada consumidor
  * reimplemente su propia lectura+parseo del fichero.
  *
- * Cachea el resultado en memoria de proceso: `prepararTraza` recorre ~7.121
- * vértices y no tiene sentido repetirlo en cada request (ver DT-003).
+ * Cachea el resultado en memoria de proceso: `prepararTraza` recorre ~7.951
+ * vértices (DT-015) y no tiene sentido repetirlo en cada request (ver DT-003).
  */
 
 import { readFileSync } from "fs";

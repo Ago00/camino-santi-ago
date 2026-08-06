@@ -44,8 +44,8 @@ camino-santi-ago/
 │   │                          # la lee/escribe, crearMinutoAMinuto solo la lee (snapshot
 │   │                          # de posición coherente con lo que ve el mapa público)
 │   ├── traza/
-│   │   ├── traza.geojson         # traza de CÁLCULO (7.121 puntos, sin simplificar)
-│   │   ├── traza-mapa.geojson    # traza de PINTADO (Douglas-Peucker 3 m, ~2.011 pts)
+│   │   ├── traza.geojson         # traza de CÁLCULO (7.951 puntos, sin simplificar, DT-015)
+│   │   ├── traza-mapa.geojson    # traza de PINTADO (Douglas-Peucker 3 m, ~2.101 pts)
 │   │   ├── proyeccion.ts         # dominio puro: prepararTraza + calcularProgreso
 │   │   ├── proyeccion.test.ts    # tests unitarios con fixtures sintéticas
 │   │   ├── progreso-publico.ts   # F3: aProgresoPublico() — proyección segura al cliente
@@ -102,14 +102,14 @@ distintas. Mezclarlas es el bug más caro posible.**
 | | `lib/traza/traza.geojson` | `lib/traza/traza-mapa.geojson` |
 |---|---|---|
 | Propósito | CÁLCULO de progreso | PINTADO en el mapa (cliente) |
-| Puntos | 7.121 (sin simplificar) | ~2.011 (Douglas-Peucker 3 m) |
-| Longitud | ~104,97 km (real, corredor extendido DT-005) | ~104,68 km (acortada por DP) |
+| Puntos | 7.951 (sin simplificar, DT-015) | ~2.101 (Douglas-Peucker 3 m) |
+| Longitud | ~110,43 km (real, corredor extendido DT-005 + DT-015) | ~110,13 km (acortada por DP) |
 | Dónde se usa | `proyeccion.ts`, solo servidor | Se envía al navegador en F3 |
 | Puede usarse para calcular % | SÍ | **NO — su longitud no es válida** |
 
-Douglas-Peucker corta esquinas y acorta la línea ~291 m. Si el cálculo usara
+Douglas-Peucker corta esquinas y acorta la línea ~298 m. Si el cálculo usara
 la traza simplificada, Santi llegaría al Obradoiro y la web le diría que le
-faltan 291 m — el peor fallo posible en el peor momento.
+faltan 298 m — el peor fallo posible en el peor momento.
 
 `proyeccion.ts` se ejecuta en servidor. Al cliente solo viajan los números del
 `Progreso`, nunca la traza de cálculo.

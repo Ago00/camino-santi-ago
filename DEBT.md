@@ -9,6 +9,7 @@
 **Problema:** El día del reto, cuando Santi pase junto a un mojón que pone "98" (por ejemplo), la web mostrará un número diferente. El desfase esperado es ~1,5-3,7 km según la zona. Esto puede ser confuso para los espectadores que conozcan los mojones físicos.
 **Impacto:** Cosmético durante el reto: la barra y el odómetro son coherentes entre sí, pero no coinciden con la escala grabada en piedra. Santi ya está informado y lo acepta. El mayor riesgo es que un espectador malinterprete el número como un error técnico.
 **Solución propuesta:** En F3, añadir al panel de admin la posibilidad de registrar mojones reales (número grabado + timestamp de paso) durante el reto. Con 2-3 mojones anotados se puede calibrar una función de corrección lineal que alinee la pantalla con las piedras para el resto del recorrido.
+**Actualización (2026-08-07, DT-015):** durante el fix de la extensión sur del corredor se investigaron dos mojones reales georreferenciados en OpenStreetMap (lat 42,1696 "97,602" y lat 42,1934 "94,512", ambos al norte de O Porriño). No fue posible calibrar de forma concluyente con solo dos puntos, y no formaba parte del alcance de esa tarea — queda como contexto útil para retomar cuando se aborde esta deuda, no como intento fallido a descartar.
 **Prioridad:** Media — no bloquea F2-F4; debe valorarse antes del día del reto.
 
 ---
@@ -281,5 +282,27 @@ compartido (Upstash u otro).
 **Impacto:** Cosmético — la entrada simplemente no tiene marcador en el mapa al pincharla (mismo comportamiento ya existente hoy para "aún no hay ninguna posición registrada"). No afecta a ningún otro dato del intento ni al cálculo de progreso. La frecuencia esperada es baja: `/api/progreso` recibe polling cada 30 s desde cualquier visitante de la web pública en "durante", así que la caché rara vez estará realmente vacía salvo en los primeros segundos tras un cold start o justo tras "Iniciar" antes de la primera visita.
 **Solución propuesta:** Si en producción (día del reto) se observa que ocurre con demasiada frecuencia, escalar a la Opción B descartada en DT-014: persistir el último snapshot de posición en la tabla `intentos`, actualizado por `/api/progreso` en cada recálculo, con su propia migración.
 **Prioridad:** Baja — riesgo cosmético, mismo patrón ya aceptado en DT-007/DT-011 para este proyecto.
+
+---
+
+## `docs/producto/decisiones-producto.md` no refleja las cifras nuevas de la traza tras DT-015
+
+**Fecha:** 2026-08-07
+**Contexto:** Detectado por el Reviewer en la revisión de DT-015 (extensión sur del corredor corregida con `t03v`). La entrada "La traza es un corredor: el recorrido real empieza donde Santi pulse Iniciar" (2026-07-30) sigue diciendo, en su "Consecuencia técnica", que "la traza pasa de 100,21 km a ~105 km (7.121 puntos)". Esa cifra es la de DT-005, ya no la vigente (110,43 km / 7.951 puntos tras DT-015). `docs/tecnico/decisiones-tecnicas.md` sí resolvió el mismo problema para DT-001 añadiendo una nota explícita que remite a DT-015; `decisiones-producto.md` no recibió el mismo tratamiento porque no estaba en el alcance de ficheros a tocar de esta tarea.
+**Problema:** Documentación de producto con una cifra desactualizada en un log histórico de decisiones. `docs/producto/contexto.md` (el documento de "estado actual") sí está correcto con 110,43 km — el desfase es solo en el log de decisiones.
+**Impacto:** Puramente documental. Quien lea `decisiones-producto.md` de forma aislada (sin cruzar con `decisiones-tecnicas.md` o `contexto.md`) puede quedarse con la cifra de ~105 km como vigente.
+**Solución propuesta:** Añadir una nota breve a esa entrada, mismo patrón que la nota de DT-015 en `decisiones-tecnicas.md` (DT-001): "la cifra de esta decisión es la vigente en su fecha; DT-015 (2026-08-07) la corrige a 110,43 km / 7.951 puntos".
+**Prioridad:** Baja.
+
+---
+
+## `nota_extension_sur` en `traza.geojson` mezcla dos medidas distintas bajo una misma cifra ("~10,2 km al sur de O Porriño")
+
+**Fecha:** 2026-08-07
+**Contexto:** Detectado por el Reviewer en la revisión de DT-015. La propiedad `nota_extension_sur` de `scripts/simplificar-traza.ts` (y por tanto de `traza.geojson`) dice "Los primeros ~10,2 km (al sur de O Porriño) proceden del KML original...". Los 10,2175 km son la distancia desde el inicio original de la traza (pre-DT-005, ~1,7 km al norte del centro de O Porriño) hasta el nuevo extremo sur — no son 10,2 km medidos desde O Porriño hacia el sur (esa cifra real es 8.508,2 m, ver DT-015).
+**Problema:** La cifra en sí es correcta (coincide con "Extensión sur... 4,7549 km → 10,2175 km" documentado en el histórico de la tarea), pero el paréntesis "(al sur de O Porriño)" puede leerse como si los 10,2 km fueran íntegramente al sur del centro de O Porriño, cuando en realidad incluyen también el tramo ya existente entre el inicio original (al norte del centro) y el centro mismo.
+**Impacto:** Puramente documental/cosmético — no afecta a ningún cálculo, solo a la claridad de un comentario de propiedades del GeoJSON que no llega al cliente (no es `traza-mapa.geojson`).
+**Solución propuesta:** Reformular a algo como "Los primeros ~10,2 km del corredor (desde el inicio original de la traza, incluyendo el tramo que atraviesa O Porriño) proceden del KML..." para no sugerir que toda la cifra es sur del centro.
+**Prioridad:** Baja.
 
 ---

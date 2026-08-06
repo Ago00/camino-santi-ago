@@ -19,6 +19,12 @@ alternativas se valoraron, por qué se eligió, fecha.
 | Dónde se usa | Solo servidor (`proyeccion.ts`) | Se envía al navegador (mapa, F3) |
 | Exactitud | Longitud real, intocable | ±3 m, estética |
 
+> Nota (DT-015, 2026-08-07): la fila "Puntos" de esta tabla es la cifra en la
+> fecha de esta decisión. DT-015 corrige la extensión sur del corredor y las
+> cifras vigentes pasan a 7.951 puntos / 110,43 km (cálculo). El reparto en
+> dos ficheros con estas responsabilidades no cambia — solo el punto de
+> corte al sur.
+
 **Por qué.** Douglas-Peucker corta esquinas y por tanto **siempre acorta la
 línea**. Medido sobre nuestra traza real **antes de la extensión sur de F1.1**
 (6.911 puntos, 100 km) — el análisis sigue siendo válido, las cifras son históricas:
@@ -114,10 +120,11 @@ Sin I/O, sin lectura de ficheros, sin `Date.now()` implícito. La traza entra co
 parámetro.
 
 **Por qué.** Los tests se escriben con trazas sintéticas de 3 puntos en vez de
-depender del GeoJSON real de 7.121 vértices (estado actual; eran 6.911 antes de
-la extensión sur de F1.1): fixtures legibles y fallos que señalan la línea exacta
-del bug. `prepararTraza` separada evita recalcular las
-distancias acumuladas en cada petición (el día del reto habrá ~3.600 posiciones).
+depender del GeoJSON real de 7.951 vértices (estado actual tras DT-015; eran
+7.121 tras DT-005, 6.911 antes de la extensión sur de F1.1): fixtures legibles
+y fallos que señalan la línea exacta del bug. `prepararTraza` separada evita
+recalcular las distancias acumuladas en cada petición (el día del reto habrá
+~3.600 posiciones).
 
 ---
 
@@ -301,8 +308,9 @@ intervalo fijo, no el coste real de cómputo. Con audiencia familiar/amigos,
 **2. Coste de `calcularProgreso` en cada petición.**
 
 `calcularProgreso` recorre todo el histórico de posiciones y proyecta cada
-una sobre los ~7.121 segmentos de la traza — con ~3.600 posiciones al final
-del reto, hasta ~25M operaciones de distancia por llamada. Con varios
+una sobre los ~7.951 segmentos de la traza (cifra tras DT-015; ~7.121 en la
+fecha de esta decisión) — con ~3.600 posiciones al final del reto, hasta
+~28M operaciones de distancia por llamada. Con varios
 seguidores haciendo polling cada 30 s durante 24-30 h, esto se ejecutaría sin
 caché justo cuando la web más tráfico tiene.
 
@@ -714,3 +722,114 @@ snapshot en `intentos`, con su propia migración y actualización desde
 **Actualiza `arquitectura.md`**: se añade `lib/progreso-cache.ts` a la tabla
 de estructura, y se documenta que es la fuente del snapshot de posición de
 `crearMinutoAMinuto`, no `posiciones` directamente.
+
+---
+
+## DT-015 — La extensión sur usa la variante `t03v` en vez de `t03` (verificado contra GPX real); el corredor no persigue precisión de mojón
+
+**Fecha:** 2026-08-07 · **Tarea:** Fix — corrección de la extensión sur del corredor (`scripts/simplificar-traza.ts`) · **Decisión de geometría, sin alternativas de diseño reales**
+
+### 1. El fix de geometría
+
+**Contexto.** DT-005 extiende el corredor ~4,7 km al sur de O Porriño usando
+el tramo `CPO-e01t03-TUI-O_PORRIÑO(PolígonoIndustrial-OPorriño)` del KML
+oficial de la Xunta (`docs/traza-source/doc.kml`, bloque índice 2, "t03"),
+desde su índice 0 (centro de O Porriño) hasta su índice 126 (~3.046 m al
+sur).
+
+**Hallazgo.** Contrastado contra un track GPS real de un peregrino
+(Wikiloc, `camino-de-santiago-portugues-1a-etapa-tui-porrino-2018.gpx`,
+3.308 puntos, etapa Tui→O Porriño), `t03` se desvía del camino que se anda
+de verdad de forma creciente hacia el sur: en su índice 126 (el corte
+antiguo) la separación al punto más cercano del track real es **838,1 m**.
+No es un caso aislado — la desviación crece de forma sostenida desde el
+índice ~90 en adelante.
+
+El mismo KML contiene una variante alternativa,
+`CPO-e01t03v-TUI-O_PORRIÑO(TramoAlternativo-AsGándaras-Porriño)` (bloque
+índice 3, "t03v", 863 puntos), que sí sigue el camino real en esa zona.
+
+**Empalme exacto verificado.** El índice 0 de `t03v`
+(lon −8,62272810062411, lat 42,14596909710470) coincide con el índice 94 de
+`t03` con **distancia 0,00 m** — es una bifurcación literal del KML, no una
+aproximación ni una coincidencia geográfica casual.
+
+**Criterio de corte del extremo sur de `t03v`.** Se comparó (haversine) cada
+uno de los 863 puntos de `t03v` contra el punto más cercano del track GPS
+real, usando como vara de medir el orden de magnitud de los umbrales ya
+validados del dominio (`lib/traza/umbrales.ts`: `EN_RUTA_MAX_M = 50`,
+`DESVIO_MENOR_MAX_M = 250` — solo como referencia de fiabilidad geométrica
+en este análisis puntual, no se editan ni se usan en runtime). Resultado:
+la separación se mantiene siempre por debajo de 128 m en todo el bloque, con
+un único pico de 127,8 m justo en el índice 0 (la propia bifurcación) que
+baja a menos de 20 m hacia el índice 11, un segundo pico menor de hasta
+93 m entre los índices ~430-448, y el resto casi siempre por debajo de
+10-20 m. Nunca se acerca a `DESVIO_MENOR_MAX_M` (250 m). **Conclusión: se
+usa el bloque `t03v` completo**, sus 863 puntos (índices 0 a 862).
+
+**Composición resultante** (`scripts/simplificar-traza.ts`): `t03` desde el
+centro de O Porriño (índice 0) hasta la bifurcación (índice 94) + `t03v`
+completo desde la bifurcación hacia el sur (índices 0 a 862, sin duplicar el
+punto de bifurcación). El nuevo corte sur queda a **8.508,2 m** del centro
+de O Porriño (antes: 3.045,6 m) — el corredor se alarga, no se acorta.
+Guardarraíl cumplido explícitamente antes de implementar.
+
+**No se persigue el empalme con `t02`.** El extremo sur de `t03v` queda a
+**1.358,9 m** del inicio del bloque `t02`
+(`CPO-e01t02-TUI-O_PORRIÑO(PonteDasFebres-PolígonoIndustrial)`) — un tramo
+sin conexión documentada en el KML entre ambos bloques. Fuera de alcance
+deliberadamente: el corredor ya gana ~5,5 km de margen sur fiable con solo
+`t03v`; cerrar ese hueco de 1,4 km exigiría o bien dibujar geometría manual
+(mismo tipo de deuda ya aceptada para el tramo final norte, ver DT-002) o
+investigar más bloques del KML sin verificación GPS disponible en esta
+tarea. No aporta nada al objetivo real del corredor (dar margen sur
+suficiente), así que no se persigue.
+
+**Resultado tras regenerar (`pnpm simplificar-traza`):** `traza.geojson`
+pasa de 7.121 a **7.951 puntos**, de **104,9684 km a 110,4310 km**
+(+5.462,6 m, todo en la extensión sur). `traza-mapa.geojson` (pintado) pasa
+a 2.101 puntos, 110,1328 km.
+
+### 2. Aclaración de DT-005: el corredor no persigue precisión de mojón
+
+DT-005 ya establece que el corredor es *"el recorrido previsto"*, no *"el
+recorrido real"* — la precisión fina del progreso mostrado el día del reto
+la resuelve el anclaje al primer punto GPS real del intento
+(`calcularProgreso`, ancla en `validas[0]`, dominio cerrado y sin tocar en
+esta tarea). Esta corrección de geometría **no busca acertar el mojón físico
+"100 km"** — busca únicamente que el corredor tenga margen sur suficiente
+para que `clasificarEstado` (`lib/traza/proyeccion.ts`) no muestre
+`desvio-mayor` al primer punto real del intento, sea cual sea el punto
+exacto donde Santi pulse Iniciar dentro de la zona corregida.
+
+**Contexto no bloqueante — investigación de mojones reales.** Durante esta
+tarea se localizaron en OpenStreetMap dos mojones del Camino Portugués
+Central georreferenciados al norte de O Porriño (lat 42,1696, marcado
+"97,602"; lat 42,1934, marcado "94,512"), ambos fuera de la zona corregida
+por este fix. Se intentó usarlos para calibrar el desfase entre la traza y
+la escala grabada en piedra (mismo problema documentado en DT-005 y
+`DEBT.md`), pero la calibración no fue concluyente con los dos únicos puntos
+disponibles y no formaba parte del alcance aprobado de esta tarea — queda
+como contexto para una futura tarea de calibración de mojones, no como
+bloqueo de esta.
+
+### Alternativas valoradas
+
+- *Corregir solo el tramo más desviado de `t03` con geometría manual
+  dibujada a mano.* Descartada: el KML oficial ya tiene un tramo real
+  (`t03v`) verificado contra GPS — no hay motivo para dibujar a mano cuando
+  existe dato oficial mejor.
+- *Perseguir el empalme completo con `t02` para no dejar ningún hueco sin
+  documentar.* Descartada por alcance: el corredor ya cumple su objetivo
+  (margen sur suficiente) sin cerrar ese hueco; ver razonamiento arriba.
+- *Recalibrar el mojón físico "100 km" con los dos mojones de OSM
+  encontrados.* Descartada: dos puntos no bloqueantes y no concluyentes no
+  justifican reabrir el diseño de "corredor con margen" que DT-005 ya
+  resolvió con una solución más robusta (anclaje al primer punto real).
+
+**Actualiza `arquitectura.md`**: tabla de las dos trazas con las cifras
+nuevas (7.951 puntos, 110,43 km de cálculo / 110,13 km de pintado) y el
+comentario de estructura de `traza.geojson`. **Actualiza `DEBT.md`**: sin
+deuda nueva — el hueco de 1,4 km con `t02` y la calibración de mojón físico
+ya estaban registrados (DEBT.md, entrada "Desfase entre la pantalla y las
+piedras") y siguen igual de vigentes, sin cambio de prioridad.

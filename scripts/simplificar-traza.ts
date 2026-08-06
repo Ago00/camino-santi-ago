@@ -12,16 +12,23 @@
  *
  * Ejecutar con: pnpm simplificar-traza
  *
- * Ver docs/tecnico/decisiones-tecnicas.md DT-001, DT-002 y DT-005 para el razonamiento.
+ * Ver docs/tecnico/decisiones-tecnicas.md DT-001, DT-002, DT-005 y DT-015 para el razonamiento.
  *
- * GEOMETRÍA DE LA EXTENSIÓN SUR (DT-005):
+ * GEOMETRÍA DE LA EXTENSIÓN SUR (DT-005, corregida en DT-015):
  * La traza base va sur→norte: inicio en [-8.617671, 42.169304] (dentro del bloque 4 del KML),
- * meta en Quintana. Para extender al sur usamos dos bloques del KML (ordenados norte→sur):
+ * meta en Quintana. Para extender al sur usamos tres bloques del KML (ordenados norte→sur):
  *   Bloque 4 (e02t01 O_PORRIÑO-REDONDELA): [-8.606, 42.2045] → [-8.6216, 42.1627] (O Porriño centro)
  *     → índices 365..445 de este bloque van del inicio actual al centro (norte→sur)
- *   Bloque 2 (e01t03 TUI-O_PORRIÑO): [-8.6216, 42.1627] → [-8.6259, 42.1131]
- *     → índices 0..126 de este bloque van del centro hasta ~3,046 m al sur
- * Ambos se invierten para mantener la orientación sur→norte de la traza y se anteponen.
+ *   Bloque 2 (e01t03 TUI-O_PORRIÑO): [-8.6216, 42.1627] → bifurcación con t03v
+ *     → índices 0..94 de este bloque van del centro de O Porriño a la bifurcación.
+ *     DT-015: a partir de ahí `t03` se desvía hasta ~838 m del camino real (verificado
+ *     contra un track GPS real de Wikiloc), así que NO se usa más allá del índice 94.
+ *   Bloque 3 (e01t03v TUI-O_PORRIÑO, variante As Gándaras-Porriño): [-8.6227, 42.1460] → sur
+ *     → bloque completo (índices 0..862), que sí coincide con el track GPS real
+ *     (DT-015: siempre < 128 m de separación, la inmensa mayoría < 20 m).
+ *     Su índice 0 coincide exactamente (0,00 m) con el índice 94 del bloque 2 —
+ *     es una bifurcación literal del KML, no una aproximación.
+ * Los tres se invierten para mantener la orientación sur→norte de la traza y se anteponen.
  * Todos los bloques del KML están almacenados norte→sur.
  */
 
@@ -52,7 +59,7 @@ const WAYPOINTS_FINALES: [number, number][] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Parámetros de la extensión sur (DT-005)
+// Parámetros de la extensión sur (DT-005, corregida en DT-015)
 // ---------------------------------------------------------------------------
 
 // Índice del punto de inicio actual en el bloque 4 del KML.
@@ -62,10 +69,21 @@ const WAYPOINTS_FINALES: [number, number][] = [
 const KML_BLOQUE4_IDX = 4;
 const KML_BLOQUE4_INICIO_IDX = 365; // índice del punto ≈ inicio actual de la traza
 
-// Bloque 2: va del centro de O Porriño [-8.6216, 42.1627] hacia el sur.
-// Usamos los índices 0..126, que cubren ~3.046 m al sur del centro.
+// Bloque 2 (t03, CPO-e01t03-TUI-O_PORRIÑO): va del centro de O Porriño
+// [-8.6216, 42.1627] hacia el sur. DT-015: verificado contra un track GPS real
+// (GPX de Wikiloc, 3.308 puntos) que a partir de aquí `t03` se desvía hasta
+// ~838 m del camino que se anda de verdad — por eso solo se usa hasta la
+// bifurcación con la variante `t03v` (índice 94; t03[94] ≡ t03v[0], 0,00 m).
 const KML_BLOQUE2_IDX = 2;
-const KML_BLOQUE2_FIN_IDX = 126; // inclusive — punto a ~3.046 m del centro
+const KML_BLOQUE2_BIFURCACION_IDX = 94; // último índice de t03 usado — bifurcación con t03v
+
+// Bloque 3 (t03v, CPO-e01t03v-TUI-O_PORRIÑO, variante As Gándaras-Porriño):
+// continúa desde la bifurcación hacia el sur. DT-015: coincide con el track
+// GPS real en todo su recorrido (siempre < 128 m, la mayoría < 20 m) — se usa
+// el bloque completo, 863 puntos (~6,5 km desde la bifurcación). No se
+// persigue el empalme con el bloque `t02` (fuera de alcance, ver DT-015).
+const KML_BLOQUE3_IDX = 3;
+const KML_BLOQUE3_FIN_IDX = 862; // inclusive — último índice de t03v (bloque completo)
 
 // ---------------------------------------------------------------------------
 // Haversine para calcular la longitud real tras extender la traza
@@ -158,14 +176,17 @@ const coordsBase = lineFeature.geometry.coordinates as [number, number][];
 console.log(`Fuente base (traza recortada): ${coordsBase.length} puntos`);
 
 // ---------------------------------------------------------------------------
-// Leer el KML y construir la extensión sur (DT-005)
+// Leer el KML y construir la extensión sur (DT-005, corregida en DT-015)
 //
 // Los bloques del KML van norte→sur. Para anteponer la extensión a la traza
 // (que va sur→norte) hay que invertirlos.
 //
 // Construcción:
-//   1. ext2Inv = bloque2[0..126] invertido → de ~3 km sur a O Porriño centro
+//   1. ext2Inv = (bloque2[0..94] + bloque3[0..862]) invertido →
+//      de extremo sur de t03v a O Porriño centro, pasando por la bifurcación
 //   2. ext4Inv = bloque4[365..445] invertido → de O Porriño centro a ≈ inicio actual
+//   Se suprime el primer punto de bloque3 al concatenar con bloque2 (duplicaría
+//   la bifurcación, t03v[0] ≡ t03[94], 0,00 m — ver verificación más abajo)
 //   Se suprime el primer punto de ext4Inv (duplicaría el último de ext2Inv)
 //   Se suprime el primer punto de coordsBase (≈ último de ext4Inv, a 3,15 m)
 // ---------------------------------------------------------------------------
@@ -175,11 +196,34 @@ const bloques = parsearBloquesKML(kmlPath);
 
 // Bloque 4: índices 365..fin (del inicio actual al centro de O Porriño, norte→sur)
 const ext4NorteSur = bloques[KML_BLOQUE4_IDX].slice(KML_BLOQUE4_INICIO_IDX);
-// Bloque 2: índices 0..126 (del centro de O Porriño a ~3 km al sur, norte→sur)
-const ext2NorteSur = bloques[KML_BLOQUE2_IDX].slice(0, KML_BLOQUE2_FIN_IDX + 1);
+
+// Bloque 2 (t03): índices 0..94 (del centro de O Porriño a la bifurcación con t03v, norte→sur)
+const ext2NorteSur = bloques[KML_BLOQUE2_IDX].slice(0, KML_BLOQUE2_BIFURCACION_IDX + 1);
+// Bloque 3 (t03v): índices 1..862 (norte→sur, sin duplicar la bifurcación en índice 0)
+const ext3NorteSur = bloques[KML_BLOQUE3_IDX].slice(1, KML_BLOQUE3_FIN_IDX + 1);
+
+// Verificar el empalme de la bifurcación t03[94] ≡ t03v[0] (DT-015: debe ser ~0 m)
+const bifurcacionT03 = bloques[KML_BLOQUE2_IDX][KML_BLOQUE2_BIFURCACION_IDX];
+const bifurcacionT03v = bloques[KML_BLOQUE3_IDX][0];
+const distBifurcacion =
+  haversineKm(bifurcacionT03[1], bifurcacionT03[0], bifurcacionT03v[1], bifurcacionT03v[0]) * 1000;
+if (distBifurcacion > 1) {
+  console.warn(
+    `AVISO: Empalme t03[${KML_BLOQUE2_BIFURCACION_IDX}]→t03v[0] tiene ${distBifurcacion.toFixed(1)} m de salto ` +
+    `(se esperaba 0 — bifurcación literal del KML, DT-015)`
+  );
+} else {
+  console.log(
+    `Empalme t03[${KML_BLOQUE2_BIFURCACION_IDX}]→t03v[0]: ${distBifurcacion.toFixed(1)} m ` +
+    `(bifurcación exacta, DT-015)`
+  );
+}
+
+// Extensión combinada del bloque 2+3 (norte→sur): O Porriño centro → bifurcación → extremo sur de t03v
+const ext2NorteSurCombinado: [number, number][] = [...ext2NorteSur, ...ext3NorteSur];
 
 // Invertir para que ambos vayan sur→norte
-const ext2SurNorte = [...ext2NorteSur].reverse();
+const ext2SurNorte = [...ext2NorteSurCombinado].reverse();
 const ext4SurNorte = [...ext4NorteSur].reverse();
 
 // Verificar empalme entre ext2 y ext4 (deben compartir O Porriño centro)
@@ -302,9 +346,13 @@ const featureCalculoLine = {
       "geometría dibujada a mano rodeando la catedral. Pendiente validar " +
       "sobre el terreno el día del reto. Ver DEBT.md.",
     nota_extension_sur:
-      "DT-005: la traza es un corredor. Los primeros ~4,7 km (al sur de O Porriño) " +
-      "proceden del KML original de la Xunta (docs/traza-source/doc.kml). " +
-      "El recorrido real lo define el inicio del intento.",
+      "DT-005/DT-015: la traza es un corredor, no un recorrido exacto — su longitud " +
+      "es deliberadamente generosa y no persigue un mojón físico. Los primeros " +
+      "~10,2 km (al sur de O Porriño) proceden del KML original de la Xunta " +
+      "(docs/traza-source/doc.kml), con la extensión final por t03v (variante As " +
+      "Gándaras-Porriño) verificada contra un track GPS real. El recorrido real " +
+      "lo define el inicio del intento (calcularProgreso ancla al primer punto " +
+      "GPS real), no el origen geométrico de esta traza.",
   },
 };
 
@@ -343,7 +391,9 @@ const pointsActualizados = fuente.features
         },
         properties: {
           ...f.properties,
-          name: "Inicio del corredor (~3 km al sur de O Porriño)",
+          name:
+            "Límite sur del corredor (no es el punto de inicio oficial — " +
+            "el intento se ancla donde se pulse Iniciar)",
         },
       };
     }
