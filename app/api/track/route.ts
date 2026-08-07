@@ -23,6 +23,23 @@
  * Rate limiting (DT-011): 40 req/min por token, antes de tocar BD. Responde
  * 429 sin cuerpo — mismo criterio de rechazo silencioso que el resto del
  * endpoint.
+ *
+ * Modo de intento (DT-016): el filtro de plausibilidad geográfica (punto 2
+ * arriba) solo aplica cuando el intento activo está en modo 'guiado'. En
+ * modo 'libre' no hay una traza fija contra la que comparar, así que el
+ * filtro se desactiva por completo para ese intento — de ahí que el intento
+ * activo (con su `modo`) se resuelva ANTES de decidir si se aplica el
+ * filtro, no después como antes de esta tarea.
+ *
+ * Compatibilidad temporal con la migración sin aplicar (ver DEBT.md,
+ * "recordatorio: aplicar supabase/migrations/0003_modo_intento.sql"): si la
+ * columna `modo` todavía no existe en la BD real, la consulta del punto 4
+ * falla con un error de Postgres. Sin manejo explícito, ese error se leía
+ * como "sin intento activo" y el punto GPS se descartaba en silencio — un
+ * corte real de la ingesta, no solo un problema cosmético. En ese caso se
+ * reintenta con el select mínimo (solo `id`) y se trata el intento como modo
+ * 'guiado' (con el filtro geográfico activo), el comportamiento exacto que
+ * este endpoint ya tenía antes de DT-016.
  */
 
 import { createHash, timingSafeEqual } from "crypto";
@@ -124,31 +141,59 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { lat, lon, tst, batt, acc } = payload.data;
 
-  // 4. Filtro de plausibilidad geográfica (DT-006, capa 1).
-  const traza = cargarTrazaDeCalculo();
-  const separacionM = separacionDeTrazaM(lat, lon, traza);
-  const separacionMaximaM = SEPARACION_TRAZA_MAX_KM * 1000;
-  if (separacionM > separacionMaximaM) {
-    return respuestaVacia();
-  }
-
-  // 5. Buscar el intento activo (not cerrado).
+  // 4. Buscar el intento activo (not cerrado) y su modo — se resuelve ANTES
+  // de decidir si se aplica el filtro geográfico (DT-016): en modo libre no
+  // hay traza fija, así que ese filtro no tiene sentido y se salta entero.
   const supabase = getSupabaseAdmin();
   const { data: intentoActivo, error: errorIntento } = await supabase
     .from("intentos")
-    .select("id")
+    .select("id, modo")
     .eq("cerrado", false)
     .maybeSingle();
 
-  if (errorIntento || !intentoActivo) {
-    return respuestaVacia();
+  let intentoId: number;
+  let modoIntento: "guiado" | "libre";
+
+  if (errorIntento) {
+    // Compatibilidad temporal: la columna `modo` puede no existir todavía
+    // (migración sin aplicar, ver comentario de cabecera). Reintenta con el
+    // select mínimo y trata el intento como modo guiado.
+    const { data: intentoActivoMinimo, error: errorIntentoMinimo } = await supabase
+      .from("intentos")
+      .select("id")
+      .eq("cerrado", false)
+      .maybeSingle();
+
+    if (errorIntentoMinimo || !intentoActivoMinimo) {
+      return respuestaVacia();
+    }
+
+    intentoId = intentoActivoMinimo.id;
+    modoIntento = "guiado";
+  } else {
+    if (!intentoActivo) {
+      return respuestaVacia();
+    }
+    intentoId = intentoActivo.id;
+    modoIntento = intentoActivo.modo;
+  }
+
+  // 5. Filtro de plausibilidad geográfica (DT-006, capa 1) — solo modo
+  // 'guiado' (DT-016).
+  if (modoIntento === "guiado") {
+    const traza = cargarTrazaDeCalculo();
+    const separacionM = separacionDeTrazaM(lat, lon, traza);
+    const separacionMaximaM = SEPARACION_TRAZA_MAX_KM * 1000;
+    if (separacionM > separacionMaximaM) {
+      return respuestaVacia();
+    }
   }
 
   // 6. Insertar la posición.
   // No hay verificación de velocidad imposible aquí: eso lo hace
   // calcularProgreso() en el dominio, no la ingesta (no se duplica).
   await supabase.from("posiciones").insert({
-    intento_id: intentoActivo.id,
+    intento_id: intentoId,
     lat,
     lon,
     ts: new Date(tst * 1000).toISOString(),

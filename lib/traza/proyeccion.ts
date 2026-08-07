@@ -40,7 +40,13 @@ function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
-function haversineKm(
+/**
+ * Exportada para reutilización fuera de este módulo (DT-016,
+ * lib/traza/progreso-libre.ts): distancia restante en línea recta del modo
+ * libre. Única modificación permitida en proyeccion.ts para esa tarea — el
+ * resto del módulo (dominio guiado) no se toca.
+ */
+export function haversineKm(
   aLat: number,
   aLon: number,
   bLat: number,

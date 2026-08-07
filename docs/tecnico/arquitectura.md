@@ -19,24 +19,33 @@ camino-santi-ago/
 │   │   ├── page.tsx          # F4: panel admin
 │   │   └── actions.ts        # F4: server actions de admin (incluye minuto a minuto, DT-013)
 │   └── api/
-│       ├── track/route.ts    # F2: ingesta OwnTracks
-│       ├── progreso/route.ts     # F3: GET, caché TTL en memoria (DT-007)
+│       ├── track/route.ts    # F2: ingesta OwnTracks; filtro geográfico DT-006 solo en
+│       │                     # modo guiado, se salta en modo libre (DT-016)
+│       ├── progreso/route.ts     # F3: GET, caché TTL en memoria (DT-007); bifurca por
+│       │                         # modo del intento activo desde DT-016 (guiado/libre)
 │       ├── comentarios/route.ts  # F3: GET paginado + POST
 │       ├── intenciones/route.ts  # F3: POST (cliente admin)
 │       ├── admin/login/route.ts  # F4
 │       ├── fase/route.ts         # auto-refresco de fase: GET mínimo, sin caché (DT-012)
 │       └── minuto-a-minuto/route.ts  # DT-013: GET paginado (offset/limit) + poll incremental (despuesDeId)
 ├── components/
-│   ├── mapa/Mapa.tsx         # F3: overlay SVG (patrón de la POC); prop puntoResaltado (DT-013)
+│   ├── mapa/Mapa.tsx         # F3: overlay SVG (patrón de la POC); prop puntoResaltado (DT-013);
+│   │                         # prop variante "ruta"|"libre" (DT-016, modo libre sin traza de fondo)
 │   ├── publico/              # F3: hero, stats, formularios, hilo
 │   │   ├── RefrescoAlCambiarFase.tsx  # auto-refresco: polling 30 s a /api/fase, reload si cambia (DT-012)
-│   │   └── MinutoAMinuto.tsx  # DT-013: feed en directo, paginado + poll opcional, clic → mapa
+│   │   ├── MinutoAMinuto.tsx  # DT-013: feed en directo, paginado + poll opcional, clic → mapa
+│   │   ├── DistanciaRestante.tsx  # DT-016: cifra de distancia restante (modo libre), hermano de Mojon.tsx
+│   │   ├── ModoDuranteLibre.tsx   # DT-016: "durante" del modo libre (sin condicionales en ModoDurante.tsx)
+│   │   └── ModoLlegadaLibre.tsx   # DT-016: "llegada" del modo libre (sin condicionales en ModoLlegada.tsx)
 │   └── admin/               # F4: secciones del panel
 │       ├── ComposerMinutoAMinuto.tsx  # DT-013: texto + foto opcional, Server Action nativa
 │       ├── EntradaMinutoAMinuto.tsx   # DT-013: fila con editar inline (solo texto) + eliminar
-│       └── SeccionMinutoAMinuto.tsx   # DT-013: lista del intento activo (Server Component)
+│       ├── SeccionMinutoAMinuto.tsx   # DT-013: lista del intento activo (Server Component)
+│       └── ActividadAcciones.tsx      # DT-016: selector de modo (guiado/libre) + destino antes de Iniciar
 ├── lib/
-│   ├── types.ts              # tipos de dominio (contrato para todas las capas)
+│   ├── types.ts              # tipos de dominio (contrato para todas las capas); ProgresoPublico
+│   │                          # es unión discriminada por `modo` desde DT-016 (ProgresoPublicoGuiado
+│   │                          # | ProgresoPublicoLibre)
 │   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
 │   ├── rate-limit.ts          # F5: rate limiting en memoria de proceso (DT-011), usado por todos los endpoints públicos
 │   ├── progreso-cache.ts      # DT-014: caché compartida de ProgresoPublico (antes vivía
@@ -46,9 +55,11 @@ camino-santi-ago/
 │   ├── traza/
 │   │   ├── traza.geojson         # traza de CÁLCULO (7.951 puntos, sin simplificar, DT-015)
 │   │   ├── traza-mapa.geojson    # traza de PINTADO (Douglas-Peucker 3 m, ~2.101 pts)
-│   │   ├── proyeccion.ts         # dominio puro: prepararTraza + calcularProgreso
+│   │   ├── proyeccion.ts         # dominio puro: prepararTraza + calcularProgreso (modo guiado, cerrado)
 │   │   ├── proyeccion.test.ts    # tests unitarios con fixtures sintéticas
-│   │   ├── progreso-publico.ts   # F3: aProgresoPublico() — proyección segura al cliente
+│   │   ├── progreso-publico.ts   # F3: aProgresoPublico() — proyección segura al cliente (rama guiado)
+│   │   ├── progreso-libre.ts     # DT-016: calcularProgresoLibre() — dominio puro del modo libre
+│   │   │                         # (distancia haversine al destino, sin corredor ni validación)
 │   │   ├── cargar-traza.ts       # carga traza.geojson (cálculo) server-side
 │   │   ├── cargar-traza-mapa.ts  # F3: carga traza-mapa.geojson (pintado) server-side
 │   │   └── umbrales.ts           # constantes del dominio (EN_RUTA_MAX_M, etc.)
@@ -133,6 +144,10 @@ en cada petición.
 - Las posiciones con `descartado = true` no participan en ningún cálculo.
 - La `Fase` del intento activo determina qué muestra la web pública.
 - Las intenciones son siempre privadas: ninguna política RLS de anon las alcanza.
+- El `modo` de un intento (`'guiado' | 'libre'`, DT-016) se fija en `iniciarReto()`
+  (transición `antes` → `durante`) y es inmutable durante toda su vida — cambiarlo
+  exige "Reiniciar" (que abre un intento nuevo). `destino_lat`/`destino_lon` solo
+  se rellenan en modo libre; en modo guiado quedan siempre `null`.
 
 ## Variables de entorno requeridas (F2+)
 

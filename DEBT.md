@@ -2,6 +2,111 @@
 
 ---
 
+## Recordatorio: aplicar `supabase/migrations/0003_modo_intento.sql` contra producción
+
+**Fecha:** 2026-08-07
+**Contexto:** Detectado por el Orquestador verificando en vivo esta rama
+(`feature/modo-libre-guiado`) contra el Supabase real de producción, no por
+un agente del pipeline. La migración `0003_modo_intento.sql` (columnas
+`modo`/`destino_lat`/`destino_lon` de `intentos`, DT-016) todavía no está
+aplicada en producción — se aplicará más adelante, por separado. Mientras
+tanto, con el código de esta rama desplegado, las consultas que seleccionan
+esas columnas fallan contra la BD real con `column intentos.modo does not
+exist (code 42703)`.
+**Problema:** Sin salvaguarda, ese error de columna se interpretaba (en
+`app/page.tsx`, `app/api/progreso/route.ts`) como "sin intento activo",
+ocultando la fase real (`durante`/`llegada`) de un intento realmente en
+marcha tras la pantalla "antes del reto" — una regresión visible para
+cualquier visitante. En `app/api/track/route.ts` el mismo error hacía que se
+descartara en silencio cada punto GPS recibido, sin insertarlo — corte real
+de la ingesta, no solo cosmético.
+**Impacto (mientras la migración no esté aplicada):** Aplicado el fix de
+compatibilidad de esta tarea (fallback al select mínimo, tratando el intento
+como modo guiado en los tres puntos de lectura, y omitiendo `modo` del
+`UPDATE` de `iniciarReto` en modo guiado), el comportamiento público vuelve a
+ser idéntico al de antes de introducir el modo de intento — sin pérdida de
+datos ni de seguimiento en directo. La única limitación que queda: el modo
+**libre** no se puede iniciar desde el panel admin hasta que la migración
+esté aplicada (falla con el mensaje de error ya existente "No se pudo
+iniciar el reto."), aceptado explícitamente porque solo afecta al admin, no
+al público.
+**Solución propuesta:** Aplicar `supabase/migrations/0003_modo_intento.sql`
+contra el proyecto Supabase de producción. Una vez aplicada y verificada
+(columnas `modo`/`destino_lat`/`destino_lon` presentes en `intentos`), el
+código de fallback de esta tarea queda inactivo por sí solo (las consultas
+completas ya no fallan) — no hace falta revertir nada, pero conviene
+revisar si merece la pena simplificar/eliminar el fallback una vez pase
+tiempo suficiente sin que nadie dependa de él.
+**Prioridad:** Alta — hasta que se aplique, el modo libre no está disponible
+en producción y el sistema depende de este fallback para no romper la web
+pública ni la ingesta de posiciones.
+
+---
+
+## El fallback de compatibilidad (migración 0003 sin aplicar) no distingue el error "columna inexistente" de otros errores genuinos de Supabase
+
+**Fecha:** 2026-08-07
+**Contexto:** Detectado por el Reviewer en la Ronda 2 de revisión del fix de
+compatibilidad (ver entrada anterior de este archivo y `docs/tareas/CURRENT.md`,
+"Fix de compatibilidad post-revisión"). Los tres puntos de fallback
+(`app/page.tsx` `obtenerIntentoActivo`, `app/api/track/route.ts`, `app/api/progreso/route.ts`
+`calcularProgresoActual`/`obtenerIntentoActivoModoGuiado`) activan el reintento
+con el select mínimo ante **cualquier** `error` que devuelva la consulta con
+`modo`/`destino_lat`/`destino_lon` — nunca comprueban `error.code === "42703"`
+(el código Postgres específico de "columna no existe") ni registran nada en
+logs cuando el error es de otra naturaleza (red, RLS mal configurado, timeout).
+**Problema:** Un fallo genuino y no relacionado con la migración pendiente
+queda indistinguible del caso esperado "columna todavía no existe" — ambos
+disparan el mismo camino de reintento silencioso, sin ningún rastro en logs
+que permita diferenciar "esto es esperado, falta aplicar la migración" de
+"esto es un problema real que investigar".
+**Impacto:** Verificado que no hay regresión funcional: en el peor caso (el
+select de fallback también falla), el resultado es exactamente el mismo
+comportamiento que tenía el sistema antes de DT-016 (se trata como "sin
+intento activo" / se descarta el punto GPS) — coherente con el patrón de
+degradación silenciosa ya establecido en todo el proyecto (`respuestaVacia()`
+en `/api/track` nunca da pistas sobre el motivo de un descarte). El único
+coste real es de observabilidad: mientras la migración 0003 siga sin
+aplicarse, no hay forma de detectar desde logs si el fallback se está
+disparando por el motivo esperado o por otra causa.
+**Solución propuesta:** Comprobar explícitamente `error.code === "42703"`
+antes de decidir el reintento; si el código es distinto, registrar con
+`console.error` (incluyendo el código/mensaje real de Supabase, sin datos de
+usuario) para poder diferenciar ambos casos en los logs de Vercel. Aplica a
+los tres puntos de fallback listados arriba.
+**Prioridad:** Baja — no bloquea el cierre de la tarea (sin regresión de
+comportamiento), pero conviene resolverlo junto con la limpieza del fallback
+una vez la migración esté aplicada y confirmada.
+
+---
+
+## Patrón de fallback de compatibilidad (migración 0003) triplicado sin extraer a un helper compartido
+
+**Fecha:** 2026-08-07
+**Contexto:** Detectado por el Reviewer en la Ronda 2 de revisión del fix de
+compatibilidad. El mismo patrón (intentar select completo → si falla,
+reintentar con select mínimo → tratar como modo guiado) aparece implementado
+de forma independiente en `app/page.tsx`, `app/api/track/route.ts` y
+`app/api/progreso/route.ts`, con ligeras variaciones (columnas seleccionadas,
+cliente Supabase admin vs. público, forma del valor de retorno).
+**Problema:** Triplicación de lógica equivalente en tres ficheros. No se
+extrajo a un helper común.
+**Impacto:** Bajo — evaluado y aceptado en la revisión: es código
+explícitamente temporal (destinado a quedar inactivo y candidato a
+eliminarse una vez la migración esté aplicada, ver entrada de deuda
+anterior), y los tres call sites difieren lo suficiente (columnas distintas,
+dos clientes Supabase distintos, formas de retorno distintas) como para que
+una abstracción compartida forzada añadiera complejidad sin beneficio real
+para código de vida corta — coherente con el criterio del framework contra
+abstracciones especulativas.
+**Solución propuesta:** No actuar mientras el fallback siga siendo temporal.
+Si en una revisión futura se confirma que la migración sigue sin aplicarse
+mucho tiempo después (y por tanto este código deja de ser "temporal" en la
+práctica), reconsiderar extraer un helper común en ese momento, no antes.
+**Prioridad:** Baja.
+
+---
+
 ## Desfase entre la pantalla y las piedras: calibración aplazada a F3
 
 **Fecha:** 2026-07-30
@@ -303,6 +408,28 @@ compartido (Upstash u otro).
 **Problema:** La cifra en sí es correcta (coincide con "Extensión sur... 4,7549 km → 10,2175 km" documentado en el histórico de la tarea), pero el paréntesis "(al sur de O Porriño)" puede leerse como si los 10,2 km fueran íntegramente al sur del centro de O Porriño, cuando en realidad incluyen también el tramo ya existente entre el inicio original (al norte del centro) y el centro mismo.
 **Impacto:** Puramente documental/cosmético — no afecta a ningún cálculo, solo a la claridad de un comentario de propiedades del GeoJSON que no llega al cliente (no es `traza-mapa.geojson`).
 **Solución propuesta:** Reformular a algo como "Los primeros ~10,2 km del corredor (desde el inicio original de la traza, incluyendo el tramo que atraviesa O Porriño) proceden del KML..." para no sugerir que toda la cifra es sur del centro.
+**Prioridad:** Baja.
+
+---
+
+## Modo libre (DT-016): el trazado en vivo del mapa solo capta 1 punto GPS por ventana de polling (30 s)
+
+**Fecha:** 2026-08-07
+**Contexto:** Generado al implementar el modo de intento "libre" (DT-016, `docs/tecnico/decisiones-tecnicas.md`). El contrato `ProgresoPublico` (rama libre) solo expone `ultimaPosicion` (la posición más reciente), no un histórico — decisión explícita de DT-016 para no ampliar el contrato público. Para pintar en el mapa "el trazado de puntos GPS recibidos, conectados según van llegando" en modo "durante" sin añadir un endpoint público nuevo ni exponer el histórico completo en `ProgresoPublico`, la solución adoptada carga el histórico completo una vez server-side (carga inicial de página) y luego, en cada poll de 30 s a `GET /api/progreso` (ya existente, DT-007), añade al trazado la `ultimaPosicion` si su `ts` cambió respecto al último punto conocido.
+**Problema:** Si el tracker GPS envía más de un punto dentro de la misma ventana de 30 s entre dos polls, el cliente solo llega a ver y añadir al trazado visual el último de esos puntos — los intermedios quedan guardados en BD (no se pierde ningún dato real) pero no aparecen en la polilínea que ve el espectador hasta que la página se recargue (momento en el que la carga inicial sí trae el histórico completo).
+**Impacto:** Cosmético — el trazado en vivo puede verse ligeramente menos denso/suave de lo que realmente caminó/condujo la persona en modo libre, solo durante el tramo entre la última recarga de página y el momento actual. No afecta a `distanciaRestanteKm` (siempre se calcula sobre la posición real más reciente en BD, no sobre el trazado del mapa) ni a ningún dato mostrado a terceros.
+**Solución propuesta:** Si en uso real se nota el trazado demasiado disperso, añadir un endpoint público ligero (`GET /api/puntos-gps` o similar, con el mismo criterio de RLS/rate limiting que el resto de endpoints públicos) que devuelva los puntos nuevos desde un cursor (mismo patrón que `despuesDeId` de `GET /api/minuto-a-minuto`, DT-013), y que `ModoDuranteLibre.tsx` haga polling a ese endpoint en vez de derivar el trazado únicamente de `ultimaPosicion`.
+**Prioridad:** Baja — cosmético, modo libre es una feature nueva sin uso real todavía que lo confirme como problema.
+
+---
+
+## `docs/producto/funcionalidades.md`, `roadmap.md` y `decisiones-producto.md` no reflejan el modo de intento configurable (guiado/libre)
+
+**Fecha:** 2026-08-07
+**Contexto:** Detectado por el Reviewer en la revisión de "Modo de intento configurable (guiado / libre con destino en línea recta)" (DT-016). La feature está completamente implementada y bien documentada en `CHANGELOG.md`, `docs/tecnico/arquitectura.md` y `docs/tecnico/modelo-datos.md`, pero `docs/producto/funcionalidades.md` sigue describiendo la web pública solo en términos del modo guiado (barra de progreso, km andados/restantes, sin ninguna mención al modo libre ni a la distancia restante en línea recta) y `docs/producto/decisiones-producto.md` no tiene ninguna entrada sobre la decisión de producto de ofrecer un modo de intento configurable. `roadmap.md` tampoco menciona la idea en ningún punto, ni antes ni después de implementarla.
+**Problema:** Documentación de producto desactualizada respecto al estado real del sistema — mismo patrón ya registrado antes en este archivo para "Minuto a minuto" (ver entrada de 2026-08-02, ya cerrada por el Agente de Producto). Un lector de `funcionalidades.md` (incluido el propio Agente de Producto en una tarea futura) no sabría, sin cruzar con `docs/tecnico/`, que el modo libre existe.
+**Impacto:** Puramente documental — cero efecto en comportamiento. Reduce la fiabilidad de la documentación de producto como fuente de verdad de qué existe ya en el producto. Es la segunda vez que este patrón ocurre (ver `docs/LESSONS.md`, entrada sobre documentación de producto no actualizada tras features cerradas sin pasar por el Agente de Producto).
+**Solución propuesta:** El Agente de Producto debe añadir una sección a `funcionalidades.md` describiendo el modo libre desde la perspectiva del usuario (qué ve, en qué se diferencia de "durante"/"llegada" guiado), y una entrada en `decisiones-producto.md` con la decisión de ofrecer un modo configurable al iniciar.
 **Prioridad:** Baja.
 
 ---

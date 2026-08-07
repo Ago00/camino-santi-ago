@@ -6,7 +6,8 @@
  *
  * Cubre: caso sin intento activo, caso con histórico, la proyección a
  * ProgresoPublico (nunca campos internos de Posicion), el comportamiento
- * de la caché TTL en memoria (DT-007) y el rate limiting por IP (DT-011).
+ * de la caché TTL en memoria (DT-007), el rate limiting por IP (DT-011) y
+ * la bifurcación por modo del intento activo (DT-016: guiado vs libre).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -20,7 +21,20 @@ function crearPeticion(ip = "203.0.113.10"): NextRequest {
   });
 }
 
-let intentoActivoMock: { id: number } | null = null;
+interface IntentoActivoMock {
+  id: number;
+  modo?: "guiado" | "libre";
+  destino_lat?: number | null;
+  destino_lon?: number | null;
+}
+
+let intentoActivoMock: IntentoActivoMock | null = null;
+let errorIntentoMock: { message: string } | null = null;
+// Mock del intento activo devuelto por el select mínimo de fallback (solo
+// `id`), usado cuando la consulta con modo/destino_lat/destino_lon falla
+// (columnas inexistentes, migración 0003_modo_intento.sql sin aplicar — ver
+// DEBT.md).
+let intentoActivoMinimoMock: { id: number } | null = null;
 let posicionesMock: Posicion[] = [];
 
 vi.mock("@/lib/supabase/public", () => ({
@@ -28,9 +42,14 @@ vi.mock("@/lib/supabase/public", () => ({
     from: vi.fn((tabla: string) => {
       if (tabla === "intentos") {
         return {
-          select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockReturnThis(),
-          maybeSingle: vi.fn().mockResolvedValue({ data: intentoActivoMock, error: null }),
+          select: vi.fn((columnas: string) => ({
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue(
+              columnas.includes("modo")
+                ? { data: intentoActivoMock, error: errorIntentoMock }
+                : { data: intentoActivoMinimoMock, error: null }
+            ),
+          })),
         };
       }
       if (tabla === "posiciones") {
@@ -78,6 +97,8 @@ function posicion(overrides: Partial<Posicion>): Posicion {
 
 beforeEach(async () => {
   intentoActivoMock = null;
+  errorIntentoMock = null;
+  intentoActivoMinimoMock = null;
   posicionesMock = [];
   reiniciarRateLimit();
   // La caché TTL vive en el módulo compartido lib/progreso-cache.ts (DT-014,
@@ -169,5 +190,80 @@ describe("GET /api/progreso — rate limiting (DT-011)", () => {
 
     const response = await GET(crearPeticion("198.51.100.99"));
     expect(response.status).toBe(200);
+  });
+});
+
+describe("GET /api/progreso — bifurcación por modo del intento activo (DT-016)", () => {
+  it("devuelve la rama 'libre' (distanciaRestanteKm, sin porcentaje ni odómetro) cuando el intento activo está en modo libre", async () => {
+    intentoActivoMock = { id: 9, modo: "libre", destino_lat: 42.1, destino_lon: -8.0 };
+    posicionesMock = [posicion({ id: 1, lat: 42.0, lon: -8.0, ts: "2026-09-12T10:00:00.000Z" })];
+
+    const { GET } = await import("@/app/api/progreso/route");
+    const response = await GET(crearPeticion());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.modo).toBe("libre");
+    expect(body.distanciaRestanteKm).toBeCloseTo(11.12, 1);
+    expect(body.ultimaPosicion).toEqual({ lat: 42.0, lon: -8.0, ts: "2026-09-12T10:00:00.000Z" });
+    expect(body).not.toHaveProperty("porcentaje");
+    expect(body).not.toHaveProperty("odometroKm");
+  });
+
+  it("devuelve distanciaRestanteKm null en modo libre sin destino fijado", async () => {
+    intentoActivoMock = { id: 9, modo: "libre", destino_lat: null, destino_lon: null };
+    posicionesMock = [posicion({ id: 1, lat: 42.0, lon: -8.0 })];
+
+    const { GET } = await import("@/app/api/progreso/route");
+    const response = await GET(crearPeticion());
+    const body = await response.json();
+
+    expect(body.modo).toBe("libre");
+    expect(body.distanciaRestanteKm).toBeNull();
+  });
+
+  it("devuelve la rama 'guiado' (con porcentaje) cuando el intento activo está en modo guiado", async () => {
+    intentoActivoMock = { id: 1, modo: "guiado" };
+    posicionesMock = [posicion({ id: 1, lat: 0, lon: 0 })];
+
+    const { GET } = await import("@/app/api/progreso/route");
+    const response = await GET(crearPeticion());
+    const body = await response.json();
+
+    expect(body.modo).toBe("guiado");
+    expect(body).toHaveProperty("porcentaje");
+    expect(body).not.toHaveProperty("distanciaRestanteKm");
+  });
+});
+
+describe("GET /api/progreso — compatibilidad con la migración 0003_modo_intento.sql sin aplicar (ver DEBT.md)", () => {
+  it("reintenta con el select mínimo y calcula progreso en modo guiado cuando la columna `modo` no existe todavía", async () => {
+    errorIntentoMock = { message: "column intentos.modo does not exist" };
+    intentoActivoMinimoMock = { id: 3 };
+    posicionesMock = [
+      posicion({ id: 1, lat: 0, lon: 0, ts: "2026-09-12T08:00:00.000Z" }),
+      posicion({ id: 2, lat: 0.45049, lon: 0, ts: "2026-09-12T13:00:00.000Z" }),
+    ];
+
+    const { GET } = await import("@/app/api/progreso/route");
+    const response = await GET(crearPeticion());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.modo).toBe("guiado");
+    expect(body.porcentaje).toBeGreaterThan(0);
+  });
+
+  it("devuelve progreso en cero (no distanciaRestanteKm) cuando falla también el select de fallback", async () => {
+    errorIntentoMock = { message: "column intentos.modo does not exist" };
+    intentoActivoMinimoMock = null;
+
+    const { GET } = await import("@/app/api/progreso/route");
+    const response = await GET(crearPeticion());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.modo).toBe("guiado");
+    expect(body.porcentaje).toBe(0);
   });
 });

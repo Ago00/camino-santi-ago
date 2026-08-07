@@ -281,6 +281,91 @@ una fase temprana se comenta describiendo limitaciones que fases posteriores
 resuelven — buscar y purgar estos comentarios debe ser parte explícita del
 checklist de cualquier tarea de tipo "cierre" o "auditoría completa".
 
+## Features cerradas por el pipeline técnico dejan `docs/producto/` desactualizado si nadie invoca al Agente de Producto al cierre
+
+**Registrada:** 2026-08-07 (revisión de DT-016 — modo de intento guiado/libre)
+**Por quién:** Reviewer
+
+Segunda vez que ocurre el mismo patrón (la primera fue "Minuto a minuto",
+DEBT.md 2026-08-02): una feature de cara al usuario se implementa
+completamente, con `CHANGELOG.md` y documentación técnica
+(`arquitectura.md`, `decisiones-tecnicas.md`, `modelo-datos.md`) al día,
+pero `docs/producto/funcionalidades.md`, `decisiones-producto.md` y
+`roadmap.md` no se tocan — porque el pipeline estándar (Clarificador →
+Arquitecto → Implementador → Reviewer → Seguridad) nunca invoca al Agente de
+Producto salvo que el usuario lo pida explícitamente en conversación
+directa. El Implementador actualiza `CHANGELOG.md`/`DEBT.md` (su
+responsabilidad según el framework, sección 8) pero no `docs/producto/`,
+que es responsabilidad exclusiva del Agente de Producto.
+
+**Causa raíz:** el framework asigna `docs/producto/` al Agente de Producto,
+pero ese agente no forma parte del pipeline de desarrollo (sección 3: "No
+forma parte del pipeline de desarrollo. Se invoca en conversación directa
+con el usuario"). Si una feature nace directamente como tarea técnica (sin
+pasar antes por una conversación de producto que la registre en
+`roadmap.md`), no hay ningún punto del pipeline que la documente desde la
+perspectiva de usuario al cerrarse.
+
+**Regla a partir de ahora:** el Reviewer, al auditar la sección de
+documentación de cualquier feature con impacto visible para el usuario
+final, debe comprobar explícitamente `docs/producto/funcionalidades.md` y
+`decisiones-producto.md` además de `CHANGELOG.md`/`DEBT.md`/documentación
+técnica — y si están desactualizados, registrarlo como recomendación en
+`DEBT.md` (no bloqueante, porque escribir documentación de producto no es
+responsabilidad del Implementador), para que quede trazado y alguien lo
+retome explícitamente. El Orquestador debería considerar invocar al Agente
+de Producto como paso de cierre para toda feature con superficie de usuario
+nueva, no solo cuando el usuario lo pide.
+
+**Aplica a:** cualquier tarea de tipo Feature (no Fix/Mejora interna) que
+cambie lo que ve o puede hacer un usuario final de la web pública o del
+panel admin.
+
+## Una migración escrita y aprobada no es una migración aplicada: verificar contra el entorno real antes de dar una tarea por cerrada
+
+**Registrada:** 2026-08-07 (Ronda 2 de revisión de DT-016 — modo de intento guiado/libre)
+**Por quién:** Reviewer (a partir de un hallazgo del Orquestador)
+
+DT-016 pasó Ronda 1 completa (Reviewer y Seguridad, sin bloqueantes) con las
+4 quality gates de código en verde (`typecheck`, `lint`, `test`, `build`) y
+una migración nueva (`supabase/migrations/0003_modo_intento.sql`) escrita,
+revisada y correcta en su contenido SQL. Nadie en el pipeline —ni el
+Implementador, ni el Reviewer, ni Seguridad— comprobó si esa migración
+estaba realmente **aplicada contra el proyecto Supabase de producción**
+antes de dar la tarea por lista. No lo estaba. El código desplegado asumía
+columnas que no existían todavía en la BD real: la web pública mostraba la
+fase "antes del reto" con un intento realmente en curso, y `/api/track`
+descartaba en silencio cada punto GPS recibido. Lo encontró el Orquestador
+verificando la rama en vivo contra Supabase real, no ningún agente del
+pipeline estándar.
+
+**Causa raíz:** el pipeline (Clarificador → Arquitecto → Implementador →
+Reviewer → Seguridad) opera enteramente sobre código y sus quality gates
+automatizadas — ninguna de ellas ejecuta ni verifica migraciones contra un
+entorno real. Escribir el fichero `.sql` correcto es necesario pero no
+suficiente: como con el CSS de Tailwind (ver lección "Ninguna quality gate
+detecta que Tailwind no esté generando CSS real"), hay una clase entera de
+fallos que solo se manifiestan verificando contra el sistema real desplegado,
+nunca contra código o tests aislados.
+
+**Regla a partir de ahora:** cuando una tarea incluye una migración de base
+de datos nueva, el checklist de cierre no puede darse por completo solo con
+las quality gates de código — hace falta confirmar explícitamente si la
+migración se ha aplicado (o se aplicará) contra el entorno real antes de que
+el código que depende de ella se considere listo para producción. Si la
+migración todavía no se puede aplicar en el momento de la tarea (por
+ejemplo, se coordina aparte), el código dependiente debe incluir desde el
+diseño —no como parche posterior— una salvaguarda explícita ante columnas
+inexistentes, en vez de asumir que el esquema de BD ya refleja la migración
+recién escrita.
+
+**Aplica a:** cualquier tarea de cualquier proyecto que añada una migración
+de base de datos nueva — el Arquitecto debe considerar en su análisis si la
+migración se aplicará antes o después del despliegue del código dependiente,
+y el Orquestador debe verificar el estado real de la migración contra el
+entorno de producción como parte del cierre, igual que ya hace con la
+verificación visual de UI.
+
 <!-- Formato de nueva entrada:
 ## [Título]
 **Registrada:** YYYY-MM-DD

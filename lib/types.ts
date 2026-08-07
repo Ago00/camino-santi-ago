@@ -18,10 +18,24 @@
 /** Estado del reto. La web adapta su contenido según el valor activo. */
 export type Fase = "antes" | "durante" | "llegada";
 
+/**
+ * Modo de un intento (DT-016), fijado al pulsar "Iniciar" e inmutable
+ * durante toda la vida del intento (cambiarlo exige "Reiniciar"):
+ * - guiado: progreso calculado sobre la traza del Camino Portugués (el
+ *   comportamiento original, sin cambios).
+ * - libre: sin traza fija — solo distancia restante en línea recta hasta un
+ *   destino (lat/lon) fijado al iniciar.
+ */
+export type ModoIntento = "guiado" | "libre";
+
 /** Un intento de completar el reto. N intentos posibles; solo uno activo. */
 export interface Intento {
   id: number;
   fase: Fase;
+  modo: ModoIntento;
+  /** Destino del modo libre (lat/lon). Siempre null en modo guiado. */
+  destino_lat: number | null;
+  destino_lon: number | null;
   /** true cuando se usa "Reiniciar"; nada se borra de la BD. */
   cerrado: boolean;
   started_at: string | null; // ISO 8601
@@ -160,10 +174,12 @@ export interface UltimaPosicionPublica {
 }
 
 /**
- * Proyección pública de `Progreso` (ver `lib/traza/progreso-publico.ts`).
- * Es el único tipo de progreso que debe viajar del servidor al cliente en F3.
+ * Proyección pública del progreso en modo guiado (ver
+ * `lib/traza/progreso-publico.ts`). Campos idénticos a los de antes de
+ * DT-016 — el modo guiado no cambia de comportamiento.
  */
-export interface ProgresoPublico {
+export interface ProgresoPublicoGuiado {
+  modo: "guiado";
   porcentaje: number;
   kmAvanzados: number;
   kmRestantes: number;
@@ -171,3 +187,23 @@ export interface ProgresoPublico {
   estado: EstadoRuta;
   ultimaPosicion: UltimaPosicionPublica | null;
 }
+
+/**
+ * Proyección pública del progreso en modo libre (DT-016, ver
+ * `lib/traza/progreso-libre.ts`): sin ETA, sin ritmo, sin % de progreso, sin
+ * odómetro — solo la distancia restante en línea recta hasta el destino.
+ */
+export interface ProgresoPublicoLibre {
+  modo: "libre";
+  /** null si aún no hay ninguna posición registrada o el intento no tiene destino. */
+  distanciaRestanteKm: number | null;
+  ultimaPosicion: UltimaPosicionPublica | null;
+}
+
+/**
+ * Proyección pública del progreso (F3). Es el único tipo de progreso que
+ * debe viajar del servidor al cliente. Unión discriminada por `modo`
+ * (DT-016): cada consumidor sabe en tiempo de compilación qué campos tiene
+ * disponibles según el modo del intento — sin opcionales sueltos.
+ */
+export type ProgresoPublico = ProgresoPublicoGuiado | ProgresoPublicoLibre;

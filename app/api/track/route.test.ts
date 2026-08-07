@@ -4,7 +4,8 @@
  * No dependen de una BD real (no existe proyecto Supabase todavía, ver
  * docs/tareas/CURRENT.md). Cubren: validación de token en tiempo constante,
  * parseo/rechazo del payload OwnTracks, filtro de plausibilidad geográfica
- * (DT-006) y el flujo de inserción cuando todo es válido.
+ * (DT-006, solo modo guiado tras DT-016) y el flujo de inserción cuando todo
+ * es válido.
  *
  * Mock del módulo lib/supabase/admin: se sustituye getSupabaseAdmin() por un
  * builder falso que registra las llamadas encadenadas (.from/.select/.eq/
@@ -30,10 +31,15 @@ const PUNTO_MADRID = { lat: 40.4168, lon: -3.7038 };
 
 interface IntentoActivoMock {
   id: number;
+  modo: "guiado" | "libre";
 }
 
 let intentoActivoMock: IntentoActivoMock | null = null;
 let erroIntentoMock: Error | null = null;
+// Mock del intento activo devuelto por el select mínimo de fallback (solo
+// `id`), usado cuando la consulta con `modo` falla (columna inexistente,
+// migración 0003_modo_intento.sql sin aplicar — ver DEBT.md).
+let intentoActivoMinimoMock: { id: number } | null = null;
 const insertSpy = vi.fn().mockResolvedValue({ data: null, error: null });
 
 function crearBuilderFalso() {
@@ -41,12 +47,14 @@ function crearBuilderFalso() {
     from: vi.fn((tabla: string) => {
       if (tabla === "intentos") {
         return {
-          select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockReturnThis(),
-          maybeSingle: vi.fn().mockResolvedValue({
-            data: intentoActivoMock,
-            error: erroIntentoMock,
-          }),
+          select: vi.fn((columnas: string) => ({
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue(
+              columnas.includes("modo")
+                ? { data: intentoActivoMock, error: erroIntentoMock }
+                : { data: intentoActivoMinimoMock, error: null }
+            ),
+          })),
         };
       }
       if (tabla === "posiciones") {
@@ -98,6 +106,7 @@ beforeEach(() => {
   process.env.TRACK_TOKEN = TRACK_TOKEN_TEST;
   intentoActivoMock = null;
   erroIntentoMock = null;
+  intentoActivoMinimoMock = null;
   insertSpy.mockClear();
   reiniciarRateLimit();
 });
@@ -136,7 +145,7 @@ describe("POST /api/track — token", () => {
 
 describe("POST /api/track — cuerpo vacío o malformado", () => {
   it("responde 200 [] sin insertar cuando el body está vacío", async () => {
-    intentoActivoMock = { id: 1 };
+    intentoActivoMock = { id: 1, modo: "guiado" };
     const url = `http://localhost/api/track?t=${encodeURIComponent(TRACK_TOKEN_TEST)}`;
     const request = new NextRequest(url, {
       method: "POST",
@@ -151,7 +160,7 @@ describe("POST /api/track — cuerpo vacío o malformado", () => {
   });
 
   it("responde 200 [] sin insertar cuando el body es JSON malformado", async () => {
-    intentoActivoMock = { id: 1 };
+    intentoActivoMock = { id: 1, modo: "guiado" };
     const url = `http://localhost/api/track?t=${encodeURIComponent(TRACK_TOKEN_TEST)}`;
     const request = new NextRequest(url, {
       method: "POST",
@@ -168,7 +177,7 @@ describe("POST /api/track — cuerpo vacío o malformado", () => {
 
 describe("POST /api/track — payload", () => {
   it("responde 200 [] sin insertar cuando _type no es location", async () => {
-    intentoActivoMock = { id: 1 };
+    intentoActivoMock = { id: 1, modo: "guiado" };
     const request = crearPeticion(
       TRACK_TOKEN_TEST,
       payloadValido({ _type: "transition" })
@@ -181,7 +190,7 @@ describe("POST /api/track — payload", () => {
   });
 
   it("responde 200 [] sin insertar cuando lat no es numérico", async () => {
-    intentoActivoMock = { id: 1 };
+    intentoActivoMock = { id: 1, modo: "guiado" };
     const request = crearPeticion(
       TRACK_TOKEN_TEST,
       payloadValido({ lat: "no-es-un-numero" })
@@ -194,7 +203,7 @@ describe("POST /api/track — payload", () => {
   });
 
   it("responde 200 [] sin insertar cuando lon no es numérico", async () => {
-    intentoActivoMock = { id: 1 };
+    intentoActivoMock = { id: 1, modo: "guiado" };
     const request = crearPeticion(
       TRACK_TOKEN_TEST,
       payloadValido({ lon: null })
@@ -207,9 +216,9 @@ describe("POST /api/track — payload", () => {
   });
 });
 
-describe("POST /api/track — filtro geográfico (DT-006)", () => {
-  it("responde 200 [] sin insertar cuando el punto está a más de 100 km de la traza (Madrid)", async () => {
-    intentoActivoMock = { id: 1 };
+describe("POST /api/track — filtro geográfico (DT-006, solo modo guiado)", () => {
+  it("responde 200 [] sin insertar cuando el punto está a más de 100 km de la traza (Madrid) en modo guiado", async () => {
+    intentoActivoMock = { id: 1, modo: "guiado" };
     const request = crearPeticion(
       TRACK_TOKEN_TEST,
       payloadValido({ lat: PUNTO_MADRID.lat, lon: PUNTO_MADRID.lon })
@@ -219,6 +228,25 @@ describe("POST /api/track — filtro geográfico (DT-006)", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([]);
     expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  it("inserta el punto aunque esté a más de 100 km de la traza cuando el intento activo está en modo libre (DT-016)", async () => {
+    intentoActivoMock = { id: 5, modo: "libre" };
+    const request = crearPeticion(
+      TRACK_TOKEN_TEST,
+      payloadValido({ lat: PUNTO_MADRID.lat, lon: PUNTO_MADRID.lon })
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(insertSpy).toHaveBeenCalledTimes(1);
+    expect(insertSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intento_id: 5,
+        lat: PUNTO_MADRID.lat,
+        lon: PUNTO_MADRID.lon,
+      })
+    );
   });
 });
 
@@ -234,7 +262,7 @@ describe("POST /api/track — intento activo", () => {
   });
 
   it("inserta la posición con los campos correctos cuando el punto está en rango y hay intento activo", async () => {
-    intentoActivoMock = { id: 42 };
+    intentoActivoMock = { id: 42, modo: "guiado" };
     const request = crearPeticion(TRACK_TOKEN_TEST, payloadValido());
     const response = await POST(request);
 
@@ -255,7 +283,7 @@ describe("POST /api/track — intento activo", () => {
 
 describe("POST /api/track — rate limiting por token (DT-011)", () => {
   it("responde 429 sin insertar al superar 40 peticiones en un minuto con el mismo token", async () => {
-    intentoActivoMock = { id: 1 };
+    intentoActivoMock = { id: 1, modo: "guiado" };
 
     for (let i = 0; i < 40; i++) {
       const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido()));
@@ -274,9 +302,52 @@ describe("POST /api/track — rate limiting por token (DT-011)", () => {
       await POST(crearPeticion("token-incorrecto", payloadValido()));
     }
 
-    intentoActivoMock = { id: 1 };
+    intentoActivoMock = { id: 1, modo: "guiado" };
     const response = await POST(crearPeticion(TRACK_TOKEN_TEST, payloadValido()));
 
     expect(response.status).toBe(200);
+  });
+});
+
+describe("POST /api/track — compatibilidad con la migración 0003_modo_intento.sql sin aplicar (ver DEBT.md)", () => {
+  it("reintenta con el select mínimo y trata el intento como modo guiado cuando la columna `modo` no existe todavía", async () => {
+    erroIntentoMock = { message: "column intentos.modo does not exist" } as Error;
+    intentoActivoMinimoMock = { id: 7 };
+
+    const request = crearPeticion(TRACK_TOKEN_TEST, payloadValido());
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(insertSpy).toHaveBeenCalledTimes(1);
+    expect(insertSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ intento_id: 7, lat: PUNTO_EN_TRAZA.lat, lon: PUNTO_EN_TRAZA.lon })
+    );
+  });
+
+  it("aplica el filtro geográfico (modo guiado por defecto) en el fallback, descartando un punto a >100 km", async () => {
+    erroIntentoMock = { message: "column intentos.modo does not exist" } as Error;
+    intentoActivoMinimoMock = { id: 7 };
+
+    const request = crearPeticion(
+      TRACK_TOKEN_TEST,
+      payloadValido({ lat: PUNTO_MADRID.lat, lon: PUNTO_MADRID.lon })
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([]);
+    expect(insertSpy).not.toHaveBeenCalled();
+  });
+
+  it("responde 200 [] sin insertar cuando falla también el select de fallback (sin intento activo real)", async () => {
+    erroIntentoMock = { message: "column intentos.modo does not exist" } as Error;
+    intentoActivoMinimoMock = null;
+
+    const request = crearPeticion(TRACK_TOKEN_TEST, payloadValido());
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([]);
+    expect(insertSpy).not.toHaveBeenCalled();
   });
 });

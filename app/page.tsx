@@ -8,14 +8,17 @@ import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { cargarTrazaDeMapa } from "@/lib/traza/cargar-traza-mapa";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
 import { aProgresoPublico } from "@/lib/traza/progreso-publico";
+import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
 import { obtenerTextos } from "@/lib/textos/obtener-textos";
 import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
 import { calcularRitmoMedioIntento } from "@/lib/ritmo";
-import type { Posicion } from "@/lib/types";
+import type { Fase, ModoIntento, Posicion, ProgresoPublicoGuiado, ProgresoPublicoLibre } from "@/lib/types";
 import PeregrinoLibre from "@/components/publico/PeregrinoLibre";
 import ModoAntes from "@/components/publico/ModoAntes";
 import ModoDurante from "@/components/publico/ModoDurante";
+import ModoDuranteLibre from "@/components/publico/ModoDuranteLibre";
 import ModoLlegada from "@/components/publico/ModoLlegada";
+import ModoLlegadaLibre from "@/components/publico/ModoLlegadaLibre";
 import type { EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
 import RefrescoAlCambiarFase from "@/components/publico/RefrescoAlCambiarFase";
 
@@ -40,20 +43,32 @@ export default async function Home() {
       <div className="mx-auto w-full max-w-[480px] px-5 pb-28">
         {fase === "antes" && <ModoAntes textos={textos} trazaCoords={trazaCoords} />}
         {fase === "durante" && intentoActivo && (
-          <ModoDuranteConectado
-            intentoId={intentoActivo.id}
-            startedAt={intentoActivo.started_at}
-            trazaCoords={trazaCoords}
-          />
+          intentoActivo.modo === "libre" ? (
+            <ModoDuranteLibreConectado intentoId={intentoActivo.id} destino={destinoDelIntento(intentoActivo)} />
+          ) : (
+            <ModoDuranteConectado
+              intentoId={intentoActivo.id}
+              startedAt={intentoActivo.started_at}
+              trazaCoords={trazaCoords}
+            />
+          )
         )}
         {fase === "llegada" && intentoActivo && (
-          <ModoLlegadaConectado
-            intentoId={intentoActivo.id}
-            startedAt={intentoActivo.started_at}
-            endedAt={intentoActivo.ended_at}
-            mensajeLlegada={intentoActivo.mensaje_llegada}
-            trazaCoords={trazaCoords}
-          />
+          intentoActivo.modo === "libre" ? (
+            <ModoLlegadaLibreConectado
+              intentoId={intentoActivo.id}
+              destino={destinoDelIntento(intentoActivo)}
+              mensajeLlegada={intentoActivo.mensaje_llegada}
+            />
+          ) : (
+            <ModoLlegadaConectado
+              intentoId={intentoActivo.id}
+              startedAt={intentoActivo.started_at}
+              endedAt={intentoActivo.ended_at}
+              mensajeLlegada={intentoActivo.mensaje_llegada}
+              trazaCoords={trazaCoords}
+            />
+          )
         )}
       </div>
     </div>
@@ -105,6 +120,41 @@ async function ModoLlegadaConectado({
   );
 }
 
+async function ModoDuranteLibreConectado({
+  intentoId,
+  destino,
+}: {
+  intentoId: number;
+  destino: { lat: number; lon: number } | null;
+}) {
+  const { progreso, puntosGps } = await calcularProgresoLibreDelIntento(intentoId, destino);
+  return <ModoDuranteLibre progresoInicial={progreso} puntosGpsIniciales={puntosGps} />;
+}
+
+async function ModoLlegadaLibreConectado({
+  intentoId,
+  destino,
+  mensajeLlegada,
+}: {
+  intentoId: number;
+  destino: { lat: number; lon: number } | null;
+  mensajeLlegada: string | null;
+}) {
+  const [{ progreso, puntosGps }, entradasMinutoAMinuto] = await Promise.all([
+    calcularProgresoLibreDelIntento(intentoId, destino),
+    cargarEntradasMinutoAMinuto(intentoId),
+  ]);
+
+  return (
+    <ModoLlegadaLibre
+      progreso={progreso}
+      mensajeLlegada={mensajeLlegada ?? TEXTOS_POR_DEFECTO.mensaje_llegada_default}
+      puntosGps={puntosGps}
+      entradasMinutoAMinuto={entradasMinutoAMinuto}
+    />
+  );
+}
+
 async function cargarEntradasMinutoAMinuto(
   intentoId: number
 ): Promise<EntradaMinutoAMinutoPublica[]> {
@@ -118,23 +168,45 @@ async function cargarEntradasMinutoAMinuto(
   return data ?? [];
 }
 
-interface IntentoActivo {
+export interface IntentoActivo {
   id: number;
-  fase: "antes" | "durante" | "llegada";
+  fase: Fase;
+  modo: ModoIntento;
+  destino_lat: number | null;
+  destino_lon: number | null;
   started_at: string | null;
   ended_at: string | null;
   mensaje_llegada: string | null;
 }
 
-async function obtenerIntentoActivo(): Promise<IntentoActivo | null> {
+/**
+ * Compatibilidad temporal con la migración `supabase/migrations/0003_modo_intento.sql`
+ * sin aplicar todavía en el entorno real (ver DEBT.md, "recordatorio: aplicar
+ * 0003_modo_intento.sql"). Si la consulta con `modo`/`destino_lat`/`destino_lon`
+ * falla (columnas inexistentes), reintenta con el select mínimo previo a
+ * DT-016 y trata el intento como modo guiado — el comportamiento exacto que
+ * esta función ya tenía antes de esa tarea. Sin este fallback, un error de
+ * columna se leía como "sin intento activo" y ocultaba la fase real
+ * (durante/llegada) de un intento realmente en curso.
+ */
+export async function obtenerIntentoActivo(): Promise<IntentoActivo | null> {
   try {
     const supabase = getSupabasePublic();
-    const { data } = await supabase
+    const { data, error } = await supabase
+      .from("intentos")
+      .select("id, fase, modo, destino_lat, destino_lon, started_at, ended_at, mensaje_llegada")
+      .eq("cerrado", false)
+      .maybeSingle();
+
+    if (!error) return data;
+
+    const { data: dataMinima } = await supabase
       .from("intentos")
       .select("id, fase, started_at, ended_at, mensaje_llegada")
       .eq("cerrado", false)
       .maybeSingle();
-    return data;
+
+    return dataMinima ? { ...dataMinima, modo: "guiado", destino_lat: null, destino_lon: null } : null;
   } catch {
     // Sin proyecto Supabase configurado (entorno local sin .env, build, etc.):
     // se trata igual que "sin intento activo" — cae a fase "antes".
@@ -142,7 +214,14 @@ async function obtenerIntentoActivo(): Promise<IntentoActivo | null> {
   }
 }
 
-async function calcularProgresoDelIntento(intentoId: number) {
+/** Destino del modo libre (DT-016), o null si el intento no tiene ninguno fijado. */
+function destinoDelIntento(intento: IntentoActivo): { lat: number; lon: number } | null {
+  return intento.destino_lat !== null && intento.destino_lon !== null
+    ? { lat: intento.destino_lat, lon: intento.destino_lon }
+    : null;
+}
+
+async function obtenerHistoricoPosiciones(intentoId: number): Promise<Posicion[]> {
   const supabase = getSupabasePublic();
   const { data } = await supabase
     .from("posiciones")
@@ -151,9 +230,31 @@ async function calcularProgresoDelIntento(intentoId: number) {
     .eq("descartado", false)
     .order("ts", { ascending: true });
 
-  const historico: Posicion[] = data ?? [];
+  return data ?? [];
+}
+
+async function calcularProgresoDelIntento(intentoId: number): Promise<ProgresoPublicoGuiado> {
+  const historico = await obtenerHistoricoPosiciones(intentoId);
   const traza = cargarTrazaDeCalculo();
   return aProgresoPublico(calcularProgreso(historico, traza));
+}
+
+/**
+ * Progreso + puntos GPS del modo libre (DT-016). El histórico completo se
+ * fetch una sola vez (Server Component) y sirve para ambos: el cálculo de
+ * `distanciaRestanteKm` (misma lógica que /api/progreso) y el trazado
+ * inicial del mapa — que luego crece en el cliente con cada poll nuevo
+ * (ver ModoDuranteLibre.tsx), sin exponer el histórico completo en el
+ * contrato de ProgresoPublico.
+ */
+async function calcularProgresoLibreDelIntento(
+  intentoId: number,
+  destino: { lat: number; lon: number } | null
+): Promise<{ progreso: ProgresoPublicoLibre; puntosGps: { lat: number; lon: number }[] }> {
+  const historico = await obtenerHistoricoPosiciones(intentoId);
+  const progreso = calcularProgresoLibre(historico, destino);
+  const puntosGps = historico.map((p) => ({ lat: p.lat, lon: p.lon }));
+  return { progreso, puntosGps };
 }
 
 function formatearTiempoTotal(startedAt: string | null, endedAt: string | null): string {
