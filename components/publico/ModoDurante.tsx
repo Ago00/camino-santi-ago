@@ -15,13 +15,15 @@ import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
 import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
 import { bandaHoraria } from "@/lib/cielo";
-import type { ProgresoPublico } from "@/lib/types";
+import type { ProgresoPublicoGuiado } from "@/lib/types";
 
 const C = { ink: "#1B211D", ember: "#D9773B" };
 const POLLING_MS = 30_000;
 
+// Este componente es exclusivo del modo guiado (DT-016): el modo libre usa
+// ModoDuranteLibre.tsx, un componente propio (sin condicionales aquí).
 interface ModoDuranteProps {
-  progresoInicial: ProgresoPublico;
+  progresoInicial: ProgresoPublicoGuiado;
   /** Momento en que arrancó el intento (started_at), para "tiempo en marcha". */
   iniciadoEn: string | null;
   trazaCoords: [number, number][];

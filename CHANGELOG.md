@@ -2,6 +2,46 @@
 
 ---
 
+## 2026-08-07 — Compatibilidad temporal mientras la migración del modo de intento no esté aplicada
+
+**Tipo:** Fix
+
+Detectado verificando esta rama en directo contra el Supabase real de
+producción: como la migración que añade el modo de intento (guiado/libre)
+todavía no se ha aplicado en producción, la web pública mostraba la pantalla
+"antes del reto" incluso con un intento realmente en marcha, y el endpoint de
+ingesta de posiciones GPS descartaba en silencio todos los puntos recibidos.
+Ahora, mientras esa migración no esté aplicada, la web pública y la ingesta
+de posiciones se comportan exactamente igual que antes de introducir el modo
+de intento — sin perder ningún dato ni ocultar el seguimiento en curso. El
+panel admin sigue permitiendo iniciar el reto en modo guiado con normalidad;
+el modo libre seguirá necesitando que esa migración esté aplicada.
+
+---
+
+## 2026-08-07 — Modo de intento configurable: guiado o libre, con destino en línea recta
+
+**Tipo:** Feature
+
+Al pulsar "Iniciar" en el panel de administración, ahora se puede elegir el
+modo del intento:
+
+- **Guiado** (el de siempre): progreso sobre el Camino Portugués — %, km
+  andados/restantes, ritmo, ETA.
+- **Libre** (nuevo): pensado para trazar cualquier otra ruta, en cualquier
+  lugar. Se fija un destino (latitud/longitud) al iniciar. La web pública
+  muestra solo la distancia que queda en línea recta hasta ese destino, y el
+  mapa dibuja únicamente el recorrido real (los puntos GPS recibidos,
+  conectados según van llegando) — sin ninguna línea de ruta de fondo ni
+  barra de progreso.
+
+El modo elegido queda fijo durante todo el intento: para cambiarlo hace falta
+"Reiniciar" y elegir de nuevo. El resto de la web (intenciones, comentarios,
+minuto a minuto) funciona igual en ambos modos. En modo guiado no hay ningún
+cambio de comportamiento.
+
+---
+
 ## 2026-08-07 — El corredor sur pasa por el camino que la gente anda de verdad, no por la carretera antigua
 
 **Tipo:** Fix

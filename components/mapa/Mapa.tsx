@@ -17,6 +17,12 @@
 // Modo "previa" (por defecto): el mapa no se manipula, tocar lo amplía a
 // pantalla completa. Modo "resumen": pinta la ruta entera sin marcador de
 // posición (para el modo "antes", antes de que el reto empiece).
+//
+// Prop `variante` (DT-016): "ruta" (por defecto, comportamiento original sin
+// cambios) pinta la traza oficial de fondo + el corte de color andado/
+// restante. "libre" (modo de intento libre) omite ambas cosas y en su lugar
+// dibuja solo la polilínea de los puntos GPS recibidos (prop `puntosGps`),
+// sin inicio/fin de traza oficial (no aplican: el destino es arbitrario).
 
 "use client";
 
@@ -25,6 +31,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { type BandaHoraria } from "@/lib/cielo";
 
 type ModoMapa = "directo" | "resumen";
+type VarianteMapa = "ruta" | "libre";
 
 const BOUNDS: [[number, number], [number, number]] = [
   [-8.72, 42.12],
@@ -54,14 +61,26 @@ interface PuntoPx {
 }
 
 interface MapaProps {
-  /** Coordenadas [lon, lat] de la traza de pintado, cargadas server-side. */
+  /** Coordenadas [lon, lat] de la traza de pintado, cargadas server-side.
+   *  Ignoradas cuando `variante === "libre"` (puede pasarse `[]`). */
   trazaCoords: [number, number][];
   /** Banda horaria actual (tinte cosmético). Solo aplica en modo "directo". */
   hora: BandaHoraria;
   /** "resumen": ruta entera, sin marcador de posición (modo "antes"). */
   modo?: ModoMapa;
+  /**
+   * "ruta" (por defecto): comportamiento original, traza oficial de fondo +
+   * corte de color andado/restante. "libre" (DT-016): sin traza de fondo,
+   * solo la polilínea de `puntosGps`.
+   */
+  variante?: VarianteMapa;
   /** Posición actual (solo se pinta en modo "directo"). */
   posicionActual?: { lat: number; lon: number } | null;
+  /**
+   * Puntos GPS recibidos del intento en modo libre (DT-016), en el orden en
+   * que llegaron. Solo se usa cuando `variante === "libre"`.
+   */
+  puntosGps?: { lat: number; lon: number }[];
   /** Texto de "última señal hace…", ya formateado. Solo modo "directo". */
   ultimaSenalTexto?: string | null;
   /**
@@ -77,7 +96,9 @@ export default function Mapa({
   trazaCoords,
   hora,
   modo = "directo",
+  variante = "ruta",
   posicionActual = null,
+  puntosGps = [],
   ultimaSenalTexto = null,
   puntoResaltado = null,
 }: MapaProps) {
@@ -92,14 +113,18 @@ export default function Mapa({
   // docs/LESSONS.md). Se actualizan en un efecto, nunca durante el render.
   const posicionRef = useRef(posicionActual);
   const modoRef = useRef(modo);
+  const varianteRef = useRef(variante);
   const trazaCoordsRef = useRef(trazaCoords);
+  const puntosGpsRef = useRef(puntosGps);
   const puntoResaltadoRef = useRef(puntoResaltado);
   useEffect(() => {
     posicionRef.current = posicionActual;
     modoRef.current = modo;
+    varianteRef.current = variante;
     trazaCoordsRef.current = trazaCoords;
+    puntosGpsRef.current = puntosGps;
     puntoResaltadoRef.current = puntoResaltado;
-  }, [posicionActual, modo, trazaCoords, puntoResaltado]);
+  }, [posicionActual, modo, variante, trazaCoords, puntosGps, puntoResaltado]);
 
   const [inicioPx, setInicioPx] = useState<PuntoPx | null>(null);
   const [finPx, setFinPx] = useState<PuntoPx | null>(null);
@@ -112,13 +137,32 @@ export default function Mapa({
     const map = mapRef.current;
     if (!map) return;
 
-    const traza = trazaCoordsRef.current;
-    if (traza.length === 0) return;
-
     const proyectar = (lonLat: [number, number]): PuntoPx => {
       const p = map.project(lonLat as [number, number]);
       return { x: p.x, y: p.y };
     };
+
+    // Variante "libre" (DT-016): sin traza oficial de fondo ni corte de
+    // color andado/restante — solo la polilínea de los puntos GPS recibidos
+    // (reutiliza el bucket "andada", que ya se pinta en naranja cuando
+    // modo === "directo") y el marcador de posición actual/resaltado.
+    if (varianteRef.current === "libre") {
+      const puntos = puntosGpsRef.current;
+      setInicioPx(null);
+      setFinPx(null);
+      setTrazaRestantePx([]);
+      setTrazaAndadaPx(puntos.map((p) => proyectar([p.lon, p.lat])));
+
+      const pos = posicionRef.current;
+      setPosicionPx(modoRef.current === "directo" && pos ? proyectar([pos.lon, pos.lat]) : null);
+
+      const punto = puntoResaltadoRef.current;
+      setPuntoResaltadoPx(punto ? proyectar([punto.lon, punto.lat]) : null);
+      return;
+    }
+
+    const traza = trazaCoordsRef.current;
+    if (traza.length === 0) return;
 
     setInicioPx(proyectar(traza[0]));
     setFinPx(proyectar(traza[traza.length - 1]));
@@ -223,10 +267,11 @@ export default function Mapa({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Recalcula cuando cambian posición/modo/puntoResaltado (aunque el mapa no se mueva).
+  // Recalcula cuando cambian posición/modo/variante/puntosGps/puntoResaltado
+  // (aunque el mapa no se mueva).
   useEffect(() => {
     if (listo) recalcularOverlay();
-  }, [listo, posicionActual, modo, puntoResaltado, recalcularOverlay]);
+  }, [listo, posicionActual, modo, variante, puntosGps, puntoResaltado, recalcularOverlay]);
 
   // Ampliar/plegar.
   useEffect(() => {

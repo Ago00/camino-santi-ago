@@ -18,6 +18,7 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subirFotoMinutoAMinuto } from "@/lib/supabase/storage";
 import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
@@ -85,11 +86,54 @@ export async function crearPrimerIntento(): Promise<void> {
 }
 
 /**
+ * Parámetros de iniciarReto() (DT-016): el modo se elige en el momento de
+ * pulsar "Iniciar" y queda fijo durante toda la vida del intento (cambiarlo
+ * exige "Reiniciar", ver reiniciarReto()). En modo libre exige un destino
+ * (lat/lon) dentro del mismo rango físico que ya valida el schema Zod de
+ * `POST /api/track` (lat -90..90, lon -180..180).
+ */
+export interface IniciarRetoParams {
+  modo: "guiado" | "libre";
+  destinoLat?: number;
+  destinoLon?: number;
+}
+
+const parametrosIniciarReto = z.discriminatedUnion("modo", [
+  z.object({ modo: z.literal("guiado") }),
+  z.object({
+    modo: z.literal("libre"),
+    destinoLat: z.number().min(-90).max(90),
+    destinoLon: z.number().min(-180).max(180),
+  }),
+]);
+
+/**
  * antes → durante, sobre el intento activo actual. Pide confirmación en el
  * cliente (no aquí: la Server Action confía en que la UI ya confirmó).
+ *
+ * En modo 'libre' guarda destino_lat/destino_lon junto con la transición de
+ * fase. En modo 'guiado' esas dos columnas NO se tocan (quedan en su default
+ * de BD, null) — DT-016.
+ *
+ * Compatibilidad temporal con la migración sin aplicar (ver DEBT.md,
+ * "recordatorio: aplicar supabase/migrations/0003_modo_intento.sql"): en modo
+ * 'guiado' tampoco se incluye `modo` en el UPDATE (se omite del todo, no se
+ * fuerza explícitamente a 'guiado'). Así "Iniciar" en modo guiado sigue
+ * funcionando aunque la columna `modo` no exista todavía — no hace falta
+ * tocarla, porque su default en BD ya es 'guiado' una vez la migración esté
+ * aplicada. En modo 'libre' el UPDATE sí incluye `modo`/`destino_lat`/
+ * `destino_lon`: si la migración no está aplicada, la escritura falla con el
+ * mensaje de error ya existente más abajo — aceptado explícitamente, modo
+ * libre requiere la migración.
  */
-export async function iniciarReto(): Promise<void> {
+export async function iniciarReto(params: IniciarRetoParams): Promise<void> {
   await requerirSesion();
+
+  const datos = parametrosIniciarReto.safeParse(params);
+  if (!datos.success) {
+    throw new Error("El modo libre exige un destino (lat/lon) válido.");
+  }
+
   const supabase = getSupabaseAdmin();
 
   const { data: intentoActivo, error: errorBusqueda } = await supabase
@@ -102,10 +146,23 @@ export async function iniciarReto(): Promise<void> {
     throw new Error("No hay ningún intento en fase 'antes' que iniciar.");
   }
 
-  const { error } = await supabase
-    .from("intentos")
-    .update({ fase: "durante", started_at: new Date().toISOString() })
-    .eq("id", intentoActivo.id);
+  const cambios: {
+    fase: "durante";
+    started_at: string;
+    modo?: "libre";
+    destino_lat?: number;
+    destino_lon?: number;
+  } = {
+    fase: "durante",
+    started_at: new Date().toISOString(),
+  };
+  if (datos.data.modo === "libre") {
+    cambios.modo = "libre";
+    cambios.destino_lat = datos.data.destinoLat;
+    cambios.destino_lon = datos.data.destinoLon;
+  }
+
+  const { error } = await supabase.from("intentos").update(cambios).eq("id", intentoActivo.id);
 
   if (error) throw new Error("No se pudo iniciar el reto.");
   revalidarAdmin();

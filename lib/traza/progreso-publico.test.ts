@@ -84,4 +84,10 @@ describe("aProgresoPublico", () => {
 
     expect(publico.ultimaPosicion).toBeNull();
   });
+
+  it("marca siempre modo: 'guiado' (discriminante de la unión ProgresoPublico, DT-016)", () => {
+    const publico = aProgresoPublico(progresoBase());
+
+    expect(publico.modo).toBe("guiado");
+  });
 });

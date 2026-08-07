@@ -144,7 +144,7 @@ beforeEach(() => {
 describe("verificación de sesión (defensa independiente de proxy.ts)", () => {
   it("iniciarReto lanza si no hay cookie de sesión", async () => {
     cookieSesionMock = undefined;
-    await expect(iniciarReto()).rejects.toThrow(/sesión/i);
+    await expect(iniciarReto({ modo: "guiado" })).rejects.toThrow(/sesión/i);
   });
 
   it("descartarPosicion lanza con una cookie de sesión manipulada", async () => {
@@ -180,18 +180,56 @@ describe("Actividad — arranque desde cero (crearPrimerIntento)", () => {
 });
 
 describe("Actividad — transiciones de fase", () => {
-  it("iniciarReto pasa de 'antes' a 'durante' fijando started_at", async () => {
+  it("iniciarReto pasa de 'antes' a 'durante' fijando started_at (modo guiado)", async () => {
     intentoActivoMock = { id: 1, fase: "antes" };
-    await iniciarReto();
+    await iniciarReto({ modo: "guiado" });
 
     expect(updateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ fase: "durante", started_at: expect.any(String) })
     );
   });
 
+  it("iniciarReto en modo guiado no incluye modo/destino_lat/destino_lon en el UPDATE (compatibilidad con la migración 0003 sin aplicar, DT-016)", async () => {
+    intentoActivoMock = { id: 1, fase: "antes" };
+    await iniciarReto({ modo: "guiado" });
+
+    const cambios = updateSpy.mock.calls[0][0];
+    expect(cambios).not.toHaveProperty("modo");
+    expect(cambios).not.toHaveProperty("destino_lat");
+    expect(cambios).not.toHaveProperty("destino_lon");
+  });
+
+  it("iniciarReto en modo libre guarda destino_lat/destino_lon junto con la transición de fase (DT-016)", async () => {
+    intentoActivoMock = { id: 1, fase: "antes" };
+    await iniciarReto({ modo: "libre", destinoLat: 42.3, destinoLon: -8.6 });
+
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fase: "durante",
+        modo: "libre",
+        destino_lat: 42.3,
+        destino_lon: -8.6,
+      })
+    );
+  });
+
+  it("iniciarReto en modo libre lanza sin actualizar si falta el destino", async () => {
+    intentoActivoMock = { id: 1, fase: "antes" };
+    await expect(iniciarReto({ modo: "libre" })).rejects.toThrow(/destino/i);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("iniciarReto en modo libre lanza sin actualizar si el destino está fuera de rango físico", async () => {
+    intentoActivoMock = { id: 1, fase: "antes" };
+    await expect(
+      iniciarReto({ modo: "libre", destinoLat: 200, destinoLon: -8.6 })
+    ).rejects.toThrow(/destino/i);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
   it("iniciarReto lanza si el intento activo no está en fase 'antes'", async () => {
     intentoActivoMock = { id: 1, fase: "durante" };
-    await expect(iniciarReto()).rejects.toThrow(/antes/i);
+    await expect(iniciarReto({ modo: "guiado" })).rejects.toThrow(/antes/i);
     expect(updateSpy).not.toHaveBeenCalled();
   });
 
@@ -306,6 +344,7 @@ describe("Minuto a minuto (DT-013, snapshot de posición vía DT-014)", () => {
     ultimaPosicion: ProgresoPublico["ultimaPosicion"]
   ): ProgresoPublico {
     return {
+      modo: "guiado",
       porcentaje: 10,
       kmAvanzados: 10,
       kmRestantes: 90,

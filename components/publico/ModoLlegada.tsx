@@ -18,12 +18,14 @@ import Stats from "@/components/publico/Stats";
 import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
 import MinutoAMinuto, { type EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
-import type { ProgresoPublico } from "@/lib/types";
+import type { ProgresoPublicoGuiado } from "@/lib/types";
 
 const C = { ink: "#1B211D", gold: "#C9A24B" };
 
+// Este componente es exclusivo del modo guiado (DT-016): el modo libre usa
+// ModoLlegadaLibre.tsx, un componente propio (sin condicionales aquí).
 interface ModoLlegadaProps {
-  progreso: ProgresoPublico;
+  progreso: ProgresoPublicoGuiado;
   mensajeLlegada: string;
   /** "hh:mm" ya formateado del tiempo total del intento. */
   tiempoTotal: string;

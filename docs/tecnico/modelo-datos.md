@@ -26,6 +26,9 @@ pero solo uno activo a la vez.
 |---|---|---|
 | `id` | bigint PK | Generado automáticamente |
 | `fase` | text | `'antes' \| 'durante' \| 'llegada'` |
+| `modo` | text | `'guiado' \| 'libre'` (DT-016). Default `'guiado'`. Se fija en `iniciarReto()` y es inmutable durante la vida del intento — cambiarlo exige "Reiniciar" |
+| `destino_lat` | double precision | Destino del modo libre. `null` en modo guiado (siempre) y en modo libre antes de iniciar |
+| `destino_lon` | double precision | Ídem |
 | `cerrado` | boolean | `true` cuando se usa "Reiniciar" |
 | `started_at` | timestamptz | Se fija al pasar a `durante` |
 | `ended_at` | timestamptz | Se fija al pasar a `llegada` |
@@ -33,6 +36,8 @@ pero solo uno activo a la vez.
 | `created_at` | timestamptz | Automático |
 
 **Invariante crítico:** `CREATE UNIQUE INDEX intentos_activo_unico ON intentos ((true)) WHERE NOT cerrado` — solo un intento abierto a la vez. La BD lo garantiza, no solo el código.
+
+**Invariante de modo (DT-016):** `modo` se escribe una sola vez, en la transición `antes` → `durante` (`iniciarReto()`, `app/admin/actions.ts`). Ningún otro código de la app actualiza esta columna — no hay ninguna vía para cambiar el modo de un intento ya iniciado salvo "Reiniciar" (que cierra el intento actual y abre uno nuevo con `modo` en su default `'guiado'` hasta el siguiente Iniciar). `destino_lat`/`destino_lon` solo se escriben junto con `modo = 'libre'`; en modo guiado la actualización de `iniciarReto()` ni siquiera incluye esas dos columnas en el `UPDATE`, así que quedan en su default de BD (`null`).
 
 ### `posiciones`
 
@@ -160,13 +165,20 @@ políticas explícitas); las políticas de los ficheros son únicamente para el
 rol `anon`. Storage (bucket `minuto-a-minuto`) no tiene políticas propias:
 es un bucket público, y todas las subidas pasan por el cliente service role.
 
+Las columnas nuevas de `intentos` (`modo`, `destino_lat`, `destino_lon`,
+`supabase/migrations/0003_modo_intento.sql`, DT-016) no cambian la política
+RLS existente de `intentos_select_activo` — siguen siendo columnas del mismo
+intento activo, ya visible en su totalidad para `anon`.
+
 ---
 
 ## Migración
 
 **Ubicación:** `supabase/migrations/0001_esquema_inicial.sql` (5 tablas
-iniciales) y `supabase/migrations/0002_minuto_a_minuto.sql` (tabla
-`minuto_a_minuto` + bucket de Storage, DT-013).
+iniciales), `supabase/migrations/0002_minuto_a_minuto.sql` (tabla
+`minuto_a_minuto` + bucket de Storage, DT-013) y
+`supabase/migrations/0003_modo_intento.sql` (columnas `modo`/`destino_lat`/
+`destino_lon` de `intentos`, DT-016).
 
 **Convención de carpeta:** `supabase/migrations/NNNN_slug.sql`, numeración
 secuencial de 4 dígitos — la misma que usa la CLI oficial de Supabase

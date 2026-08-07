@@ -833,3 +833,79 @@ comentario de estructura de `traza.geojson`. **Actualiza `DEBT.md`**: sin
 deuda nueva — el hueco de 1,4 km con `t02` y la calibración de mojón físico
 ya estaban registrados (DEBT.md, entrada "Desfase entre la pantalla y las
 piedras") y siguen igual de vigentes, sin cambio de prioridad.
+
+---
+
+## DT-016 — Modo de intento (guiado/libre): camino paralelo con tipos unión, sin tocar `proyeccion.ts`
+
+**Fecha:** 2026-08-07 · **Tarea:** Feature — modo de intento configurable desde el admin · **Decisión de arquitectura (Opción B)**
+
+**Contexto.** El usuario quiere poder elegir, al pulsar "Iniciar", entre el
+modo actual ("guiado": progreso sobre la traza del Camino Portugués — %, km,
+ritmo, ETA) y un modo nuevo ("libre": pensado para trazar otras rutas, en
+cualquier lugar). En modo libre se fija un destino (lat/lon) al iniciar; la
+web muestra solo la distancia restante en línea recta (haversine) hasta ese
+destino, y el mapa dibuja únicamente el trazado de los puntos GPS recibidos,
+sin ninguna línea de ruta de fondo. Dato decisivo: los puntos de modo libre
+se aceptan y dibujan **sin validar si tienen sentido** (sin el rechazo por
+velocidad implícita imposible que sí aplica `calcularProgreso()` en modo
+guiado) — eso descarta reutilizar el dominio de progreso guiado con un flag
+interno.
+
+**Decisión.**
+- Migración nueva: `intentos.modo` (`'guiado' | 'libre'`, default
+  `'guiado'`) + `intentos.destino_lat`/`destino_lon` (nullable, solo se
+  rellenan en modo libre). El modo se fija en `iniciarReto()` (transición
+  `antes` → `durante`) y no cambia durante la vida del intento — para
+  cambiarlo hace falta "Reiniciar".
+- `ProgresoPublico` (`lib/types.ts`) pasa a ser una **unión discriminada** por
+  `modo`: la rama `'guiado'` mantiene exactamente los campos actuales
+  (`porcentaje`, `kmAvanzados`, `kmRestantes`, `odometroKm`, `estado`); la
+  rama `'libre'` expone `distanciaRestanteKm: number | null`. `ultimaPosicion`
+  se mantiene en ambas ramas (mismo nombre y tipo) para que
+  `lib/progreso-cache.ts` y `crearMinutoAMinuto` (DT-014) sigan leyéndolo sin
+  narrowing especial.
+- Nueva función de dominio pura, fuera de `lib/traza/proyeccion.ts`
+  (`proyeccion.ts` no se toca — dominio cerrado, DT-014/DT-015), que calcula
+  `distanciaRestanteKm` con `haversineKm` entre la última posición no
+  descartada y el destino. Sin corredor, sin rechazo de velocidad, sin
+  anclaje de porcentaje.
+- `app/page.tsx` bifurca una sola vez, arriba, según `intentoActivo.modo`,
+  hacia componentes propios `ModoDuranteLibre`/`ModoLlegadaLibre` (no ramas
+  condicionales dentro de `ModoDurante`/`ModoLlegada`).
+- `components/mapa/Mapa.tsx` gana un prop `variante: "ruta" | "libre"` — en
+  `"libre"` omite la traza de fondo y el overlay de color andado/restante, y
+  solo dibuja la polilínea de los puntos recibidos. Reutiliza la
+  inicialización de MapLibre/worker (la parte fràgil documentada en
+  `docs/LESSONS.md`) en vez de duplicarla en un componente de mapa aparte.
+- `app/api/track/route.ts`: se reordena para resolver primero
+  `{id, modo}` del intento activo, y el filtro de plausibilidad geográfica de
+  100 km (DT-006 capa 1) solo se aplica si `modo === 'guiado'`. En modo
+  libre no hay traza contra la que comparar, así que el filtro queda
+  desactivado por completo para ese intento.
+
+**Por qué.** El requisito de "aceptar puntos sin validar" es estructuralmente
+incompatible con reutilizar `calcularProgreso()` (que sí valida velocidad y
+corredor). Separar el camino evita que una corrección futura del dominio
+guiado afecte sin querer al modo libre (o viceversa), mantiene
+`proyeccion.ts` como dominio puro cerrado, y el tipo unión hace imposible en
+tiempo de compilación mezclar datos de un modo con la UI del otro — sin
+opcionales sueltos ni `any`.
+
+**Alternativas valoradas.**
+- **Opción A (descartada): rama condicional dentro de los componentes
+  existentes**, con `ProgresoPublico` de campos opcionales. Descartada
+  porque llena los componentes de stats de `if (modo === 'libre')` y
+  `?.`/`??`, y con TypeScript estricto los opcionales obligan a null-checks
+  en cada consumidor aunque el modo ya se sepa en ese punto — viola el
+  principio de responsabilidad única por archivo (framework, sección 7).
+- **Reutilizar `calcularProgreso()` con un flag interno que desactive
+  validación en modo libre.** Descartada: mezclar en una función de dominio
+  cerrada dos conjuntos de invariantes incompatibles (guiado valida,
+  libre no) es más frágil que mantenerlas separadas, y contradice el
+  criterio ya aplicado en DT-014/DT-015 de no tocar `proyeccion.ts` sin
+  necesidad real.
+
+**Actualiza `arquitectura.md`** y **`modelo-datos.md`**: nueva migración,
+campos nuevos de `intentos`, componentes nuevos de modo libre, y la nota de
+que el filtro geográfico de `/api/track` es condicional al modo del intento.
