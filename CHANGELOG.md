@@ -2,6 +2,34 @@
 
 ---
 
+## 2026-08-09 — Las fotos del minuto a minuto se publican siempre, pesen lo que pesen
+
+**Tipo:** Fix
+
+Durante la prueba del 2026-08-07 hubo fotos que no había forma de publicar
+(dos horas y media seguidas sin poder subir ninguna, con el botón quedándose
+colgado y sin ningún mensaje). El motivo: las fotos de más de unos 4,4 MB —el
+tamaño normal de una foto de iPhone— se rechazaban por el camino, antes
+siquiera de llegar a la web, y nada lo contaba.
+
+Ahora la foto se comprime en el propio móvil antes de enviarla, conservando
+toda la resolución que quepa: en el caso normal la foto se publica con sus
+píxeles originales intactos y solo baja de tamaño si de verdad hace falta.
+Además pesa bastante menos, así que sube mucho más rápido con la cobertura
+irregular del Camino.
+
+Y cuando algo falla, se nota: si se corta la conexión se reintenta solo (con
+el aviso en pantalla) y, si aun así no sale, aparece el motivo real escrito
+—sin perder el texto ni la foto, que siguen en el formulario para volver a
+darle a Publicar—. Publicar solo texto funciona exactamente igual que antes.
+
+De paso, la auditoría de seguridad de esta tarea encontró tres librerías
+auxiliares (de las que se usan para compilar y revisar el código, no en la web
+publicada) con avisos de seguridad pendientes. Se han actualizado a sus
+versiones corregidas.
+
+---
+
 ## 2026-08-07 — Compatibilidad temporal mientras la migración del modo de intento no esté aplicada
 
 **Tipo:** Fix

@@ -366,6 +366,65 @@ y el Orquestador debe verificar el estado real de la migración contra el
 entorno de producción como parte del cierre, igual que ya hace con la
 verificación visual de UI.
 
+## Medir la compresión en el servidor no dice nada de los límites del navegador que la va a ejecutar
+
+**Registrada:** 2026-08-09 (revisión de DT-017 — fotos del minuto a minuto)
+**Por quién:** Reviewer
+
+DT-017 eligió su escalera de compresión con una tabla medida sobre las fotos
+reales de Santi usando **libvips/mozjpeg en el servidor**, y de ahí concluyó que
+"el caso normal conserva la resolución nativa intacta". La conclusión es correcta
+sobre el eje que se midió (bytes por peldaño) y falsa sobre uno que no se midió
+ni se mencionó: **el navegador que ejecuta la compresión tiene límites propios**.
+Safari en iOS acota el backing store de un `<canvas>` (del orden de 16,7 Mpx) y,
+por encima de esa cota, no lanza ninguna excepción: `drawImage` no pinta nada y
+`toBlob` devuelve un JPEG válido en blanco. Con "resolución nativa" como primer
+peldaño y sin cota de área, una foto de 24 MP (el ajuste **por defecto** de los
+iPhone recientes) o de 48 MP entra directamente en ese agujero — y el resultado
+es una foto publicada en negro que pasa todas las validaciones de tamaño.
+
+**Causa raíz del patrón:** las medidas se tomaron con la herramienta cómoda
+(un script en el servidor) para decidir el comportamiento de un módulo que solo
+se ejecuta en el cliente. Los números de tamaño se trasladan razonablemente de
+un encoder a otro; las **capacidades del entorno** (memoria, límites de canvas,
+formatos decodificables, comportamiento ante el fallo) no se trasladan en
+absoluto, y son precisamente las que fallan en silencio.
+
+**Regla a partir de ahora:** cuando una decisión de arquitectura traslade
+trabajo al navegador (comprimir, decodificar, cifrar, generar ficheros), el
+Arquitecto debe fijar explícitamente los **límites del entorno de destino**
+—no solo el resultado deseado— y el Implementador debe acotarse dentro de ellos
+por defecto, con la degradación decidida de antemano. Señal de alarma concreta:
+cualquier parámetro "nativo/sin límite/tal cual venga" en código que se ejecuta
+en un móvil. Y ojo con las APIs de navegador que fallan devolviendo un resultado
+válido pero vacío en vez de lanzar: son de la misma familia que la lección de
+Tailwind y la del worker de MapLibre — todo verde, comportamiento roto.
+
+## Cuando el Implementador se desvía con razón de la decisión aprobada, la desviación va al documento de decisiones, no solo a CURRENT.md
+
+**Registrada:** 2026-08-09 (revisión de DT-017 — fotos del minuto a minuto)
+**Por quién:** Reviewer
+
+DT-017 cerraba con "**No cambia** el contrato de `crearMinutoAMinuto`". Al
+implementarlo, el Implementador descubrió un motivo sólido para cambiarlo
+igualmente (Next redacta en producción el mensaje de todo error lanzado en
+servidor, así que con `throw` era imposible cumplir el requisito de "el usuario
+ve el motivo real") y documentó la desviación muy bien… en
+`docs/tareas/CURRENT.md`, que se archiva al cerrar la tarea. El documento
+permanente —`decisiones-tecnicas.md`— se quedó afirmando lo contrario de lo que
+hace el código. Es la cuarta vez que este proyecto acumula documentación que
+contradice la implementación (ver `DEBT.md`: `EnlacePaginacion.tsx`, los tres
+comentarios de cabecera de F5, DT-008 sin cerrar), pero la primera en el propio
+registro de decisiones.
+
+**Regla a partir de ahora:** una desviación consciente respecto a la decisión
+aprobada no está terminada hasta que la entrada `DT-xxx` correspondiente lleva
+su nota de cierre ("lo aprobado decía X; al implementarlo se hizo Y porque Z").
+Vale una nota de dos líneas al final de la entrada; lo que no vale es dejarla
+solo en el artefacto de tarea, que es efímero por diseño. El Reviewer lo
+comprueba explícitamente en toda tarea cuyo `CURRENT.md` incluya "decisiones de
+implementación que conviene revisar".
+
 <!-- Formato de nueva entrada:
 ## [Título]
 **Registrada:** YYYY-MM-DD

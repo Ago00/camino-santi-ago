@@ -38,7 +38,11 @@ camino-santi-ago/
 │   │   ├── ModoDuranteLibre.tsx   # DT-016: "durante" del modo libre (sin condicionales en ModoDurante.tsx)
 │   │   └── ModoLlegadaLibre.tsx   # DT-016: "llegada" del modo libre (sin condicionales en ModoLlegada.tsx)
 │   └── admin/               # F4: secciones del panel
-│       ├── ComposerMinutoAMinuto.tsx  # DT-013: texto + foto opcional, Server Action nativa
+│       ├── ComposerMinutoAMinuto.tsx  # DT-013: texto + foto opcional; DT-017: envía con
+│       │                              # onSubmit propio (no <form action={fn}>: React 19
+│       │                              # resetearía el input de fichero al fallar), comprime
+│       │                              # la foto antes de enviar, reintenta y muestra el
+│       │                              # error sin perder texto ni foto
 │       ├── EntradaMinutoAMinuto.tsx   # DT-013: fila con editar inline (solo texto) + eliminar
 │       ├── SeccionMinutoAMinuto.tsx   # DT-013: lista del intento activo (Server Component)
 │       └── ActividadAcciones.tsx      # DT-016: selector de modo (guiado/libre) + destino antes de Iniciar
@@ -52,6 +56,17 @@ camino-santi-ago/
 │   │                          # solo en app/api/progreso/route.ts, DT-007); GET /api/progreso
 │   │                          # la lee/escribe, crearMinutoAMinuto solo la lee (snapshot
 │   │                          # de posición coherente con lo que ve el mapa público)
+│   ├── imagen/                # DT-017: preparación de la foto en el navegador
+│   │   ├── limites-subida.ts     # tamaño máximo y formatos aceptados; los comparten
+│   │   │                         # cliente y servidor (por debajo del corte de ~4,5 MB
+│   │   │                         # que aplica el edge de Vercel)
+│   │   ├── escalera-compresion.ts # dominio puro: peldaños calidad→dimensiones, elección
+│   │   │                          # del primero que cabe (la codificación entra como parámetro)
+│   │   └── preparar-foto.ts      # solo cliente: decodifica con <img> (orientación EXIF),
+│   │                             # recodifica a JPEG en canvas, degrada al original si falla
+│   ├── envio/                 # DT-017: envío de formularios del panel a sus Server Actions
+│   │   ├── errores-de-envio.ts   # dominio puro: qué fallo se reintenta y qué se enseña
+│   │   └── reintentar.ts         # dominio puro: reintento con espera creciente (espera inyectada)
 │   ├── traza/
 │   │   ├── traza.geojson         # traza de CÁLCULO (7.951 puntos, sin simplificar, DT-015)
 │   │   ├── traza-mapa.geojson    # traza de PINTADO (Douglas-Peucker 3 m, ~2.101 pts)
@@ -66,7 +81,8 @@ camino-santi-ago/
 │   ├── supabase/             # F2
 │   │   ├── admin.ts          # cliente service role (solo servidor)
 │   │   ├── public.ts         # cliente anon (peticiones públicas)
-│   │   └── storage.ts        # DT-013: subida de fotos a Storage (validación MIME/tamaño)
+│   │   └── storage.ts        # DT-013: subida de fotos a Storage (validación MIME/tamaño
+│   │                         # con los límites de lib/imagen/limites-subida.ts, DT-017)
 │   ├── textos/               # F3
 │   │   ├── defaults.ts       # textos por defecto (override desde BD)
 │   │   └── obtener-textos.ts # server: fusiona defaults con la tabla `textos`
@@ -102,7 +118,7 @@ camino-santi-ago/
 | Constantes de dominio | `lib/traza/umbrales.ts` | Cada umbral con su porqué. |
 | Infraestructura BD | `lib/supabase/` | Solo clientes. Sin lógica de negocio. |
 | Endpoints | `app/api/` | Validación Zod en la frontera. Sin lógica de negocio. |
-| Server Actions | `app/admin/actions.ts` | Mutaciones del panel. Autenticadas con cookie. |
+| Server Actions | `app/admin/actions.ts` | Mutaciones del panel. Autenticadas con cookie. Los fallos esperados de `crearMinutoAMinuto` se devuelven (`ResultadoPublicacion`), no se lanzan: Next redacta en producción el mensaje de todo error lanzado en el servidor (DT-017). |
 | UI | `app/` + `components/` | Sin lógica de negocio. Consume `lib/`. |
 
 ## La regla no negociable de las dos trazas

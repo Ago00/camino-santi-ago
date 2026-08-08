@@ -98,10 +98,17 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(() => crearBuilderFalso()),
 }));
 
+// Solo se sustituye la subida: `ErrorDeSubidaDeFoto` se usa real, porque la
+// Server Action decide con `instanceof` qué mensaje puede enseñarse (DT-017).
 const subirFotoSpy = vi.fn().mockResolvedValue("https://example.com/foto.jpg");
-vi.mock("@/lib/supabase/storage", () => ({
-  subirFotoMinutoAMinuto: (...args: unknown[]) => subirFotoSpy(...args),
-}));
+vi.mock("@/lib/supabase/storage", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/supabase/storage")>("@/lib/supabase/storage");
+  return {
+    ...actual,
+    subirFotoMinutoAMinuto: (...args: unknown[]) => subirFotoSpy(...args),
+  };
+});
 
 vi.mock("@/lib/auth/admin-session", async () => {
   const actual = await vi.importActual<typeof import("@/lib/auth/admin-session")>(
@@ -127,6 +134,7 @@ const {
   eliminarMinutoAMinuto,
 } = await import("@/app/admin/actions");
 const { crearSesion } = await import("@/lib/auth/admin-session");
+const { ErrorDeSubidaDeFoto } = await import("@/lib/supabase/storage");
 
 beforeEach(() => {
   vi.stubEnv("ADMIN_SESSION_SECRET", "secreto-de-test-largo-y-suficiente");
@@ -425,28 +433,71 @@ describe("Minuto a minuto (DT-013, snapshot de posición vía DT-014)", () => {
     );
   });
 
-  it("crearMinutoAMinuto lanza sin insertar si el texto está vacío", async () => {
+  // A partir de DT-017 los fallos esperados de esta acción se devuelven, no se
+  // lanzan: Next redacta en producción el mensaje de cualquier error lanzado
+  // en el servidor, así que un throw nunca llegaba a enseñar el motivo real en
+  // el composer. Ver `ResultadoPublicacion` en lib/types.ts.
+
+  it("crearMinutoAMinuto devuelve el motivo sin insertar si el texto está vacío", async () => {
     intentoActivoMock = { id: 4, fase: "durante" };
-    await expect(crearMinutoAMinuto(formDataConTexto("   "))).rejects.toThrow(/vacío/i);
+    const resultado = await crearMinutoAMinuto(formDataConTexto("   "));
+    expect(resultado).toEqual({ ok: false, mensaje: expect.stringMatching(/vacío/i) });
     expect(insertMinutoAMinutoSpy).not.toHaveBeenCalled();
   });
 
-  it("crearMinutoAMinuto lanza sin insertar si el texto supera 500 caracteres", async () => {
+  it("crearMinutoAMinuto devuelve el motivo sin insertar si el texto supera 500 caracteres", async () => {
     intentoActivoMock = { id: 4, fase: "durante" };
-    await expect(crearMinutoAMinuto(formDataConTexto("a".repeat(501)))).rejects.toThrow(/500/);
+    const resultado = await crearMinutoAMinuto(formDataConTexto("a".repeat(501)));
+    expect(resultado).toEqual({ ok: false, mensaje: expect.stringMatching(/500/) });
     expect(insertMinutoAMinutoSpy).not.toHaveBeenCalled();
   });
 
-  it("crearMinutoAMinuto lanza sin insertar si no hay ningún intento activo", async () => {
+  it("crearMinutoAMinuto devuelve el motivo sin insertar si no hay ningún intento activo", async () => {
     intentoActivoMock = null;
-    await expect(crearMinutoAMinuto(formDataConTexto("texto"))).rejects.toThrow(/activo/i);
+    const resultado = await crearMinutoAMinuto(formDataConTexto("texto"));
+    expect(resultado).toEqual({ ok: false, mensaje: expect.stringMatching(/activo/i) });
     expect(insertMinutoAMinutoSpy).not.toHaveBeenCalled();
   });
 
-  it("crearMinutoAMinuto lanza si no hay cookie de sesión", async () => {
+  it("crearMinutoAMinuto devuelve el motivo sin insertar si no hay cookie de sesión", async () => {
     cookieSesionMock = undefined;
-    await expect(crearMinutoAMinuto(formDataConTexto("texto"))).rejects.toThrow(/sesión/i);
+    const resultado = await crearMinutoAMinuto(formDataConTexto("texto"));
+    expect(resultado).toEqual({ ok: false, mensaje: expect.stringMatching(/sesión/i) });
     expect(insertMinutoAMinutoSpy).not.toHaveBeenCalled();
+  });
+
+  it("crearMinutoAMinuto devuelve ok tras insertar correctamente", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    await expect(crearMinutoAMinuto(formDataConTexto("Publicado"))).resolves.toEqual({ ok: true });
+  });
+
+  it("crearMinutoAMinuto devuelve el mensaje del fallo de subida sin insertar la entrada", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    subirFotoSpy.mockRejectedValueOnce(
+      new ErrorDeSubidaDeFoto("La foto pesa 9 MB y el máximo son 4 MB.")
+    );
+    const foto = new File([new Uint8Array(10)], "foto.jpg", { type: "image/jpeg" });
+
+    const resultado = await crearMinutoAMinuto(formDataConTexto("Con foto enorme", foto));
+
+    expect(resultado).toEqual({ ok: false, mensaje: "La foto pesa 9 MB y el máximo son 4 MB." });
+    expect(insertMinutoAMinutoSpy).not.toHaveBeenCalled();
+  });
+
+  it("crearMinutoAMinuto no filtra el mensaje de un fallo inesperado al subir la foto", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    const errorInterno = vi.spyOn(console, "error").mockImplementation(() => {});
+    subirFotoSpy.mockRejectedValueOnce(new Error("Falta SUPABASE_SERVICE_ROLE_KEY"));
+    const foto = new File([new Uint8Array(10)], "foto.jpg", { type: "image/jpeg" });
+
+    const resultado = await crearMinutoAMinuto(formDataConTexto("Con foto", foto));
+
+    expect(resultado).toEqual({
+      ok: false,
+      mensaje: "No se pudo subir la foto. Vuelve a intentarlo.",
+    });
+    expect(insertMinutoAMinutoSpy).not.toHaveBeenCalled();
+    errorInterno.mockRestore();
   });
 
   it("editarMinutoAMinuto actualiza solo texto y updated_at", async () => {

@@ -24,7 +24,10 @@ vi.mock("@/lib/supabase/admin", () => ({
   })),
 }));
 
-const { subirFotoMinutoAMinuto } = await import("@/lib/supabase/storage");
+const { subirFotoMinutoAMinuto, ErrorDeSubidaDeFoto } = await import("@/lib/supabase/storage");
+const { TAMANO_MAXIMO_FOTO_BYTES, PRESUPUESTO_COMPRESION_BYTES } = await import(
+  "@/lib/imagen/limites-subida"
+);
 
 function crearArchivo(opciones: { type: string; size: number }): File {
   const contenido = new Uint8Array(opciones.size);
@@ -69,16 +72,28 @@ describe("subirFotoMinutoAMinuto — validación de tipo MIME", () => {
 });
 
 describe("subirFotoMinutoAMinuto — validación de tamaño", () => {
-  it("acepta un fichero justo en el límite de 8 MB", async () => {
-    await subirFotoMinutoAMinuto(crearArchivo({ type: "image/jpeg", size: 8 * 1024 * 1024 }));
+  it("acepta un fichero justo en el tamaño máximo permitido", async () => {
+    await subirFotoMinutoAMinuto(
+      crearArchivo({ type: "image/jpeg", size: TAMANO_MAXIMO_FOTO_BYTES })
+    );
     expect(uploadSpy).toHaveBeenCalled();
   });
 
-  it("rechaza un fichero que supera 8 MB sin llamar a Storage", async () => {
+  it("rechaza un fichero que supera el tamaño máximo sin llamar a Storage", async () => {
     await expect(
-      subirFotoMinutoAMinuto(crearArchivo({ type: "image/jpeg", size: 8 * 1024 * 1024 + 1 }))
-    ).rejects.toThrow(/tamaño/i);
+      subirFotoMinutoAMinuto(crearArchivo({ type: "image/jpeg", size: TAMANO_MAXIMO_FOTO_BYTES + 1 }))
+    ).rejects.toThrow(/máximo/i);
     expect(uploadSpy).not.toHaveBeenCalled();
+  });
+
+  it("mantiene el tope por debajo del corte del edge de Vercel (~4,5 MB), que es el que de verdad manda", () => {
+    // Regresión de DT-017: con el tope anterior (8 MB) la validación era
+    // inalcanzable — Vercel cortaba la petición con 413 antes de llegar aquí.
+    expect(TAMANO_MAXIMO_FOTO_BYTES).toBeLessThan(4.4 * 1024 * 1024);
+  });
+
+  it("deja margen entre el presupuesto del compresor del navegador y el tope del servidor", () => {
+    expect(PRESUPUESTO_COMPRESION_BYTES).toBeLessThan(TAMANO_MAXIMO_FOTO_BYTES);
   });
 });
 
@@ -101,5 +116,11 @@ describe("subirFotoMinutoAMinuto — error de Storage", () => {
     await expect(
       subirFotoMinutoAMinuto(crearArchivo({ type: "image/jpeg", size: 100 }))
     ).rejects.toThrow(/no se pudo subir/i);
+  });
+
+  it("marca sus fallos como ErrorDeSubidaDeFoto, que es lo que la Server Action puede enseñar al usuario", async () => {
+    await expect(
+      subirFotoMinutoAMinuto(crearArchivo({ type: "image/gif", size: 100 }))
+    ).rejects.toBeInstanceOf(ErrorDeSubidaDeFoto);
   });
 });

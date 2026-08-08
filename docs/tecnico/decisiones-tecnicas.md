@@ -909,3 +909,115 @@ opcionales sueltos ni `any`.
 **Actualiza `arquitectura.md`** y **`modelo-datos.md`**: nueva migración,
 campos nuevos de `intentos`, componentes nuevos de modo libre, y la nota de
 que el filtro geográfico de `/api/track` es condicional al modo del intento.
+
+---
+
+## DT-017 — Fotos del minuto a minuto: compresión adaptativa en el navegador + reintento, sin subida directa a Storage
+
+**Fecha:** 2026-08-09 · **Tarea:** Fix de la subida de fotos del minuto a minuto · **Decisión de arquitectura**
+
+**Contexto.** Vercel rechaza en el edge, con `413` y
+`x-vercel-error: FUNCTION_PAYLOAD_TOO_LARGE`, cualquier petición de más de
+~4,5 MB, **antes de invocar la función**. Medido contra producción el
+2026-08-08: body de 4,0 y 4,3 MB llegan a la función (`401`), body de 4,5 / 5
+/ 6 MB devuelven `413`. Como la foto viaja dentro del `FormData` de la Server
+Action `crearMinutoAMinuto` (DT-013), cualquier foto de más de ~4,4 MB nunca
+llega a ejecutar código del proyecto. Durante la prueba real del 2026-08-07
+esto dejó a Santi 2 h 30 min sin poder publicar fotos.
+
+Dos creencias falsas que había codificadas en el proyecto y que esta decisión
+corrige: (a) `experimental.serverActions.bodySizeLimit: "10mb"` en
+`next.config.ts` no puede elevar el límite — es de aplicación, no de
+plataforma; (b) `TAMANO_MAXIMO_BYTES = 8 MB` en `lib/supabase/storage.ts` era
+inalcanzable, porque ninguna petición de ese tamaño llega a evaluarse.
+
+**Decisión.** La foto se re-codifica en el navegador **antes** de enviarla,
+con una escalera adaptativa que conserva el máximo de calidad que quepa en el
+presupuesto, y el envío reintenta solo ante fallos de red.
+
+1. **Escalera adaptativa, no parámetros fijos.** Se prueba primero
+   **resolución nativa a calidad alta** y solo se baja un peldaño (calidad,
+   luego dimensiones) si el resultado no cabe en el presupuesto. Medido sobre
+   las 4 fotos reales del intento 10 (todas 4032×3024, 12,2 MP, originales de
+   2,04 a 4,48 MB): a resolución completa y calidad 0,92 quedan en 1,72-3,42
+   MB — es decir, **el caso normal conserva la resolución nativa intacta** y
+   aun así baja del límite. Solo una foto excepcionalmente pesada llega a
+   perder dimensiones, y solo lo justo.
+2. **Presupuesto por debajo del corte de plataforma.** El objetivo del
+   compresor y el `TAMANO_MAXIMO_BYTES` del servidor se fijan por debajo de
+   los ~4,5 MB de Vercel, para que el límite que se aplique sea el nuestro,
+   con nuestro mensaje, en vez del `413` mudo del edge.
+3. **Degradación sin bloqueo.** Si el navegador no puede procesar la imagen,
+   no se impide publicar: se intenta con el fichero original, y si ese
+   tampoco cabe, el error sale en el móvil al instante, sin gastar una subida
+   condenada a fallar por una conexión mala.
+4. **Reintento automático con espera creciente**, y el composer nunca pierde
+   el texto ni la foto al fallar. **Sin cola persistente**: iOS Safari no
+   soporta Background Sync, así que ninguna web puede subir con la pantalla
+   bloqueada — prometer "se envía cuando se pueda" en segundo plano sería
+   falso. El reintento cubre lo que sí es posible: reanudar solo al volver a
+   primer plano.
+
+**Alternativas valoradas.**
+- **Subida directa del navegador a Supabase Storage con signed upload URL
+  (descartada).** Se salta el límite de Vercel y conserva el original íntegro,
+  pero no resuelve el problema real: seguir mandando 4-8 MB por 4G rural
+  durante 30 h es precisamente lo que falla. Además convierte un viaje de red
+  en dos, añade un endpoint nuevo que proteger y limitar, deja objetos
+  huérfanos en Storage si el segundo paso falla, y rompe la invariante de
+  DT-013 ("todas las subidas pasan por Server Actions con `service role`")
+  a pocos días del evento.
+- **Compresión + subida directa como red de seguridad (descartada).** Cubre
+  el caso de que la compresión no baje del límite, que con la escalera
+  adaptativa no se da: todo el coste y el riesgo de la anterior para un caso
+  que no ocurre.
+- **Compresión fija a 1600 px (descartada tras medirlo).** Era la propuesta
+  inicial. Los datos de arriba la desmontan: reduce 11x el tamaño cuando con
+  1,9x ya se baja del límite, sacrificando resolución sin necesidad. La
+  lección general queda en `docs/LESSONS.md`: en una foto de móvil el peso
+  está sobre todo en el encoder, no en los píxeles — medir antes de elegir
+  parámetros de compresión.
+
+**No cambia** el contrato de `crearMinutoAMinuto` ni el esquema de BD ni las
+políticas de Storage: la Server Action sigue recibiendo un `File` en el
+`FormData` y subiendo con `service role`. Todo el cambio vive en el borde
+cliente y en los umbrales.
+
+### Nota de cierre (2026-08-09) — tres desviaciones respecto a lo aprobado arriba
+
+Aprobadas por el Reviewer en la Ronda 1 de revisión. Se dejan escritas aquí
+porque este documento es el registro permanente: el detalle completo estaba
+solo en `docs/tareas/CURRENT.md`, que se archiva al cerrar la tarea.
+
+1. **El contrato de `crearMinutoAMinuto` sí cambió: `Promise<void>` →
+   `Promise<ResultadoPublicacion>`** (`{ ok: true } | { ok: false; mensaje }`,
+   en `lib/types.ts`). El párrafo de arriba afirma lo contrario y se corrige
+   aquí. **Por qué:** el punto 5 exige que Santi vea el motivo real del fallo,
+   y con un `throw` eso es imposible en producción — Next redacta el mensaje
+   de todo error lanzado en el servidor y lo sustituye por un texto genérico
+   con digest, justo el "error genérico" que el prompt clarificado prohíbe. Es
+   además lo que recomienda la propia guía de Next para errores esperados de
+   formulario ("model expected errors as return values"). Lo que sí se
+   mantiene intacto es lo que este DT declaraba fuera de alcance: sigue
+   recibiendo un `File` en el `FormData`, subiendo con `service role`, sin
+   tocar esquema ni políticas de Storage.
+
+2. **El composer envía con `onSubmit` + `preventDefault`, no con
+   `<form action={fn}>`.** React 19 solicita un reset del formulario *antes*
+   de ejecutar una `action` de tipo función (`startHostTransition` llama a
+   `requestFormReset` y después a la acción), y ese reset se aplica al
+   terminar la transición, haya ido bien o mal. Con `action`, al fallar el
+   envío se vaciaría el `<input type="file">` —no controlado— dejando la
+   miniatura en pantalla sin fichero detrás: rompía el punto 4 ("si falla, no
+   se pierde lo escrito").
+
+3. **Los peldaños "a resolución nativa" están acotados a 4032 px de lado
+   largo** (`LADO_LARGO_MAXIMO_PX`), no son ilimitados. **Por qué:** Safari en
+   iOS limita el área de un `<canvas>` a 16.777.216 px y por encima de ese
+   límite no lanza — `toBlob` devuelve un JPEG válido pero **en blanco**, que
+   pasaría todas las validaciones de tamaño y se publicaría. Los iPhone
+   recientes capturan a 24 MP (5712×4284) y pueden llegar a 48 MP. La cota se
+   fija en 4032 px porque es el lado largo de las fotos de 12 MP sobre las que
+   se midió la tabla de este DT: esas fotos siguen codificándose a resolución
+   nativa byte por byte igual, y una foto de 24 o 48 MP acaba en 4032×3024,
+   que es exactamente la resolución para la que existen las mediciones.

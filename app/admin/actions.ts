@@ -20,9 +20,10 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { subirFotoMinutoAMinuto } from "@/lib/supabase/storage";
+import { subirFotoMinutoAMinuto, ErrorDeSubidaDeFoto } from "@/lib/supabase/storage";
 import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
 import { obtenerCacheProgreso } from "@/lib/progreso-cache";
+import type { ResultadoPublicacion } from "@/lib/types";
 import type { ClaveTexto } from "@/lib/textos/defaults";
 import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
 
@@ -364,20 +365,47 @@ export async function guardarTexto(clave: string, valor: string): Promise<void> 
  * caché de 20 s + polling de 30 s del cliente. Si la caché está vacía o sin
  * `ultimaPosicion`, la entrada se guarda con `lat`/`lon` a null — deliberado,
  * sin fallback a `posiciones` (reintroduciría el problema original).
+ *
+ * **Devuelve el fallo en vez de lanzarlo** (DT-017, única acción del panel que
+ * lo hace): Next redacta en producción el mensaje de cualquier error lanzado
+ * desde el servidor, así que un `throw` llegaba al composer como un texto
+ * genérico con digest y Santi no veía nunca el motivo real. Es la forma que la
+ * propia guía de Next recomienda para los errores esperados de un formulario.
  */
-export async function crearMinutoAMinuto(formData: FormData): Promise<void> {
-  await requerirSesion();
+export async function crearMinutoAMinuto(formData: FormData): Promise<ResultadoPublicacion> {
+  try {
+    await requerirSesion();
+  } catch (error) {
+    if (error instanceof SesionInvalidaError) {
+      return { ok: false, mensaje: "Tu sesión de admin ha caducado. Vuelve a entrar y reintenta." };
+    }
+    throw error;
+  }
 
   const texto = String(formData.get("texto") ?? "").trim();
   if (texto.length === 0) {
-    throw new Error("El texto no puede estar vacío.");
+    return { ok: false, mensaje: "El texto no puede estar vacío." };
   }
   if (texto.length > 500) {
-    throw new Error("El texto no puede superar 500 caracteres.");
+    return { ok: false, mensaje: "El texto no puede superar 500 caracteres." };
   }
 
   const foto = formData.get("foto");
-  const fotoUrl = foto instanceof File && foto.size > 0 ? await subirFotoMinutoAMinuto(foto) : null;
+  let fotoUrl: string | null = null;
+  if (foto instanceof File && foto.size > 0) {
+    try {
+      fotoUrl = await subirFotoMinutoAMinuto(foto);
+    } catch (error) {
+      if (error instanceof ErrorDeSubidaDeFoto) {
+        return { ok: false, mensaje: error.message };
+      }
+      // Un fallo inesperado (env var ausente, Storage caído de forma no
+      // controlada) no se enseña: podría filtrar detalles internos. Queda en
+      // los logs de Vercel para poder investigarlo.
+      console.error("Fallo inesperado al subir la foto del minuto a minuto", error);
+      return { ok: false, mensaje: "No se pudo subir la foto. Vuelve a intentarlo." };
+    }
+  }
 
   const supabase = getSupabaseAdmin();
 
@@ -388,7 +416,7 @@ export async function crearMinutoAMinuto(formData: FormData): Promise<void> {
     .maybeSingle();
 
   if (errorBusquedaIntento || !intentoActivo) {
-    throw new Error("No hay ningún intento activo sobre el que publicar.");
+    return { ok: false, mensaje: "No hay ningún intento activo sobre el que publicar." };
   }
 
   const ultimaPosicion = obtenerCacheProgreso()?.valor.ultimaPosicion ?? null;
@@ -401,8 +429,11 @@ export async function crearMinutoAMinuto(formData: FormData): Promise<void> {
     lon: ultimaPosicion?.lon ?? null,
   });
 
-  if (errorInsercion) throw new Error("No se pudo publicar la entrada.");
+  if (errorInsercion) {
+    return { ok: false, mensaje: "No se pudo publicar la entrada. Vuelve a intentarlo." };
+  }
   revalidarAdmin();
+  return { ok: true };
 }
 
 /**
