@@ -218,3 +218,79 @@ comentario asegura resolver el problema merece verificarse empíricamente
 contra el entorno real antes de creerla: aquí bastó mandar cuerpos de 4,0 /
 4,3 / 4,5 / 5 / 6 MB a producción para acotar el límite en un minuto. Ver
 también `docs/LESSONS.md`.
+
+---
+
+## El mapa, la barra y los km se congelaban: PostgREST corta a 1000 filas, y arreglar solo eso habría sido peor
+
+**Fecha:** 2026-08-09
+**Tags:** supabase, postgrest, paginacion, rendimiento, denegacion-de-servicio, turf, algoritmo, minuto-a-minuto, mapa
+
+**Síntomas:** Durante la prueba real del 2026-08-07 (intento 10, modo libre),
+el mapa dejó de pintarse pasado cierto punto aunque el iPhone seguía enviando
+posiciones sin cortes (cadencia de 15 s constante, cero huecos reales). 1564
+posiciones guardadas en BD, pero el marcador, la distancia restante y la
+polilínea se congelaron a partir de cierto momento sin ningún error visible.
+
+**Causa raíz:** PostgREST (Supabase) limita a **1000 filas** cualquier
+`SELECT` sin `Range` explícito. Dos consultas del proyecto pedían el
+histórico completo de posiciones sin paginar
+(`app/api/progreso/route.ts`, `app/page.tsx`). Verificado con la clave
+`anon` real: la consulta devolvió `content-range: 0-999/*` con última `ts`
+de `08:49:39Z`, cuando la última posición real en BD era de `11:10:32Z` —
+564 puntos (2 h 21 min) ausentes de todo lo que el histórico alimenta. En un
+intento **guiado** real (30 h, ~7200 puntos a 15 s de cadencia), el corte
+habría llegado a las ~4 horas de empezar.
+
+**El fix "obvio" (solo paginar) se descartó tras medirlo — habría sido peor
+que el bug original.** `calcularProgreso` (`lib/traza/proyeccion.ts`)
+proyecta cada punto del histórico contra los 7951 vértices completos de la
+traza con `@turf/nearest-point-on-line` — `O(n × m)`. Medido con el
+algoritmo real (no estimado) contra un histórico sintético a ritmo humano
+constante: **281,4 segundos** para procesar el histórico de un día completo
+(~7200 puntos). Muy por encima de cualquier timeout de función serverless
+(el proyecto no declara `maxDuration`). Paginar sin más habría cambiado "el
+mapa se congela a las 4 h" por "la web no responde desde la primera hora".
+
+**Solución (DT-018):**
+1. Función compartida de fetch paginado (`.range()` en bucle hasta agotar,
+   con tope de seguridad de 50 páginas / 50.000 filas) donde de verdad hace
+   falta el histórico completo.
+2. La ruta de polling en modo libre deja de pedir el histórico entero — solo
+   necesita el último punto no descartado (`.order(ts desc).limit(1)`).
+3. **Proyección con ventana deslizante** en `calcularProgreso`: mantiene el
+   índice de traza del último punto proyectado y busca primero en ±30
+   segmentos alrededor; si no encuentra nada a menos de 300 m, reintenta con
+   escaneo completo (el comportamiento de antes) y realinea. Validado con el
+   algoritmo real: 75× más rápido a 2000 puntos (0,71 s vs. 53,9 s), ~2,87 s
+   a 7200 puntos (vs. 281 s), y resultado **idéntico** al cálculo sin ventana
+   en un escenario de desvío real de ~3 km — el mecanismo de respaldo nunca
+   da un resultado distinto, solo tarda más en ese caso puntual.
+
+**Segundo bug encontrado en revisión de seguridad, que habría reabierto el
+primero por otra vía:** el propio mecanismo de respaldo de la ventana
+(reintentar con escaneo completo cuando el punto se sale de la ventana) se
+podía forzar a propósito. Con el token de `/api/track` filtrado, alguien
+podía mandar puntos deliberadamente dispersos (dentro del radio de 100 km de
+DT-006, pero cada uno a más de 300 m del anterior) para que **cada** punto
+disparara el escaneo caro — y como esos puntos quedan persistidos, el coste
+se repetía en cada recálculo futuro, no solo una vez. ~300 puntos maliciosos
+(~8 min a 40 req/min, límite ya existente) bastaban para superar cualquier
+timeout serverless. Cerrado con un tope duro de 50 escaneos completos por
+cálculo (`VENTANA_PROYECCION_MAX_FALLBACKS`), verificado con un benchmark
+adversarial que reproduce el escenario exacto: 300 puntos maliciosos pasan de
+~11,7 s (sin tope) a ~1,7 s (con tope). Complementado con la reutilización de
+la caché ya existente (`lib/progreso-cache.ts`, DT-007/DT-014) en la carga de
+la página pública, para que no amplifique el coste en cada visita.
+
+**Lección:** un fix que arregla el síntoma reportado puede introducir un
+fallo distinto y peor si no se mide su coste a la escala real del problema
+— aquí, medir con el algoritmo real (no estimar) antes de recomendar evitó
+cambiar "se congela a las 4 h" por "no responde desde la primera hora". Y una
+optimización que introduce un camino "lento pero correcto" como red de
+seguridad (aquí, el escaneo completo de respaldo) es en sí misma una
+superficie nueva si ese camino lento se puede disparar con contenido
+controlado por un atacante, no solo por volumen — acotar cuántas veces se
+puede pagar ese coste por petición es tan necesario como acotar cuántas filas
+se pueden pedir. Ver también `docs/LESSONS.md` y DT-018 en
+`docs/tecnico/decisiones-tecnicas.md`.

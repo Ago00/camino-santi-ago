@@ -2,6 +2,34 @@
 
 ---
 
+## 2026-08-09 — El mapa y el progreso ya no se congelan pasadas ~4 horas de reto
+
+**Tipo:** Fix
+
+Durante la prueba real del 2026-08-07 el mapa dejó de actualizarse en mitad
+del intento, aunque el móvil seguía enviando la posición sin cortes. La
+causa: la base de datos solo entregaba las primeras 1000 posiciones de cada
+consulta, y a partir de ahí el mapa, la barra de progreso y los kilómetros
+mostrados se quedaban congelados el resto del día — sin ningún aviso de que
+algo había dejado de funcionar. En un intento guiado real de 30 horas esto
+habría ocurrido a partir de las ~4 horas de empezar.
+
+Ahora el histórico completo de posiciones se trae siempre, sea cual sea su
+tamaño. Y para que traerlo entero no vuelva más lento el cálculo del
+progreso a medida que pasan las horas, el propio cálculo se ha optimizado
+para aprovechar que una persona caminando avanza de forma continua — el
+resultado mostrado es exactamente el mismo de siempre, solo mucho más
+rápido de calcular con un historial largo.
+
+De paso, la revisión de seguridad de esta misma tarea encontró que ese
+mecanismo de respaldo podía forzarse deliberadamente (con acceso al canal
+de envío de posiciones) para volver a ralentizar el cálculo — se ha
+añadido un límite de seguridad que evita que eso pase, y la carga de la
+web pública ahora reutiliza el mismo resultado reciente que ya usa el
+resto del sitio en vez de recalcularlo en cada visita.
+
+---
+
 ## 2026-08-09 — Las fotos del minuto a minuto se publican siempre, pesen lo que pesen
 
 **Tipo:** Fix

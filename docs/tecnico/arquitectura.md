@@ -22,7 +22,10 @@ camino-santi-ago/
 │       ├── track/route.ts    # F2: ingesta OwnTracks; filtro geográfico DT-006 solo en
 │       │                     # modo guiado, se salta en modo libre (DT-016)
 │       ├── progreso/route.ts     # F3: GET, caché TTL en memoria (DT-007); bifurca por
-│       │                         # modo del intento activo desde DT-016 (guiado/libre)
+│       │                         # modo del intento activo desde DT-016 (guiado/libre);
+│       │                         # rama guiado pagina el histórico completo con
+│       │                         # obtenerTodasLasFilas (DT-018), rama libre (polling) solo
+│       │                         # pide la última posición (order+limit(1))
 │       ├── comentarios/route.ts  # F3: GET paginado + POST
 │       ├── intenciones/route.ts  # F3: POST (cliente admin)
 │       ├── admin/login/route.ts  # F4
@@ -70,17 +73,26 @@ camino-santi-ago/
 │   ├── traza/
 │   │   ├── traza.geojson         # traza de CÁLCULO (7.951 puntos, sin simplificar, DT-015)
 │   │   ├── traza-mapa.geojson    # traza de PINTADO (Douglas-Peucker 3 m, ~2.101 pts)
-│   │   ├── proyeccion.ts         # dominio puro: prepararTraza + calcularProgreso (modo guiado, cerrado)
+│   │   ├── proyeccion.ts         # dominio puro: prepararTraza + calcularProgreso (modo guiado, cerrado);
+│   │   │                         # calcularProgreso proyecta con ventana deslizante (±30 segmentos
+│   │   │                         # alrededor del último índice, DT-018) con fallback a escaneo completo
 │   │   ├── proyeccion.test.ts    # tests unitarios con fixtures sintéticas
+│   │   ├── proyeccion.ventana.test.ts  # DT-018: equivalencia numérica con/sin ventana a escala de
+│   │   │                         # miles de puntos, desvío que se sale de la ventana, hueco largo,
+│   │   │                         # rendimiento con histórico de un día completo (~7.200 puntos)
 │   │   ├── progreso-publico.ts   # F3: aProgresoPublico() — proyección segura al cliente (rama guiado)
 │   │   ├── progreso-libre.ts     # DT-016: calcularProgresoLibre() — dominio puro del modo libre
 │   │   │                         # (distancia haversine al destino, sin corredor ni validación)
 │   │   ├── cargar-traza.ts       # carga traza.geojson (cálculo) server-side
 │   │   ├── cargar-traza-mapa.ts  # F3: carga traza-mapa.geojson (pintado) server-side
-│   │   └── umbrales.ts           # constantes del dominio (EN_RUTA_MAX_M, etc.)
+│   │   └── umbrales.ts           # constantes del dominio (EN_RUTA_MAX_M, etc.; VENTANA_PROYECCION_SEGMENTOS
+│   │                             # y VENTANA_PROYECCION_FALLBACK_MAX_M de la ventana deslizante, DT-018)
 │   ├── supabase/             # F2
 │   │   ├── admin.ts          # cliente service role (solo servidor)
 │   │   ├── public.ts         # cliente anon (peticiones públicas)
+│   │   ├── paginacion.ts     # DT-018: obtenerTodasLasFilas() — fetch paginado genérico con .range()
+│   │   │                     # en bucle (PostgREST corta a 1000 filas sin Range explícito), tope de
+│   │   │                     # seguridad + log; usado por progreso/route.ts (rama guiado) y page.tsx
 │   │   └── storage.ts        # DT-013: subida de fotos a Storage (validación MIME/tamaño
 │   │                         # con los límites de lib/imagen/limites-subida.ts, DT-017)
 │   ├── textos/               # F3

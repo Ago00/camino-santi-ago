@@ -1,17 +1,26 @@
 /**
- * Tests de obtenerIntentoActivo() (app/page.tsx) — compatibilidad temporal
- * con la migración supabase/migrations/0003_modo_intento.sql sin aplicar
- * todavía en el entorno real (ver DEBT.md, "recordatorio: aplicar
- * 0003_modo_intento.sql"). Mismo patrón de mock que app/api/track/route.test.ts
- * y app/api/progreso/route.test.ts.
+ * Tests de obtenerIntentoActivo() y calcularProgresoDelIntento()
+ * (app/page.tsx).
  *
- * Solo se cubre esta función: renderizar el resto del Server Component
- * (Home()) exigiría mockear la traza, los textos y todos los componentes
- * hijos sin aportar valor de dominio adicional — obtenerIntentoActivo() es
- * la única pieza con lógica de fallback nueva de esta tarea.
+ * obtenerIntentoActivo(): compatibilidad temporal con la migración
+ * supabase/migrations/0003_modo_intento.sql sin aplicar todavía en el
+ * entorno real (ver DEBT.md, "recordatorio: aplicar 0003_modo_intento.sql").
+ * Mismo patrón de mock que app/api/track/route.test.ts y
+ * app/api/progreso/route.test.ts.
+ *
+ * calcularProgresoDelIntento(): S2 (endurecimiento post-revisión de
+ * Seguridad de DT-018, ver nota de cierre en
+ * docs/tecnico/decisiones-tecnicas.md) — reutiliza la caché compartida
+ * lib/progreso-cache.ts en vez de recalcular en cada carga de página.
+ *
+ * Solo se cubren estas dos funciones: renderizar el resto del Server
+ * Component (Home()) exigiría mockear la traza, los textos y todos los
+ * componentes hijos sin aportar valor de dominio adicional.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { limpiarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
+import type { Posicion, ProgresoPublico, TrazaPreparada } from "@/lib/types";
 
 interface IntentoMock {
   id: number;
@@ -29,31 +38,78 @@ let errorConModoMock: { message: string } | null = null;
 // Mock del intento devuelto por el select mínimo de fallback (sin modo/
 // destino_lat/destino_lon), usado cuando la consulta completa falla.
 let intentoSinModoMock: Omit<IntentoMock, "modo" | "destino_lat" | "destino_lon"> | null = null;
+let posicionesMock: Posicion[] = [];
+const rangeMock = vi.fn(() => Promise.resolve({ data: posicionesMock, error: null }));
 
 vi.mock("@/lib/supabase/public", () => ({
   getSupabasePublic: vi.fn(() => ({
     from: vi.fn((tabla: string) => {
-      if (tabla !== "intentos") throw new Error(`Tabla no mockada: ${tabla}`);
-      return {
-        select: vi.fn((columnas: string) => ({
+      if (tabla === "intentos") {
+        return {
+          select: vi.fn((columnas: string) => ({
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue(
+              columnas.includes("modo")
+                ? { data: intentoConModoMock, error: errorConModoMock }
+                : { data: intentoSinModoMock, error: null }
+            ),
+          })),
+        };
+      }
+      if (tabla === "posiciones") {
+        return {
+          select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          maybeSingle: vi.fn().mockResolvedValue(
-            columnas.includes("modo")
-              ? { data: intentoConModoMock, error: errorConModoMock }
-              : { data: intentoSinModoMock, error: null }
-          ),
-        })),
-      };
+          order: vi.fn().mockReturnThis(),
+          range: rangeMock,
+        };
+      }
+      throw new Error(`Tabla no mockada: ${tabla}`);
     }),
   })),
 }));
 
-const { obtenerIntentoActivo } = await import("@/app/page");
+// Traza sintética: línea recta de ~100 km (misma idea que proyeccion.test.ts
+// y app/api/progreso/route.test.ts) — no depende del GeoJSON real.
+const TRAZA_SINTETICA: TrazaPreparada = {
+  coordenadas: [
+    [0, 0],
+    [0, 0.45049],
+    [0, 0.90099],
+  ],
+  kmAcumulados: [0, 50, 100],
+  longitudTotalKm: 100,
+};
+
+vi.mock("@/lib/traza/cargar-traza", () => ({
+  cargarTrazaDeCalculo: vi.fn(() => TRAZA_SINTETICA),
+}));
+
+function posicion(overrides: Partial<Posicion>): Posicion {
+  return {
+    id: 1,
+    intento_id: 1,
+    lat: 0,
+    lon: 0,
+    ts: "2026-09-12T10:00:00.000Z",
+    batt: 90,
+    acc: 5,
+    fuente: "app",
+    descartado: false,
+    created_at: "2026-09-12T10:00:01.000Z",
+    ...overrides,
+  };
+}
+
+const { obtenerIntentoActivo, calcularProgresoDelIntento } = await import("@/app/page");
 
 beforeEach(() => {
   intentoConModoMock = null;
   errorConModoMock = null;
   intentoSinModoMock = null;
+  posicionesMock = [];
+  rangeMock.mockClear();
+  limpiarCacheProgreso();
 });
 
 describe("obtenerIntentoActivo()", () => {
@@ -108,5 +164,58 @@ describe("obtenerIntentoActivo()", () => {
     const resultado = await obtenerIntentoActivo();
 
     expect(resultado).toBeNull();
+  });
+});
+
+describe("calcularProgresoDelIntento() — reutiliza la caché compartida (S2, endurecimiento de DT-018)", () => {
+  it("sirve el resultado cacheado dentro del TTL sin volver a consultar el histórico de posiciones", async () => {
+    const valorCacheado: ProgresoPublico = {
+      modo: "guiado",
+      porcentaje: 42,
+      kmAvanzados: 42,
+      kmRestantes: 58,
+      odometroKm: 42,
+      estado: "en-ruta",
+      ultimaPosicion: { lat: 0.1, lon: 0, ts: "2026-09-12T09:00:00.000Z" },
+    };
+    // Escribe directamente en la caché compartida, simulando que
+    // GET /api/progreso (u otra visita anterior a esta misma página) ya
+    // calculó el progreso hace unos segundos.
+    const { guardarCacheProgreso } = await import("@/lib/progreso-cache");
+    guardarCacheProgreso(valorCacheado);
+
+    posicionesMock = [posicion({ id: 999, lat: 0.9, lon: 0 })]; // si se consultara, daría otro resultado
+
+    const resultado = await calcularProgresoDelIntento(1);
+
+    expect(resultado).toEqual(valorCacheado);
+    expect(rangeMock).not.toHaveBeenCalled();
+  });
+
+  it("calcula y guarda en caché cuando no hay nada cacheado", async () => {
+    posicionesMock = [
+      posicion({ id: 1, lat: 0, lon: 0, ts: "2026-09-12T08:00:00.000Z" }),
+      posicion({ id: 2, lat: 0.45049, lon: 0, ts: "2026-09-12T13:00:00.000Z" }),
+    ];
+
+    const resultado = await calcularProgresoDelIntento(1);
+
+    expect(resultado.modo).toBe("guiado");
+    expect(rangeMock).toHaveBeenCalledWith(0, 999);
+
+    const cache = obtenerCacheProgreso();
+    expect(cache?.valor).toEqual(resultado);
+  });
+
+  it("ignora una caché cacheada en modo libre (no debería darse bajo el invariante de un único intento activo, pero no debe explotar ni devolver el tipo equivocado)", async () => {
+    const { guardarCacheProgreso } = await import("@/lib/progreso-cache");
+    guardarCacheProgreso({ modo: "libre", distanciaRestanteKm: 5, ultimaPosicion: null });
+
+    posicionesMock = [posicion({ id: 1, lat: 0, lon: 0 })];
+
+    const resultado = await calcularProgresoDelIntento(1);
+
+    expect(resultado.modo).toBe("guiado");
+    expect(rangeMock).toHaveBeenCalledWith(0, 999);
   });
 });

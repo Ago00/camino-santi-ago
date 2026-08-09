@@ -37,6 +37,22 @@ let errorIntentoMock: { message: string } | null = null;
 let intentoActivoMinimoMock: { id: number } | null = null;
 let posicionesMock: Posicion[] = [];
 
+// DT-018: mocks propios (no recreados dentro de la factory de `from`) para
+// poder aserir sobre ellos entre tests — el modo guiado llama a `.range()`
+// (paginación completa, lib/supabase/paginacion.ts) y el modo libre a
+// `.limit(1).maybeSingle()` (solo la última posición, sin traer el histórico
+// completo en cada poll de 30 s).
+const rangeMock = vi.fn(() => Promise.resolve({ data: posicionesMock, error: null }));
+const limitMock = vi.fn().mockReturnThis();
+const maybeSingleUltimaPosicionMock = vi.fn(() => {
+  const validas = posicionesMock.filter((p) => !p.descartado);
+  if (validas.length === 0) return Promise.resolve({ data: null, error: null });
+  const masReciente = validas.reduce((a, b) =>
+    new Date(b.ts).getTime() > new Date(a.ts).getTime() ? b : a
+  );
+  return Promise.resolve({ data: masReciente, error: null });
+});
+
 vi.mock("@/lib/supabase/public", () => ({
   getSupabasePublic: vi.fn(() => ({
     from: vi.fn((tabla: string) => {
@@ -53,10 +69,18 @@ vi.mock("@/lib/supabase/public", () => ({
         };
       }
       if (tabla === "posiciones") {
+        // DT-018: el modo guiado pagina con .range() (obtenerTodasLasFilas),
+        // el modo libre pide solo la última posición con .limit(1).maybeSingle().
+        // posicionesMock cabe siempre en una sola página en estos tests (no
+        // hace falta simular múltiples páginas aquí — eso lo cubre
+        // lib/supabase/paginacion.test.ts de forma aislada).
         return {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          order: vi.fn().mockResolvedValue({ data: posicionesMock, error: null }),
+          order: vi.fn().mockReturnThis(),
+          range: rangeMock,
+          limit: limitMock,
+          maybeSingle: maybeSingleUltimaPosicionMock,
         };
       }
       throw new Error(`Tabla no mockada: ${tabla}`);
@@ -100,6 +124,9 @@ beforeEach(async () => {
   errorIntentoMock = null;
   intentoActivoMinimoMock = null;
   posicionesMock = [];
+  rangeMock.mockClear();
+  limitMock.mockClear();
+  maybeSingleUltimaPosicionMock.mockClear();
   reiniciarRateLimit();
   // La caché TTL vive en el módulo compartido lib/progreso-cache.ts (DT-014,
   // antes a nivel de módulo local aquí mismo, DT-007) — hay que limpiarla
@@ -233,6 +260,37 @@ describe("GET /api/progreso — bifurcación por modo del intento activo (DT-016
     expect(body.modo).toBe("guiado");
     expect(body).toHaveProperty("porcentaje");
     expect(body).not.toHaveProperty("distanciaRestanteKm");
+  });
+});
+
+describe("GET /api/progreso — histórico de posiciones sin cortar a 1000 filas (DT-018)", () => {
+  it("modo guiado pagina el histórico con .range() en vez de un select sin límite", async () => {
+    intentoActivoMock = { id: 1, modo: "guiado" };
+    posicionesMock = [posicion({ id: 1, lat: 0, lon: 0 })];
+
+    const { GET } = await import("@/app/api/progreso/route");
+    await GET(crearPeticion());
+
+    expect(rangeMock).toHaveBeenCalledWith(0, 999);
+    expect(maybeSingleUltimaPosicionMock).not.toHaveBeenCalled();
+  });
+
+  it("modo libre pide solo la última posición (limit 1), sin paginar el histórico completo", async () => {
+    intentoActivoMock = { id: 9, modo: "libre", destino_lat: 42.1, destino_lon: -8.0 };
+    posicionesMock = [
+      posicion({ id: 1, lat: 42.0, lon: -8.0, ts: "2026-09-12T09:00:00.000Z" }),
+      posicion({ id: 2, lat: 42.01, lon: -8.01, ts: "2026-09-12T10:00:00.000Z" }),
+    ];
+
+    const { GET } = await import("@/app/api/progreso/route");
+    const response = await GET(crearPeticion());
+    const body = await response.json();
+
+    expect(limitMock).toHaveBeenCalledWith(1);
+    expect(maybeSingleUltimaPosicionMock).toHaveBeenCalledTimes(1);
+    expect(rangeMock).not.toHaveBeenCalled();
+    // La posición más reciente (10:00), no la primera del array.
+    expect(body.ultimaPosicion).toEqual({ lat: 42.01, lon: -8.01, ts: "2026-09-12T10:00:00.000Z" });
   });
 });
 

@@ -4,6 +4,8 @@
 // (ver docs/tareas/CURRENT.md, comportamiento en casos límite).
 
 import { getSupabasePublic } from "@/lib/supabase/public";
+import { obtenerTodasLasFilas } from "@/lib/supabase/paginacion";
+import { CACHE_TTL_MS, guardarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { cargarTrazaDeMapa } from "@/lib/traza/cargar-traza-mapa";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
@@ -221,22 +223,55 @@ function destinoDelIntento(intento: IntentoActivo): { lat: number; lon: number }
     : null;
 }
 
+/**
+ * Histórico completo del intento (DT-018, docs/tecnico/decisiones-tecnicas.md):
+ * sin paginar, PostgREST corta cualquier `select` a 1000 filas — a partir de
+ * las ~4 h de un intento guiado real (cadencia de 15 s) el mapa, la barra de
+ * progreso y los km quedaban congelados el resto del reto. Usada por ambos
+ * modos en la carga de página: guiado siempre (calcularProgreso necesita el
+ * histórico completo) y libre para construir el trazado GPS inicial del
+ * mapa (calcularProgresoLibreDelIntento).
+ */
 async function obtenerHistoricoPosiciones(intentoId: number): Promise<Posicion[]> {
   const supabase = getSupabasePublic();
-  const { data } = await supabase
-    .from("posiciones")
-    .select("*")
-    .eq("intento_id", intentoId)
-    .eq("descartado", false)
-    .order("ts", { ascending: true });
-
-  return data ?? [];
+  return obtenerTodasLasFilas<Posicion>((desde, hasta) =>
+    supabase
+      .from("posiciones")
+      .select("*")
+      .eq("intento_id", intentoId)
+      .eq("descartado", false)
+      .order("ts", { ascending: true })
+      .range(desde, hasta)
+  );
 }
 
-async function calcularProgresoDelIntento(intentoId: number): Promise<ProgresoPublicoGuiado> {
+/**
+ * S2 (endurecimiento post-revisión de Seguridad de DT-018, ver nota de
+ * cierre en docs/tecnico/decisiones-tecnicas.md): reutiliza la misma caché
+ * compartida que ya usa `GET /api/progreso` (`lib/progreso-cache.ts`, TTL
+ * 15-20 s, DT-007/DT-014) en vez de recalcular en cada visita. A diferencia
+ * de `/api/progreso`, esta carga de página (`export const dynamic =
+ * "force-dynamic"` arriba) no tenía ninguna protección de frecuencia: cada
+ * visitante disparaba `calcularProgreso` desde cero, amplificando el coste
+ * del fallback de la ventana deslizante (S1, lib/traza/proyeccion.ts) ante
+ * un histórico adversarial. El invariante de que solo hay un intento activo
+ * a la vez (docs/tecnico/arquitectura.md) hace seguro compartir esta caché
+ * entre `/api/progreso` y esta función: ambas calculan el progreso del
+ * mismo (único) intento en curso.
+ */
+export async function calcularProgresoDelIntento(intentoId: number): Promise<ProgresoPublicoGuiado> {
+  const cache = obtenerCacheProgreso();
+  if (cache && Date.now() - cache.timestamp < CACHE_TTL_MS && cache.valor.modo === "guiado") {
+    return cache.valor;
+  }
+
   const historico = await obtenerHistoricoPosiciones(intentoId);
   const traza = cargarTrazaDeCalculo();
-  return aProgresoPublico(calcularProgreso(historico, traza));
+  const progreso = aProgresoPublico(calcularProgreso(historico, traza));
+
+  guardarCacheProgreso(progreso);
+
+  return progreso;
 }
 
 /**
