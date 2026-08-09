@@ -1196,6 +1196,56 @@ Los tests de `proyeccion.test.ts` y de la sección 1-4 de
 `proyeccion.ventana.test.ts` (equivalencia numérica, desvío con reenganche,
 hueco largo, rendimiento a escala de un día) siguen en verde sin cambios.
 
+### Nota de cierre (2026-08-09) — el atajo `.limit(1)` de modo libre se revierte en la tarea de estadísticas de modo libre (CURRENT.md/DT-020)
+
+Aprobada por el Orquestador tras el bloqueo mayor señalado por el
+Implementador al ejecutar CURRENT.md (feature: tiempo en marcha, ritmo medio
+y km caminados en modo libre). Se deja constancia aquí porque este documento
+es el registro permanente (mismo criterio que las notas de cierre de
+DT-017/DT-020).
+
+**Lo que decía esta entrada:** en el punto 2 de la decisión original,
+"la ruta de polling en modo libre deja de pedir el histórico completo" —
+`calcularProgresoLibre` solo usaba la posición no descartada más reciente,
+así que `calcularProgresoActual` (`lib/traza/progreso-actual.ts`) pedía
+únicamente esa fila (`.order(ts desc).limit(1)`) en cada poll de 30 s, en
+vez de paginar el histórico completo como sí hace modo guiado.
+
+**Por qué se revierte:** CURRENT.md/DT-020 añade `odometroKm` a
+`calcularProgresoLibre` — suma de `haversineKm` entre cada par consecutivo
+de posiciones del histórico recibido. Con un histórico de una sola fila (el
+atajo de este DT), ese cálculo no tiene ningún tramo que sumar y da siempre
+0: la cifra "Caminados" (y el ritmo medio, que depende de ella) era correcta
+en la carga inicial de página (`app/page.tsx`, que sí trae el histórico
+completo) pero caía a 0 km en el primer poll y se quedaba ahí el resto de la
+fase "durante" en modo libre — la premisa de esta optimización ("modo libre
+solo necesita el último punto") dejó de ser cierta con la nueva feature.
+
+**Por qué no reabre el hallazgo de Seguridad de este mismo DT (S1/S2):**
+S1/S2 son específicos del mecanismo de ventana deslizante con fallback de
+`calcularProgreso()` (modo **guiado**) — el vector de denegación de servicio
+que motivó esos dos endurecimientos era forzar escaneos completos repetidos
+de la traza (~39 ms cada uno). `calcularProgresoLibre` no proyecta nada
+sobre ninguna traza: es una suma `O(n)` trivial de `haversineKm` sin Turf de
+por medio, ninguna relación con ese vector. El único coste real de volver a
+pedir el histórico completo en modo libre es el fetch paginado en sí, que ya
+tenía su propio tope de seguridad independiente
+(`MAX_PAGINAS` = 50 páginas / 50.000 filas, `lib/supabase/paginacion.ts`) y
+queda además acotado por la misma caché compartida con TTL de 20 s que ya
+paga modo guiado en cada recálculo (`lib/progreso-cache.ts`, DT-007) — mismo
+orden de magnitud de coste que el modo guiado ya asume desde este mismo DT,
+no un vector nuevo.
+
+**Qué cambia en el código:** `lib/traza/progreso-actual.ts` — la rama de
+modo libre pasa a usar el mismo `obtenerTodasLasFilas` (paginado ascendente
+por `ts`) que ya usaba la rama de modo guiado, extraído a un helper interno
+compartido `obtenerHistoricoCompleto`. Tests actualizados:
+`lib/traza/progreso-actual.test.ts` y `app/api/progreso/route.test.ts`
+verifican ahora que modo libre pagina con `.range()` (no `.limit(1)`) y que
+`odometroKm` refleja el histórico completo — con guardarraíles explícitos
+(`expect(limitMock).not.toHaveBeenCalled()`) para que una regresión futura a
+este atajo no pase desapercibida.
+
 ---
 
 ## DT-019 — `crearMinutoAMinuto`: si la caché de progreso está vacía, recalcular en el momento (reutilizando el cálculo de `/api/progreso`), no leer `posiciones` en bruto
@@ -1248,3 +1298,107 @@ proceso a días del reto para un problema que no lo necesita.
 DT-014 — mismo TTL, misma fuente. El esquema de BD no se toca.
 
 **Actualiza `arquitectura.md`** con el módulo nuevo de progreso compartido.
+
+---
+
+## DT-020 — Tiempo en marcha y ritmo medio: anclados al último punto GPS real, no a la hora del navegador de quien mira
+
+**Fecha:** 2026-08-09 · **Tarea:** Añadir estadísticas al modo libre · **Decisión de arquitectura**
+
+**Contexto.** Al diseñar las estadísticas nuevas para el modo libre, el
+usuario señaló un problema que también existe hoy en el modo guiado ya en
+producción: `ModoDurante.tsx` calcula "tiempo en marcha" y "ritmo medio"
+usando la **hora actual del navegador de quien está mirando la web**
+(`ahora`, un `Date` que se actualiza cada 60 s en el cliente), no el momento
+del último dato real recibido de Santi.
+
+**Problema concreto.** Si el móvil deja de enviar señal (batería agotada,
+sin cobertura — un riesgo real en 30 h de camino rural), "tiempo en marcha"
+sigue subiendo con el reloj de quien mira, y "ritmo medio" se desploma
+artificialmente (se divide entre más horas de las que realmente hay datos),
+aunque no haya pasado nada nuevo desde el último punto GPS real. El número
+en pantalla dejaría de reflejar el reto real para reflejar cuánto rato lleva
+la pestaña del navegador abierta.
+
+**Decisión.** Tiempo en marcha y ritmo medio se calculan siempre con el
+timestamp del **último punto GPS recibido** (`ultimaPosicion.ts`, ya
+presente en `ProgresoPublico` en ambos modos) como referencia final, nunca
+con `Date.now()`/`new Date()` del cliente. Aplica a los dos modos:
+
+- **Modo guiado, "durante"** (`ModoDurante.tsx`): sus funciones privadas
+  `formatearTiempoEnMarcha(iniciadoEn, ahora)` y
+  `calcularRitmoMedio(odometroKm, iniciadoEn, ahora)` pasan a recibir
+  `progreso.ultimaPosicion?.ts ?? null` como referencia final, no `ahora`.
+- **Modo libre, "durante"** (`ModoDuranteLibre.tsx`, nuevo): mismo criterio
+  desde el principio, sin heredar el problema.
+- **Ambos, "llegada"**: sin cambios de fondo — ya usan `ended_at` (un
+  timestamp real de BD, no la hora actual), así que ya cumplían este
+  criterio antes de esta decisión.
+
+**Reutilización, no triplicación.** `lib/ritmo.ts` ya tenía
+`calcularRitmoMedioIntento(odometroKm, iniciadoEn, finalizadoEn)`, genérica
+y ya usada por `ModoLlegada.tsx` — se reutiliza tal cual para el ritmo en
+los dos "durante" nuevos/corregidos, pasando `ultimaPosicion?.ts` como
+`finalizadoEn` en vez de `ended_at`. Se añade a `lib/ritmo.ts` una función
+hermana para formatear el tiempo transcurrido ("H:MM") con la misma forma
+de parámetros (`iniciadoEn`, `finalizadoEn`), sustituyendo a la función
+privada de `ModoDurante.tsx` — cierra de paso (para los "durante") la
+duplicación ya registrada en `DEBT.md` ("`calcularRitmoMedioIntento` y sus
+equivalentes"), sin necesidad de abrir esa entrada como tarea aparte.
+
+**Qué queda deliberadamente fuera:** `formatearTiempoTotal` en `app/page.tsx`
+(usada por `ModoLlegada.tsx`) ya usa dos timestamps reales
+(`started_at`/`ended_at`), sin `ahora` de por medio — no tiene el bug que
+esta decisión corrige, así que no es obligatorio migrarla a la función
+compartida nueva en esta tarea. Queda como candidato de limpieza futura, no
+como deuda nueva (no hay comportamiento incorrecto que registrar).
+
+**Por qué corregir el modo guiado en esta misma tarea (no aparte).** Es
+exactamente el mismo bug de fondo en dos sitios, y el modo guiado es el que
+se usará en el reto real — dejarlo para "más adelante" habría significado
+llevar el problema real al día del evento a cambio de nada (el fix es
+igual de barato en los dos sitios, mismo patrón, misma función compartida).
+
+### Nota de cierre (2026-08-09) — una ambigüedad resuelta y un bloqueo mayor encontrado, no corregido en esta tarea
+
+Aprobado por el Implementador durante la ejecución de CURRENT.md. Se dejan
+escritas aquí dos cosas que no vivían en el análisis original de DT-020,
+porque este documento es el registro permanente (mismo criterio que las
+notas de cierre de DT-017/DT-018).
+
+1. **Ambigüedad resuelta: tiempo en marcha sin ninguna posición GPS
+   todavía.** El "Comportamiento en casos límite" original de
+   `docs/tareas/CURRENT.md` (escrito antes del hallazgo de DT-020) decía que
+   el tiempo en marcha "se puede calcular igualmente (depende de
+   `started_at`, no de posiciones)" mientras no hubiera ninguna posición. Esa
+   frase describe el comportamiento **previo** a esta decisión (cuando la
+   referencia final era `ahora`, que no depende de haber recibido ningún
+   punto GPS). Con la regla de este DT ("nunca `Date.now()`/`new Date()` del
+   cliente, siempre la referencia final que corresponda"), sin ninguna
+   posición no hay ninguna referencia final real (`ultimaPosicion` es
+   `null`), así que tanto tiempo en marcha como ritmo medio dan "—" hasta que
+   llega el primer punto — mismo criterio para las dos cifras, sin
+   excepción. Se resuelve así por coherencia con el propio espíritu del DT
+   (nunca inventar una referencia temporal que no sea un dato real) y porque
+   mantener una excepción solo para "sin posición todavía" habría exigido
+   volver a leer `ahora` justo en el caso que este DT identifica como el más
+   sensible (arranque del intento, antes de la primera señal GPS real).
+
+2. **Bloqueo mayor encontrado, deliberadamente no corregido en esta tarea:**
+   `calcularProgresoActual` (`lib/traza/progreso-actual.ts`) — usada por
+   `GET /api/progreso` (el polling de 30 s que alimenta `ModoDuranteLibre.tsx`
+   en directo) — pide para modo libre solo la última posición
+   (`.limit(1)`, optimización de DT-018, correcta cuando modo libre no
+   necesitaba más que el último punto). Con `odometroKm` añadido por esta
+   tarea, ese atajo hace que el odómetro (y por tanto el ritmo medio) vuelva
+   siempre a 0 en cada poll durante la fase "durante" de modo libre — la
+   premisa de DT-018 para modo libre ("solo hace falta el último punto") deja
+   de ser cierta con este DT. No se corrige aquí porque el fix (pedir el
+   histórico completo también en modo libre, como ya hace modo guiado)
+   toca un fichero y un comportamiento explícitamente probado (DT-018) fuera
+   del alcance que aprobó el Arquitecto para esta tarea concreta, y revierte
+   parcialmente una decisión de arquitectura ya tomada con implicaciones de
+   coste durante las 30 h del reto real — corresponde que el Arquitecto lo
+   revise, no que el Implementador lo decida en solitario. Detalle completo,
+   impacto y solución propuesta en `DEBT.md` ("`GET /api/progreso` no puede
+   reflejar `odometroKm` real en modo libre durante el polling en directo").

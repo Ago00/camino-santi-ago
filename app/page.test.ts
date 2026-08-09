@@ -209,7 +209,7 @@ describe("calcularProgresoDelIntento() — reutiliza la caché compartida (S2, e
 
   it("ignora una caché cacheada en modo libre (no debería darse bajo el invariante de un único intento activo, pero no debe explotar ni devolver el tipo equivocado)", async () => {
     const { guardarCacheProgreso } = await import("@/lib/progreso-cache");
-    guardarCacheProgreso({ modo: "libre", distanciaRestanteKm: 5, ultimaPosicion: null });
+    guardarCacheProgreso({ modo: "libre", distanciaRestanteKm: 5, odometroKm: 0, ultimaPosicion: null });
 
     posicionesMock = [posicion({ id: 1, lat: 0, lon: 0 })];
 

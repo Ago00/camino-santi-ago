@@ -2,6 +2,26 @@
 
 ---
 
+## 2026-08-09 — El modo libre gana tiempo en marcha, ritmo medio y km caminados
+
+**Tipo:** Feature
+
+El modo libre (para retos sin una ruta fija) solo mostraba la distancia
+restante en línea recta hasta el destino. Ahora, igual que ya pasa en el modo
+guiado, también muestra el tiempo en marcha, el ritmo medio y los kilómetros
+realmente caminados, tanto mientras el reto está en curso como en la pantalla
+de llegada.
+
+De paso, se ha corregido un problema de fondo que afectaba también al modo
+guiado ya en producción: el tiempo en marcha y el ritmo medio se calculaban
+con la hora del reloj de quien está mirando la web, no con el último dato
+real recibido del móvil. Si el móvil se queda sin batería o sin cobertura,
+esas dos cifras seguían subiendo o se desplomaban solas aunque no hubiera
+pasado nada nuevo en el reto. Ahora ambas se congelan en el último dato real
+hasta que llega uno nuevo, en los dos modos.
+
+---
+
 ## 2026-08-09 — Las entradas del minuto a minuto ya no se quedan sin marcador en el mapa
 
 **Tipo:** Fix

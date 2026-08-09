@@ -190,13 +190,24 @@ export interface ProgresoPublicoGuiado {
 
 /**
  * Proyección pública del progreso en modo libre (DT-016, ver
- * `lib/traza/progreso-libre.ts`): sin ETA, sin ritmo, sin % de progreso, sin
- * odómetro — solo la distancia restante en línea recta hasta el destino.
+ * `lib/traza/progreso-libre.ts`): sin ETA ni % de progreso — no hay ruta
+ * fija sobre la que medirlos. Sí incluye `odometroKm` (DT-020/CURRENT.md,
+ * ver `docs/tareas/CURRENT.md` — antes de esa tarea el modo libre no lo
+ * calculaba en absoluto). El tiempo en marcha y el ritmo medio no son campos
+ * de este tipo: se derivan en la UI a partir de `odometroKm`, `started_at`/
+ * `ended_at` del intento y `ultimaPosicion.ts` (`lib/ritmo.ts`).
  */
 export interface ProgresoPublicoLibre {
   modo: "libre";
   /** null si aún no hay ninguna posición registrada o el intento no tiene destino. */
   distanciaRestanteKm: number | null;
+  /**
+   * Distancia real recorrida: haversine acumulado entre posiciones
+   * consecutivas no descartadas, SIN filtro de velocidad ni de precisión GPS
+   * (a diferencia de `odometroKm` en modo guiado) — ver
+   * `calcularProgresoLibre` en `lib/traza/progreso-libre.ts`.
+   */
+  odometroKm: number;
   ultimaPosicion: UltimaPosicionPublica | null;
 }
 

@@ -2,6 +2,65 @@
 
 ---
 
+## `GET /api/progreso` no podía reflejar `odometroKm` real en modo libre durante el polling en directo
+
+**Fecha:** 2026-08-09 · **Resuelta:** 2026-08-09, misma tarea (decisión del Orquestador)
+**Contexto:** Detectado por el Implementador durante la tarea "Modo libre:
+añadir tiempo en marcha, ritmo medio y km caminados" (ver
+`docs/tareas/CURRENT.md`, DT-020 en `docs/tecnico/decisiones-tecnicas.md`).
+`calcularProgresoLibre` (`lib/traza/progreso-libre.ts`) calcula `odometroKm`
+sumando `haversineKm` entre cada par consecutivo de posiciones del
+`historico` que recibe. `calcularProgresoActual` (`lib/traza/progreso-actual.ts`),
+usada tanto por `GET /api/progreso` (polling cada 30 s desde
+`ModoDuranteLibre.tsx`) como por el camino de respaldo de `crearMinutoAMinuto`,
+pedía para modo libre **solo la última posición no descartada**
+(`.order(ts desc).limit(1)`) — optimización deliberada de DT-018, correcta en
+su momento porque entonces `calcularProgresoLibre` solo necesitaba el último
+punto para calcular `distanciaRestanteKm`.
+**Problema:** Con `odometroKm` añadido, pasar un histórico de un solo
+elemento a `calcularProgresoLibre` hacía que el bucle de suma de tramos
+(arranca en `i = 1`) nunca se ejecutara — `odometroKm` salía siempre en 0
+desde este endpoint. `ModoDuranteLibre.tsx` sustituye su estado `progreso`
+completo con cada respuesta de polling (`setProgreso(data)`), así que la
+cifra "Caminados" que se ve en pantalla —correcta en la carga inicial de
+página, que sí usa el histórico completo (`calcularProgresoLibreDelIntento`,
+`app/page.tsx`)— caía a 0 km en el primer poll (~30 s después de cargar) y
+se quedaba ahí el resto de la fase "durante": el propio stat que esta tarea
+añade quedaba roto en el escenario de uso real (seguimiento en directo
+durante el reto).
+**Impacto (antes del fix):** Alto para el objetivo de la tarea, acotado a un
+stat de un solo modo. En modo libre "durante": "Caminados" y, por depender de
+`odometroKm`, "Ritmo medio" mostraban 0/valores incorrectos tras el primer
+poll. "Tiempo en marcha" no se veía afectado (usa `ultimaPosicion?.ts`, que
+sí llega correcto con una sola posición). "Llegada" (`ModoLlegadaLibre.tsx`)
+no se veía afectada — carga server-side única con el histórico completo, sin
+polling. Modo guiado no se veía afectado en absoluto.
+**Resolución:** El Implementador señaló este bloqueo mayor al Orquestador en
+vez de decidirlo en solitario (tocaba un fichero, `lib/traza/progreso-actual.ts`,
+y un comportamiento explícitamente probado, DT-018, fuera del "Incluye"
+aprobado para la tarea). El Orquestador analizó el hallazgo contra el
+histórico de Seguridad de DT-018 (S1/S2) y confirmó que revertir el atajo no
+reabre ese vector: S1/S2 son específicos del mecanismo de ventana deslizante
+de `calcularProgreso()` (modo guiado); `calcularProgresoLibre` es una suma
+`O(n)` trivial sin proyección sobre traza, sin relación con ese vector. Se
+aplicó la solución ya propuesta: `lib/traza/progreso-actual.ts` vuelve a
+pedir el histórico completo también en modo libre, con el mismo
+`obtenerTodasLasFilas` (`lib/supabase/paginacion.ts`, con su propio tope de
+seguridad de 50.000 filas) que ya usaba modo guiado, extraído a un helper
+compartido `obtenerHistoricoCompleto`. El coste adicional de lectura queda
+acotado por la misma caché compartida con TTL de 20 s que ya usa
+`GET /api/progreso` (`lib/progreso-cache.ts`, DT-007) — mismo orden de
+magnitud que el coste que el modo guiado ya paga en cada recálculo, no un
+caso nuevo de riesgo de escala. Ver la nota de cierre de DT-018 en
+`docs/tecnico/decisiones-tecnicas.md` para el análisis completo. Tests
+actualizados con guardarraíles explícitos (`lib/traza/progreso-actual.test.ts`,
+`app/api/progreso/route.test.ts`: `expect(limitMock).not.toHaveBeenCalled()`,
+`expect(rangeMock).toHaveBeenCalledWith(0, 999)`, `odometroKm` > 0 con dos
+posiciones) para que una regresión futura a este atajo no pase desapercibida.
+**Prioridad:** Cerrada.
+
+---
+
 ## `calcularProgresoLibreDelIntento` (modo libre, `app/page.tsx`) sigue sin caché tras el endurecimiento S1/S2 de DT-018
 
 **Fecha:** 2026-08-09

@@ -5,7 +5,9 @@
  * rechazo por velocidad, ni anclaje de porcentaje: el dominio es
  * deliberadamente mínimo. Estos tests cubren la selección de la última
  * posición no descartada por `ts` (no por orden del array), los casos sin
- * destino/sin histórico, y que se ignoran las posiciones descartadas.
+ * destino/sin histórico, que se ignoran las posiciones descartadas, y el
+ * odómetro (DT-020/CURRENT.md): suma de tramos consecutivos, sin ningún
+ * filtro de velocidad ni precisión GPS.
  */
 
 import { describe, it, expect } from "vitest";
@@ -32,6 +34,7 @@ describe("calcularProgresoLibre", () => {
     expect(resultado).toEqual({
       modo: "libre",
       distanciaRestanteKm: null,
+      odometroKm: 0,
       ultimaPosicion: null,
     });
   });
@@ -105,5 +108,74 @@ describe("calcularProgresoLibre", () => {
   it("marca siempre modo: 'libre' en el resultado", () => {
     const resultado = calcularProgresoLibre([], null);
     expect(resultado.modo).toBe("libre");
+  });
+
+  describe("odometroKm (DT-020/CURRENT.md)", () => {
+    it("da 0 con un único punto (no hay ningún tramo que sumar todavía)", () => {
+      const resultado = calcularProgresoLibre(
+        [posicion({ id: 1, lat: 42.0, lon: -8.0, ts: "2026-08-07T08:00:00.000Z" })],
+        null
+      );
+
+      expect(resultado.odometroKm).toBe(0);
+    });
+
+    it("da 0 sin ningún punto en el histórico", () => {
+      const resultado = calcularProgresoLibre([], null);
+      expect(resultado.odometroKm).toBe(0);
+    });
+
+    it("suma la distancia haversine de cada tramo consecutivo, en el orden recibido", () => {
+      // haversineKm usa un radio esférico de 6371 km (EARTH_RADIUS_KM,
+      // lib/traza/proyeccion.ts): 1° de latitud ≈ 2π×6371/360 ≈ 111,1949 km
+      // (no los ~111,32 km del elipsoide WGS84 real — coherente con el resto
+      // del dominio, que usa la misma constante). Dos tramos de 0.01° ≈
+      // 1,11195 km cada uno ≈ 2,2239 km en total.
+      const resultado = calcularProgresoLibre(
+        [
+          posicion({ id: 1, lat: 42.0, lon: -8.0, ts: "2026-08-07T08:00:00.000Z" }),
+          posicion({ id: 2, lat: 42.01, lon: -8.0, ts: "2026-08-07T08:05:00.000Z" }),
+          posicion({ id: 3, lat: 42.02, lon: -8.0, ts: "2026-08-07T08:10:00.000Z" }),
+        ],
+        null
+      );
+
+      expect(resultado.odometroKm).toBeCloseTo(2.2239, 3);
+    });
+
+    it("ignora las posiciones descartadas al sumar tramos (no cuentan como extremo de ningún tramo)", () => {
+      const resultado = calcularProgresoLibre(
+        [
+          posicion({ id: 1, lat: 42.0, lon: -8.0, ts: "2026-08-07T08:00:00.000Z" }),
+          posicion({ id: 2, lat: 99, lon: 99, ts: "2026-08-07T08:05:00.000Z", descartado: true }),
+          posicion({ id: 3, lat: 42.01, lon: -8.0, ts: "2026-08-07T08:10:00.000Z" }),
+        ],
+        null
+      );
+
+      // El tramo real es directamente id 1 → id 3 (0.01° ≈ 1,1119 km, misma
+      // constante que el test anterior); si el punto descartado participara,
+      // el resultado sería muy distinto (miles de km, por el salto a
+      // lat/lon 99).
+      expect(resultado.odometroKm).toBeCloseTo(1.1119, 3);
+    });
+
+    it("NO aplica ningún filtro de velocidad implícita, a diferencia del odómetro del modo guiado", () => {
+      // Dos puntos a ~11,13 km de separación con solo 1 segundo entre ellos:
+      // más de 40.000 km/h de velocidad implícita. calcularProgreso() (modo
+      // guiado, lib/traza/proyeccion.ts) descartaría un salto así por
+      // velocidad implícita imposible (VELOCIDAD_MAX_KMH); calcularProgresoLibre
+      // no tiene ese rechazo — lo suma igualmente, coherente con la filosofía
+      // documentada del módulo ("los puntos se aceptan sin validar").
+      const resultado = calcularProgresoLibre(
+        [
+          posicion({ id: 1, lat: 42.0, lon: -8.0, ts: "2026-08-07T08:00:00.000Z" }),
+          posicion({ id: 2, lat: 42.1, lon: -8.0, ts: "2026-08-07T08:00:01.000Z" }),
+        ],
+        null
+      );
+
+      expect(resultado.odometroKm).toBeCloseTo(11.12, 1);
+    });
   });
 });
