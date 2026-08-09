@@ -15,10 +15,9 @@ import type { Textos } from "@/lib/textos/obtener-textos";
 
 const C = { ink: "#1B211D", gold: "#C9A24B", eucalipto: "#2F5D50", ember: "#D9773B" };
 
-// Foto: pon aquí la ruta cuando exista (en /public), p.ej. "/santi.jpg".
-// Con undefined usa el placeholder — mismo patrón que FOTO_PEREGRINO
-// (components/publico/PeregrinoLibre.tsx).
-const FOTO_SANTI: string | undefined = undefined;
+// Foto real de Santi (public/santi.jpg). Con undefined usaría el
+// placeholder — mismo patrón que FOTO_PEREGRINO (components/publico/PeregrinoLibre.tsx).
+const FOTO_SANTI: string | undefined = "/santi.jpg";
 
 const rise = {
   hidden: { opacity: 0, y: 22 },
