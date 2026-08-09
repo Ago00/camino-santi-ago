@@ -294,3 +294,53 @@ controlado por un atacante, no solo por volumen — acotar cuántas veces se
 puede pagar ese coste por petición es tan necesario como acotar cuántas filas
 se pueden pedir. Ver también `docs/LESSONS.md` y DT-018 en
 `docs/tecnico/decisiones-tecnicas.md`.
+
+---
+
+## Las entradas del minuto a minuto se guardaban sin posición: la caché en memoria casi nunca estaba caliente
+
+**Fecha:** 2026-08-09
+**Tags:** cache-en-memoria, serverless, instancias-frias, minuto-a-minuto, coherencia-de-datos
+
+**Síntomas:** Las 16 entradas publicadas durante la prueba real del
+2026-08-07 quedaron con `lat`/`lon` a `null` — el 100%, no un caso raro. Al
+pinchar cualquier entrada del feed para ver dónde estaba Santi en ese
+momento, no aparecía ningún marcador en el mapa.
+
+**Causa raíz:** `crearMinutoAMinuto` (`app/admin/actions.ts`) leía la
+posición de `lib/progreso-cache.ts`, una caché en memoria de proceso
+compartida con `GET /api/progreso` (DT-007/DT-014) — decisión deliberada
+para que la coordenada guardada coincidiera exactamente con lo que el mapa
+público estaba mostrando, sin adelantarse. Pero esa caché vive en memoria de
+**una instancia serverless concreta** y no se comparte con otras. DT-014 ya
+había previsto esto como riesgo aceptado, con una condición explícita para
+escalar: *"si en producción se observa con demasiada frecuencia"*. Con datos
+reales, la frecuencia observada fue del 100%, no "demasiada" — total.
+Explicación más probable: con poco tráfico público real ese día, casi nunca
+había una petición `GET /api/progreso` reciente que hubiera calentado la
+caché de la instancia que atendía cada publicación del feed.
+
+**Solución (DT-019):** cuando la caché está vacía, `crearMinutoAMinuto` ya no
+se rinde — recalcula el progreso en el momento, **reutilizando la misma
+función que ya usa `GET /api/progreso`** (`calcularProgresoActual`, extraída
+a un módulo compartido `lib/traza/progreso-actual.ts`), y guarda el
+resultado también en la caché. Descartada explícitamente una lectura directa
+de `posiciones` como respaldo (la primera propuesta): en modo guiado,
+`calcularProgreso` puede descartar el último punto GPS por velocidad
+implícita imposible, así que su `ultimaPosicion` no siempre es literalmente
+la última fila de la tabla — reutilizar el cálculo completo garantiza que la
+entrada del feed queda siempre con la misma coordenada que vería cualquier
+visitante recargando la web pública en ese instante, incluso en el camino de
+respaldo.
+
+**Lección:** cuando una decisión técnica documenta explícitamente su propia
+condición de escalado ("si se observa con demasiada frecuencia..."), esa
+condición hay que revisarla contra datos reales antes de asumir que sigue
+sin cumplirse — aquí, un dato de producción (16 de 16 entradas) resolvió de
+un vistazo una pregunta que llevaba una semana abierta como riesgo aceptado.
+Y cuando el usuario pide explícitamente una propiedad del sistema ("que sea
+la posición enviada **y pintada**", no solo "una posición cualquiera"), esa
+frase suele señalar una diferencia real de comportamiento entre dos
+implementaciones aparentemente equivalentes — aquí, entre leer el dato en
+bruto y reutilizar el cálculo de dominio que ya lo filtra. Ver también
+DT-019 en `docs/tecnico/decisiones-tecnicas.md`.

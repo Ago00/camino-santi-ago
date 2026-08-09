@@ -21,11 +21,11 @@ camino-santi-ago/
 │   └── api/
 │       ├── track/route.ts    # F2: ingesta OwnTracks; filtro geográfico DT-006 solo en
 │       │                     # modo guiado, se salta en modo libre (DT-016)
-│       ├── progreso/route.ts     # F3: GET, caché TTL en memoria (DT-007); bifurca por
-│       │                         # modo del intento activo desde DT-016 (guiado/libre);
-│       │                         # rama guiado pagina el histórico completo con
-│       │                         # obtenerTodasLasFilas (DT-018), rama libre (polling) solo
-│       │                         # pide la última posición (order+limit(1))
+│       ├── progreso/route.ts     # F3: GET, caché TTL en memoria (DT-007); el cálculo en sí
+│       │                         # (bifurcación por modo DT-016, histórico paginado DT-018,
+│       │                         # compatibilidad migración 0003) vive en
+│       │                         # lib/traza/progreso-actual.ts (calcularProgresoActual,
+│       │                         # extraída por DT-019); este fichero solo añade caché+rate limit
 │       ├── comentarios/route.ts  # F3: GET paginado + POST
 │       ├── intenciones/route.ts  # F3: POST (cliente admin)
 │       ├── admin/login/route.ts  # F4
@@ -57,8 +57,10 @@ camino-santi-ago/
 │   ├── rate-limit.ts          # F5: rate limiting en memoria de proceso (DT-011), usado por todos los endpoints públicos
 │   ├── progreso-cache.ts      # DT-014: caché compartida de ProgresoPublico (antes vivía
 │   │                          # solo en app/api/progreso/route.ts, DT-007); GET /api/progreso
-│   │                          # la lee/escribe, crearMinutoAMinuto solo la lee (snapshot
-│   │                          # de posición coherente con lo que ve el mapa público)
+│   │                          # siempre la lee/escribe; crearMinutoAMinuto la lee, y si está
+│   │                          # vacía recalcula con calcularProgresoActual y también la
+│   │                          # escribe (DT-019, cierra el caso de caché fría observado al
+│   │                          # 100% en la prueba real del 2026-08-07)
 │   ├── imagen/                # DT-017: preparación de la foto en el navegador
 │   │   ├── limites-subida.ts     # tamaño máximo y formatos aceptados; los comparten
 │   │   │                         # cliente y servidor (por debajo del corte de ~4,5 MB
@@ -83,6 +85,11 @@ camino-santi-ago/
 │   │   ├── progreso-publico.ts   # F3: aProgresoPublico() — proyección segura al cliente (rama guiado)
 │   │   ├── progreso-libre.ts     # DT-016: calcularProgresoLibre() — dominio puro del modo libre
 │   │   │                         # (distancia haversine al destino, sin corredor ni validación)
+│   │   ├── progreso-actual.ts    # DT-019: calcularProgresoActual() — orquesta intento activo +
+│   │   │                         # histórico + calcularProgreso/calcularProgresoLibre; extraída
+│   │   │                         # de app/api/progreso/route.ts para que GET /api/progreso y
+│   │   │                         # crearMinutoAMinuto (app/admin/actions.ts) compartan la misma
+│   │   │                         # lógica sin duplicarla. Sin caché propia (I/O con cada llamada)
 │   │   ├── cargar-traza.ts       # carga traza.geojson (cálculo) server-side
 │   │   ├── cargar-traza-mapa.ts  # F3: carga traza-mapa.geojson (pintado) server-side
 │   │   └── umbrales.ts           # constantes del dominio (EN_RUTA_MAX_M, etc.; VENTANA_PROYECCION_SEGMENTOS
@@ -130,7 +137,7 @@ camino-santi-ago/
 | Constantes de dominio | `lib/traza/umbrales.ts` | Cada umbral con su porqué. |
 | Infraestructura BD | `lib/supabase/` | Solo clientes. Sin lógica de negocio. |
 | Endpoints | `app/api/` | Validación Zod en la frontera. Sin lógica de negocio. |
-| Server Actions | `app/admin/actions.ts` | Mutaciones del panel. Autenticadas con cookie. Los fallos esperados de `crearMinutoAMinuto` se devuelven (`ResultadoPublicacion`), no se lanzan: Next redacta en producción el mensaje de todo error lanzado en el servidor (DT-017). |
+| Server Actions | `app/admin/actions.ts` | Mutaciones del panel. Autenticadas con cookie. Los fallos esperados de `crearMinutoAMinuto` se devuelven (`ResultadoPublicacion`), no se lanzan: Next redacta en producción el mensaje de todo error lanzado en el servidor (DT-017). `crearMinutoAMinuto` recalcula el progreso con `lib/traza/progreso-actual.ts` cuando la caché compartida está vacía, en vez de guardar la posición a `null` (DT-019). |
 | UI | `app/` + `components/` | Sin lógica de negocio. Consume `lib/`. |
 
 ## La regla no negociable de las dos trazas

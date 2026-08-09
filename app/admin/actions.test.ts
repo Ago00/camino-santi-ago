@@ -13,11 +13,23 @@
  * consulta desde esta Server Action) — se usa la implementación real del
  * módulo, escribiéndola/limpiándola directamente en cada test con
  * `guardarCacheProgreso`/`limpiarCacheProgreso`.
+ *
+ * DT-019: cuando la caché está vacía, `crearMinutoAMinuto` recalcula con
+ * `calcularProgresoActual` (`lib/traza/progreso-actual.ts`) — aquí se mockea
+ * (tiene su propia cobertura directa en `lib/traza/progreso-actual.test.ts`
+ * y ya se ejercita a través de `GET /api/progreso` en
+ * `app/api/progreso/route.test.ts`) para poder controlar su resultado y
+ * aserir que solo se llama cuando de verdad no hay nada en caché.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { guardarCacheProgreso, limpiarCacheProgreso } from "@/lib/progreso-cache";
+import { guardarCacheProgreso, limpiarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
 import type { ProgresoPublico } from "@/lib/types";
+
+const calcularProgresoActualMock = vi.fn<() => Promise<ProgresoPublico>>();
+vi.mock("@/lib/traza/progreso-actual", () => ({
+  calcularProgresoActual: () => calcularProgresoActualMock(),
+}));
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -147,7 +159,27 @@ beforeEach(() => {
   deleteSpy.mockClear();
   upsertSpy.mockClear();
   subirFotoSpy.mockClear();
+  calcularProgresoActualMock.mockReset();
+  // Valor por defecto del recálculo (DT-019): sin posición, mismo caso
+  // límite legítimo que "todavía no hay ninguna posición registrada". Los
+  // tests que necesitan otro resultado lo sobreescriben explícitamente.
+  calcularProgresoActualMock.mockResolvedValue(progresoPublicoConPosicion(null));
 });
+
+/** Progreso público de test mínimo, solo con la posición que interesa a estos tests. */
+function progresoPublicoConPosicion(
+  ultimaPosicion: ProgresoPublico["ultimaPosicion"]
+): ProgresoPublico {
+  return {
+    modo: "guiado",
+    porcentaje: 10,
+    kmAvanzados: 10,
+    kmRestantes: 90,
+    odometroKm: 10,
+    estado: "en-ruta",
+    ultimaPosicion,
+  };
+}
 
 describe("verificación de sesión (defensa independiente de proxy.ts)", () => {
   it("iniciarReto lanza si no hay cookie de sesión", async () => {
@@ -339,7 +371,7 @@ describe("Textos", () => {
   });
 });
 
-describe("Minuto a minuto (DT-013, snapshot de posición vía DT-014)", () => {
+describe("Minuto a minuto (DT-013, snapshot de posición vía DT-014/DT-019)", () => {
   function formDataConTexto(texto: string, foto?: File): FormData {
     const formData = new FormData();
     formData.set("texto", texto);
@@ -347,22 +379,7 @@ describe("Minuto a minuto (DT-013, snapshot de posición vía DT-014)", () => {
     return formData;
   }
 
-  /** Progreso público de test mínimo, solo con la posición que interesa a estos tests. */
-  function progresoPublicoConPosicion(
-    ultimaPosicion: ProgresoPublico["ultimaPosicion"]
-  ): ProgresoPublico {
-    return {
-      modo: "guiado",
-      porcentaje: 10,
-      kmAvanzados: 10,
-      kmRestantes: 90,
-      odometroKm: 10,
-      estado: "en-ruta",
-      ultimaPosicion,
-    };
-  }
-
-  it("crearMinutoAMinuto inserta con el snapshot de posición de la caché compartida de /api/progreso", async () => {
+  it("crearMinutoAMinuto inserta con el snapshot de posición de la caché compartida de /api/progreso, sin recalcular", async () => {
     intentoActivoMock = { id: 4, fase: "durante" };
     guardarCacheProgreso(
       progresoPublicoConPosicion({ lat: 42.3, lon: -8.6, ts: "2026-08-02T10:00:00.000Z" })
@@ -378,9 +395,10 @@ describe("Minuto a minuto (DT-013, snapshot de posición vía DT-014)", () => {
       lon: -8.6,
     });
     expect(subirFotoSpy).not.toHaveBeenCalled();
+    expect(calcularProgresoActualMock).not.toHaveBeenCalled();
   });
 
-  it("crearMinutoAMinuto deja lat/lon a null si la caché de progreso no tiene ultimaPosicion todavía", async () => {
+  it("crearMinutoAMinuto deja lat/lon a null si la caché de progreso ya resolvió ultimaPosicion a null, sin recalcular (esa null ya es la respuesta correcta)", async () => {
     intentoActivoMock = { id: 4, fase: "durante" };
     guardarCacheProgreso(progresoPublicoConPosicion(null));
 
@@ -389,20 +407,60 @@ describe("Minuto a minuto (DT-013, snapshot de posición vía DT-014)", () => {
     expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith(
       expect.objectContaining({ lat: null, lon: null })
     );
+    expect(calcularProgresoActualMock).not.toHaveBeenCalled();
   });
 
-  it("crearMinutoAMinuto deja lat/lon a null si la caché de progreso está vacía (sin fallback a posiciones)", async () => {
+  it("crearMinutoAMinuto con caché vacía recalcula con calcularProgresoActual y guarda la posición encontrada (modo guiado), dejándola también en caché", async () => {
     intentoActivoMock = { id: 4, fase: "durante" };
     limpiarCacheProgreso(); // caché vacía: ya limpiada en beforeEach, explícito por claridad
+    calcularProgresoActualMock.mockResolvedValue(
+      progresoPublicoConPosicion({ lat: 42.5, lon: -8.4, ts: "2026-08-09T11:00:00.000Z" })
+    );
 
-    await crearMinutoAMinuto(formDataConTexto("Sin caché todavía"));
+    await crearMinutoAMinuto(formDataConTexto("Recalculado, modo guiado"));
 
+    expect(calcularProgresoActualMock).toHaveBeenCalledTimes(1);
+    expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ lat: 42.5, lon: -8.4 })
+    );
+    expect(obtenerCacheProgreso()?.valor.ultimaPosicion).toEqual({
+      lat: 42.5,
+      lon: -8.4,
+      ts: "2026-08-09T11:00:00.000Z",
+    });
+  });
+
+  it("crearMinutoAMinuto con caché vacía recalcula con calcularProgresoActual también en modo libre", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    limpiarCacheProgreso();
+    calcularProgresoActualMock.mockResolvedValue({
+      modo: "libre",
+      distanciaRestanteKm: 11.2,
+      ultimaPosicion: { lat: 42.0, lon: -8.0, ts: "2026-08-09T11:05:00.000Z" },
+    });
+
+    await crearMinutoAMinuto(formDataConTexto("Recalculado, modo libre"));
+
+    expect(calcularProgresoActualMock).toHaveBeenCalledTimes(1);
+    expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ lat: 42.0, lon: -8.0 })
+    );
+  });
+
+  it("crearMinutoAMinuto con caché vacía y sin ninguna posición real (calcularProgresoActual también da null) guarda lat/lon a null — caso límite legítimo, no es el bug", async () => {
+    intentoActivoMock = { id: 4, fase: "durante" };
+    limpiarCacheProgreso();
+    calcularProgresoActualMock.mockResolvedValue(progresoPublicoConPosicion(null));
+
+    await crearMinutoAMinuto(formDataConTexto("Sin ninguna posición todavía"));
+
+    expect(calcularProgresoActualMock).toHaveBeenCalledTimes(1);
     expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith(
       expect.objectContaining({ lat: null, lon: null })
     );
   });
 
-  it("crearMinutoAMinuto usa el valor cacheado aunque esté fuera de su TTL de 20 s (no se revalida aquí)", async () => {
+  it("crearMinutoAMinuto usa el valor cacheado aunque esté fuera de su TTL de 20 s, sin recalcular (regresión de DT-014)", async () => {
     intentoActivoMock = { id: 4, fase: "durante" };
     guardarCacheProgreso(
       progresoPublicoConPosicion({ lat: 42.1, lon: -8.5, ts: "2026-08-02T09:00:00.000Z" })
@@ -418,6 +476,7 @@ describe("Minuto a minuto (DT-013, snapshot de posición vía DT-014)", () => {
     expect(insertMinutoAMinutoSpy).toHaveBeenCalledWith(
       expect.objectContaining({ lat: 42.1, lon: -8.5 })
     );
+    expect(calcularProgresoActualMock).not.toHaveBeenCalled();
     dateNowSpy.mockRestore();
   });
 
