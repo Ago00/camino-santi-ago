@@ -207,3 +207,14 @@ export interface ProgresoPublicoLibre {
  * disponibles según el modo del intento — sin opcionales sueltos.
  */
 export type ProgresoPublico = ProgresoPublicoGuiado | ProgresoPublicoLibre;
+
+/**
+ * Resultado de publicar una entrada del "minuto a minuto" (DT-017).
+ *
+ * Los fallos esperados (texto inválido, foto no permitida, foto demasiado
+ * grande, sesión caducada) viajan como valor de retorno y no como excepción:
+ * Next redacta en producción el mensaje de cualquier error lanzado en el
+ * servidor y lo sustituye por un texto genérico con un digest, así que un
+ * `throw` nunca llegaría a enseñar el motivo real en el móvil de Santi.
+ */
+export type ResultadoPublicacion = { ok: true } | { ok: false; mensaje: string };

@@ -140,3 +140,81 @@ primer estado*. Un entorno de pruebas que siempre arranca con datos
 sembrados a mano (SQL directo, fixtures, seeds) puede ocultar este hueco
 indefinidamente porque nunca ejercita el camino de "base de datos
 recién creada". Ver también `docs/LESSONS.md`.
+
+---
+
+## Subir fotos al minuto a minuto fallaba a ratos: Vercel corta el body a 4,5 MB antes de invocar la función
+
+**Fecha:** 2026-08-09
+**Tags:** vercel, limites-de-plataforma, server-actions, subida-de-ficheros, storage, fallo-intermitente, minuto-a-minuto
+
+**Síntomas:** Durante la prueba real del 2026-08-07 (intento 10, ~7 h
+caminando), adjuntar una foto a una entrada del "minuto a minuto" desde el
+panel admin fallaba de forma **intermitente**: varios fallos seguidos, alguna
+foto que sí entraba, y un tramo de 2 h 30 min sin poder subir ninguna. Quedó
+registrado en el propio feed: "Por problemas técnicos no puedo subir más
+fotos" (06:27Z) y "Vuelvo a poder subir fotos!" (08:11Z). Publicar **solo
+texto siempre funcionó**. El usuario no veía ningún motivo: solo un error
+genérico.
+
+**Causa raíz:** Vercel rechaza en el edge, con `413` y
+`x-vercel-error: FUNCTION_PAYLOAD_TOO_LARGE`, cualquier petición de más de
+~4,5 MB, **antes de invocar la función**. La foto viajaba dentro del
+`FormData` de la Server Action `crearMinutoAMinuto`, así que las fotos de más
+de ~4,4 MB nunca llegaban a ejecutar ni una línea de código del proyecto. La
+intermitencia era simplemente el peso variable de cada foto: una foto de
+iPhone oscila entre 1 y 8 MB según la escena.
+
+Medido contra producción (`POST /api/track` con token inválido a propósito):
+body de 4,0 y 4,3 MB → `401` (llega a la función); body de 4,5 / 5 / 6 MB →
+`413`. Corroborado con los datos reales: las 7 fotos que sí subieron ese día
+pesan 2,04 / 1,79 / 3,39 / 2,49 / 4,48 / 0,85 / 4,42 MB — **todas por debajo
+de 4,5 MB** — y en el bucket no hay ningún objeto huérfano, es decir,
+ninguna subida llegó a fallar en Supabase.
+
+**Dos creencias falsas que el propio código sostenía y que ocultaban la
+causa:**
+
+1. `experimental.serverActions.bodySizeLimit: "10mb"` en `next.config.ts`,
+   con un comentario que afirmaba explícitamente que sin subir ese límite
+   "cualquier foto de móvil normal se rechaza". Es un límite de
+   **aplicación**, que Next aplica *dentro* de la función; el de 4,5 MB es de
+   **plataforma** y ninguna configuración de Next puede elevarlo. Quien leyera
+   ese comentario daba el problema por resuelto.
+2. `TAMANO_MAXIMO_BYTES = 8 MB` en `lib/supabase/storage.ts`: una validación
+   inalcanzable, porque ninguna petición de ese tamaño llega jamás a
+   evaluarse. Su mensaje de error ("La foto supera el tamaño máximo
+   permitido") no se mostró nunca.
+
+Agravante que impedía diagnosticarlo desde el móvil: `ComposerMinutoAMinuto.tsx`
+hacía `await crearMinutoAMinuto(formData)` dentro de `startTransition` sin
+`try/catch`, así que ningún mensaje llegaba a la pantalla.
+
+**Solución (DT-017):** re-codificar la foto **en el navegador** antes de
+enviarla, con una escalera adaptativa que conserva la resolución nativa
+siempre que quepa en el presupuesto y solo baja peldaños (calidad, luego
+dimensiones) cuando no quepa; presupuestos ordenados por debajo del corte de
+plataforma (compresor 3,5 MiB → tope servidor 4 MiB → `bodySizeLimit` 4,5mb),
+con un test que impide que ese orden se rompa en el futuro; reintento
+automático 1/2/4 s solo ante fallos de red (nunca ante errores de validación);
+y el composer devolviendo el motivo real a pantalla sin perder texto ni foto.
+
+**Sub-bug encontrado en revisión, que habría sido peor que el original:** la
+primera implementación no acotaba el área del canvas. Safari en iOS limita el
+backing store de un `<canvas>` (~16,7 Mpx) y **por encima de ese límite no
+lanza**: `drawImage` no pinta y `toBlob` devuelve un JPEG válido **en blanco**,
+que pasa todas las validaciones de tamaño y se publica. Los iPhone recientes
+capturan a 24 MP por defecto. Se cerró con `LADO_LARGO_MAXIMO_PX = 4032`
+(elegido en vez de 4096 porque el peor caso de área es la imagen **cuadrada**:
+4032² = 16,26 Mpx con margen, mientras 4096² = 16.777.216 cae exactamente en el
+límite documentado).
+
+**Lección:** los límites de la plataforma de despliegue no aparecen en ningún
+test, ni en los logs de la aplicación, ni en el código — la petición muere
+antes de llegar a él. Un fallo intermitente correlacionado con el *tamaño* de
+la carga útil, y no con su contenido ni con el momento, apunta a un límite de
+infraestructura, no a un bug de lógica. Y una opción de configuración cuyo
+comentario asegura resolver el problema merece verificarse empíricamente
+contra el entorno real antes de creerla: aquí bastó mandar cuerpos de 4,0 /
+4,3 / 4,5 / 5 / 6 MB a producción para acotar el límite en un minuto. Ver
+también `docs/LESSONS.md`.

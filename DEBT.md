@@ -2,6 +2,215 @@
 
 ---
 
+## El reintento automático de `crearMinutoAMinuto` no es idempotente: puede publicar la misma entrada dos veces
+
+**Fecha:** 2026-08-09
+**Contexto:** Detectado por el Reviewer en la revisión de DT-017 (compresión
+adaptativa + reintento de la subida de fotos del "minuto a minuto").
+`components/admin/ComposerMinutoAMinuto.tsx` envuelve la llamada a la Server
+Action en `ejecutarConReintentos` (`lib/envio/reintentar.ts`, 3 intentos), y
+`esErrorReintentable` (`lib/envio/errores-de-envio.ts`) reintenta por defecto
+todo fallo que no sea `ErrorNoReintentable`, control de flujo de Next o acción
+desaparecida — incluido el corte de red, que es justo el caso que motivó el
+reintento.
+**Problema:** `crearMinutoAMinuto` no es idempotente: sube la foto a Storage e
+inserta una fila en `minuto_a_minuto` sin ninguna clave de deduplicación. Si el
+cuerpo llega entero al servidor, este completa la subida y el `INSERT`, y la
+**respuesta** se pierde por el camino (escenario perfectamente normal con 4G
+irregular: túnel, cambio de celda, pantalla bloqueada), el cliente ve un
+`TypeError: Load failed`, lo clasifica como reintentable y vuelve a enviar todo
+— publicando la entrada dos veces, con dos objetos distintos en Storage.
+**Impacto:** Entrada duplicada visible en el feed público en directo, con su
+foto duplicada en el bucket. No hay pérdida de datos ni riesgo de seguridad, y
+Santi puede borrar el duplicado desde el panel (`eliminarMinutoAMinuto`), pero
+es una operación manual en mitad del reto y el objeto de Storage queda huérfano
+(deuda ya aceptada en DT-013). La ventana es estrecha (solo entre el fin del
+proceso en servidor y la llegada de la respuesta) pero se repite en cada
+publicación de 30 h de evento.
+**Solución propuesta:** Clave de idempotencia generada en el cliente
+(`crypto.randomUUID()` por envío, estable entre reintentos) enviada en el
+`FormData`, con columna + índice único en `minuto_a_minuto` y un `INSERT` que
+trate la violación de unicidad como éxito. Exige migración de BD, explícitamente
+fuera del alcance de DT-017 ("no tocar el esquema"), por eso queda registrado y
+no se corrigió en la tarea. Alternativa sin migración, más débil: no reintentar
+automáticamente cuando ya se envió el cuerpo completo (no es detectable desde el
+navegador) o pedir confirmación antes del reintento, lo que contradice el
+objetivo de DT-017 de que el reintento sea invisible.
+**Prioridad:** Media — conviene decidirlo antes del reto; el coste de no
+hacerlo es una entrada duplicada ocasional, borrable a mano.
+
+---
+
+## Nada acota en el tiempo la preparación de la foto ni el envío: el composer puede quedarse en "Preparando foto…" o "Publicando…" indefinidamente
+
+**Fecha:** 2026-08-09
+**Contexto:** Detectado por el Reviewer en la revisión de DT-017. El requisito
+nº 3 del prompt clarificado prohíbe explícitamente "un botón que se queda
+colgado". DT-017 lo resuelve para el caso de fallo (se captura, se muestra el
+motivo), pero no para el caso de "nunca termina".
+**Problema:** Dos promesas del flujo no tienen cota temporal: (a)
+`cargarImagen()` en `lib/imagen/preparar-foto.ts` resuelve en `img.onload` y
+rechaza en `img.onerror`; si el navegador no dispara ninguno de los dos (presión
+de memoria en iOS con una imagen muy grande), la promesa queda pendiente para
+siempre y el composer se queda en "Preparando foto…" con el botón deshabilitado;
+(b) la llamada a la Server Action no lleva ningún límite de tiempo, así que una
+conexión "colgada" (TCP abierto sin datos, típico al perder cobertura dentro de
+un túnel) puede tardar minutos en rechazar, y hasta entonces no se dispara
+ningún reintento ni ningún mensaje.
+**Impacto:** El único remedio para Santi sería recargar la página — perdiendo
+justo el texto y la foto que DT-017 se compromete a conservar. Probabilidad baja
+en el caso (a) y media en el (b), pero el coste de ocurrir en mitad del reto es
+alto porque no se puede depurar sobre la marcha.
+**Solución propuesta:** Para (a), un `Promise.race` con un temporizador (5-10 s)
+en `cargarImagen` que rechace con un error propio — la degradación al fichero
+original ya existe y lo absorbe sin bloquear. Para (b) no hay solución limpia:
+la invocación de una Server Action no acepta `AbortSignal`, así que abandonar la
+espera no cancela la petición en curso y agravaría la deuda de duplicados
+(entrada anterior); la vía real sería mostrar un aviso pasados N segundos
+("sigue subiendo, no cierres la página") sin abortar nada.
+**Prioridad:** Media para (a) — barato y sin efectos colaterales. Baja para (b).
+
+---
+
+## El cliente no comprueba el formato de la foto cuando el navegador no ha podido recodificarla
+
+**Fecha:** 2026-08-09
+**Contexto:** Detectado por el Reviewer en la revisión de DT-017.
+`prepararFotoParaSubida` (`lib/imagen/preparar-foto.ts`) degrada al fichero
+original cuando la recodificación falla, y solo comprueba el tamaño
+(`TAMANO_MAXIMO_FOTO_BYTES`) antes de dar la foto por "lista". No comprueba el
+tipo MIME, pese a que el módulo ya importa `esMimePermitido` de
+`lib/imagen/limites-subida.ts` para otra decisión.
+**Problema:** Un original que el navegador no sabe decodificar (HEIC/HEIF de
+iPhone en un navegador que no lo soporta es el caso realista) y que pesa menos
+del tope se envía igualmente, gasta la subida completa por 4G y el servidor lo
+rechaza con "Formato de imagen no permitido". Contradice el principio explícito
+de DT-017 punto 3: no gastar una subida condenada a fallar.
+**Impacto:** Bajo hoy — el `<input>` declara
+`accept="image/jpeg,image/png,image/webp"` y iOS Safari transcodifica el HEIC a
+JPEG al elegirlo desde la galería, así que el caso exige un navegador o un flujo
+poco habitual. El coste de que ocurra el día del reto es una espera larga
+seguida de un error evitable.
+**Solución propuesta:** En `prepararFotoParaSubida`, antes de devolver
+`{ estado: "lista" }`, comprobar también `esMimePermitido(aEnviar.type)` y
+devolver un estado de error con el mismo criterio que "demasiado-grande"
+(mensaje explícito, antes de subir nada). Es un `if` con el import ya presente.
+**Prioridad:** Baja.
+
+---
+
+## `docs/producto/funcionalidades.md` no refleja que la foto publicada es una copia recomprimida en el móvil
+
+**Fecha:** 2026-08-09
+**Contexto:** Detectado por el Reviewer en la revisión de DT-017, aplicando la
+regla de `docs/LESSONS.md` ("Features cerradas por el pipeline técnico dejan
+`docs/producto/` desactualizado"). La entrada "Minuto a minuto" de
+`funcionalidades.md` (línea ~95) dice que la foto "se sube directamente desde el
+móvil/ordenador", sin mencionar que desde DT-017 lo que se publica es una copia
+recodificada a JPEG en el navegador, que puede perder algo de calidad y, en
+fotos excepcionalmente pesadas, resolución.
+**Problema:** El propio usuario planteó y decidió expresamente este tradeoff
+(rechazó primero la reducción fija a 1600 px y aceptó después la escalera
+adaptativa), así que es una decisión de producto consciente que no queda escrita
+en ningún documento de producto: solo vive en DT-017 y en `docs/tareas/CURRENT.md`,
+que se archiva al cerrar la tarea.
+**Impacto:** Puramente documental. Cero efecto en comportamiento.
+**Solución propuesta:** El Agente de Producto añade a la entrada "Minuto a
+minuto" de `funcionalidades.md` una línea sobre la copia recomprimida (y su
+motivo: subida rápida con cobertura mala), y valora una entrada breve en
+`decisiones-producto.md` con el tradeoff calidad/velocidad ya decidido.
+**Prioridad:** Baja.
+
+---
+
+## `ErrorNoReintentable` no lo lanza ningún camino de producción
+
+**Fecha:** 2026-08-09
+**Contexto:** Detectado por el Reviewer en la revisión de DT-017. La clase
+`ErrorNoReintentable` (`lib/envio/errores-de-envio.ts`) está exportada, tiene
+ramas propias en `esErrorReintentable` y `describirFalloDeEnvio`, y aparece en
+varios tests, pero ninguna ruta de código de producción la construye: los fallos
+definitivos del cliente ("demasiado grande") los resuelve el composer antes de
+llamar a la Server Action, y los del servidor viajan como `ResultadoPublicacion`,
+no como excepción.
+**Problema:** Abstracción sin ningún productor real — el framework (sección 7)
+pide explícitamente no dejar abstracciones especulativas. Además hace que varios
+de los tests nuevos verifiquen una rama inalcanzable, dando una sensación de
+cobertura mayor de la real.
+**Impacto:** Bajo — código muerto pequeño y bien documentado. El riesgo es de
+mantenimiento: quien lea `errores-de-envio.ts` asumirá que existe un camino que
+lanza ese error y buscará dónde.
+**Solución propuesta:** O bien eliminarla (y simplificar `esErrorReintentable` y
+`describirFalloDeEnvio`), o bien darle el productor natural: que
+`prepararFotoParaSubida` lance `ErrorNoReintentable` en el caso
+"demasiado-grande" en vez de devolver un estado, dejando que el composer tenga
+un único camino de error. La segunda opción es la que justifica que la clase
+exista.
+**Prioridad:** Baja.
+
+---
+
+## La recodificación de la foto en el navegador (canvas) no tiene ninguna prueba automática
+
+**Fecha:** 2026-08-09
+**Contexto:** Generado al implementar DT-017 (compresión adaptativa de las
+fotos del "minuto a minuto" en el cliente). La lógica de decisión se aisló en
+módulos puros y sí está cubierta (`lib/imagen/escalera-compresion.test.ts`,
+`lib/imagen/preparar-foto.test.ts` para `elegirFotoAEnviar`), pero el borde
+con el navegador de `lib/imagen/preparar-foto.ts` —decodificar el fichero en
+un `<img>`, dibujarlo en un `<canvas>` y `toBlob()`— no lo ejecuta ningún
+test: el entorno de Vitest es `node` (`vitest.config.ts`) y ni jsdom
+implementa `canvas.toBlob` sin la dependencia nativa `canvas`.
+**Problema:** Un fallo en ese tramo (un `drawImage` con argumentos mal, un
+`toBlob` que devuelve `null`, una orientación EXIF que no se aplica en un
+navegador concreto) no lo detecta ninguna quality gate. Es el mismo patrón de
+la lección "Ninguna quality gate detecta que Tailwind no esté generando CSS
+real": código que compila, con tests en verde, y comportamiento roto.
+**Impacto:** Acotado por diseño: si la recodificación lanza, el módulo degrada
+al fichero original (y deja un `console.warn`), así que el peor caso es
+volver al comportamiento previo a DT-017 —foto grande rechazada con mensaje
+explícito— y no un formulario colgado. Lo que sí quedaría sin detectar es una
+foto publicada tumbada (orientación EXIF mal aplicada), que solo se ve
+mirándola.
+**Solución propuesta:** Dos vías, por orden de coste: (a) una prueba E2E con
+Playwright que suba una foto vertical real con EXIF `Orientation=6` al panel
+admin y compruebe el tamaño y la relación de aspecto del objeto resultante en
+Storage; (b) un proyecto de Vitest aparte con entorno `jsdom` + la dependencia
+`canvas`, solo para este módulo. Mientras tanto, la comprobación es manual y
+en dispositivo real: subir desde un iPhone una foto horizontal y una vertical
+y mirar el resultado en el feed.
+**Prioridad:** Media — el fix se despliega para un evento con fecha; la
+verificación manual en la preview antes del reto cubre el riesgo inmediato,
+pero no queda protegido para cambios futuros.
+
+---
+
+## `app/admin/page.test.ts` agota el timeout de 5 s en la primera ejecución de la suite completa
+
+**Fecha:** 2026-08-09
+**Contexto:** Detectado al ejecutar las quality gates de DT-017. En la primera
+ejecución tras añadir módulos nuevos (caché de transformación de Vitest
+fría), el test "redirige a /admin/login sin cookie de sesión" falló con
+`Test timed out in 5000ms`; en la siguiente ejecución, y ejecutando ese
+fichero aislado (1,5 s), pasa sin problema. La causa es el coste del `await
+import("@/app/admin/page")` dentro del propio test: arrastra todo el árbol de
+componentes del panel, y compite con los otros 26 ficheros de test en
+paralelo.
+**Problema:** Es un test intermitente ("flaky") que depende de la carga de la
+máquina y del estado de la caché de transformación, no del código bajo
+prueba. Un fallo así en una quality gate hace dudar de un cambio correcto.
+**Impacto:** Bajo — no indica ningún problema real de producción y se
+reproduce solo con la caché fría. El coste es de confianza en la suite: obliga
+a reejecutar para distinguir un fallo real de uno de tiempo.
+**Solución propuesta:** Dar a ese fichero un timeout propio holgado
+(`describe`/`it` con timeout explícito, o `testTimeout` por fichero), que es
+lo mínimo; o mover el `await import()` del cuerpo del test a un
+`beforeAll`, de forma que el coste de importar el árbol del panel no cuente
+contra el timeout de un test concreto.
+**Prioridad:** Baja.
+
+---
+
 ## Recordatorio: aplicar `supabase/migrations/0003_modo_intento.sql` contra producción
 
 **Fecha:** 2026-08-07
