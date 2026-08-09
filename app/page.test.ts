@@ -20,6 +20,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { limpiarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
+import { calcularRitmoMedioIntento } from "@/lib/ritmo";
+import type { EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
 import type { Posicion, ProgresoPublico, TrazaPreparada } from "@/lib/types";
 
 interface IntentoMock {
@@ -40,6 +42,10 @@ let errorConModoMock: { message: string } | null = null;
 let intentoSinModoMock: Omit<IntentoMock, "modo" | "destino_lat" | "destino_lon"> | null = null;
 let posicionesMock: Posicion[] = [];
 const rangeMock = vi.fn(() => Promise.resolve({ data: posicionesMock, error: null }));
+// Feed "minuto a minuto" (ModoLlegadaConectado/ModoLlegadaLibreConectado lo
+// cargan siempre junto al progreso) — vacío por defecto, sin relevancia para
+// los tests de tiempo en marcha/ritmo medio de esta tarea.
+let minutoAMinutoMock: EntradaMinutoAMinutoPublica[] = [];
 
 vi.mock("@/lib/supabase/public", () => ({
   getSupabasePublic: vi.fn(() => ({
@@ -62,6 +68,13 @@ vi.mock("@/lib/supabase/public", () => ({
           eq: vi.fn().mockReturnThis(),
           order: vi.fn().mockReturnThis(),
           range: rangeMock,
+        };
+      }
+      if (tabla === "minuto_a_minuto") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockResolvedValue({ data: minutoAMinutoMock }),
         };
       }
       throw new Error(`Tabla no mockada: ${tabla}`);
@@ -101,13 +114,15 @@ function posicion(overrides: Partial<Posicion>): Posicion {
   };
 }
 
-const { obtenerIntentoActivo, calcularProgresoDelIntento } = await import("@/app/page");
+const { obtenerIntentoActivo, calcularProgresoDelIntento, ModoLlegadaConectado, ModoLlegadaLibreConectado } =
+  await import("@/app/page");
 
 beforeEach(() => {
   intentoConModoMock = null;
   errorConModoMock = null;
   intentoSinModoMock = null;
   posicionesMock = [];
+  minutoAMinutoMock = [];
   rangeMock.mockClear();
   limpiarCacheProgreso();
 });
@@ -217,5 +232,99 @@ describe("calcularProgresoDelIntento() — reutiliza la caché compartida (S2, e
 
     expect(resultado.modo).toBe("guiado");
     expect(rangeMock).toHaveBeenCalledWith(0, 999);
+  });
+});
+
+/**
+ * Ampliación de DT-020 (2026-08-09, docs/tecnico/decisiones-tecnicas.md): la
+ * pantalla de llegada (guiado y libre) debe usar el timestamp del último
+ * punto GPS real (`progreso.ultimaPosicion.ts`) como referencia final de
+ * "tiempo en marcha" y "ritmo medio", nunca `ended_at` (el momento de pulsar
+ * "Finalizar" en el panel admin, que puede ir varios minutos por detrás del
+ * último dato real). `ModoLlegadaConectado`/`ModoLlegadaLibreConectado` ya
+ * no reciben `endedAt` en absoluto — se llama directamente a la función
+ * (sin renderizar JSX: ninguna de las dos usa hooks) e inspecciona los
+ * props del elemento devuelto, mismo patrón que las funciones ya exportadas
+ * arriba.
+ */
+describe("ModoLlegadaConectado() — llegada guiada, ampliación de DT-020", () => {
+  it("calcula tiempo en marcha y ritmo medio hasta el último punto GPS real, no hasta un ended_at posterior", async () => {
+    const startedAt = "2026-09-12T08:00:00.000Z";
+    posicionesMock = [
+      posicion({ id: 1, lat: 0, lon: 0, ts: startedAt }),
+      // Último punto GPS real: exactamente 5 h después del inicio. El caso
+      // real que motiva esta tarea es que `ended_at` llegue varios minutos
+      // más tarde (Santi guarda el móvil, el admin tarda en pulsar
+      // "Finalizar") — ese hueco no debe contarse como tiempo caminado.
+      posicion({ id: 2, lat: 0.45049, lon: 0, ts: "2026-09-12T13:00:00.000Z" }),
+    ];
+
+    const elemento = await ModoLlegadaConectado({
+      intentoId: 1,
+      startedAt,
+      mensajeLlegada: null,
+      trazaCoords: [],
+    });
+
+    expect(elemento.props.tiempoTotal).toBe("5:00");
+    // Lo que daría si, por regresión, se usara un ended_at 7 minutos tardío
+    // en vez del último punto GPS real.
+    expect(elemento.props.tiempoTotal).not.toBe("5:07");
+    expect(elemento.props.ritmoMedio).toBe(
+      calcularRitmoMedioIntento(elemento.props.progreso.odometroKm, startedAt, "2026-09-12T13:00:00.000Z")
+    );
+  });
+
+  it("da — en tiempo en marcha y ritmo medio si el intento no recibió ninguna posición GPS (mismo criterio que DT-020 para 'durante')", async () => {
+    posicionesMock = [];
+
+    const elemento = await ModoLlegadaConectado({
+      intentoId: 1,
+      startedAt: "2026-09-12T08:00:00.000Z",
+      mensajeLlegada: null,
+      trazaCoords: [],
+    });
+
+    expect(elemento.props.tiempoTotal).toBe("—");
+    expect(elemento.props.ritmoMedio).toBe("—");
+  });
+});
+
+describe("ModoLlegadaLibreConectado() — llegada libre, ampliación de DT-020", () => {
+  it("calcula tiempo en marcha y ritmo medio hasta el último punto GPS real, no hasta un ended_at posterior", async () => {
+    const startedAt = "2026-09-12T08:00:00.000Z";
+    posicionesMock = [
+      posicion({ id: 1, lat: 0, lon: 0, ts: startedAt }),
+      // Último punto GPS real: 1 h 30 min después del inicio.
+      posicion({ id: 2, lat: 0.09, lon: 0, ts: "2026-09-12T09:30:00.000Z" }),
+    ];
+
+    const elemento = await ModoLlegadaLibreConectado({
+      intentoId: 1,
+      destino: null,
+      mensajeLlegada: null,
+      startedAt,
+    });
+
+    expect(elemento.props.tiempoEnMarcha).toBe("1:30");
+    // Lo que daría si, por regresión, se usara un ended_at 7 minutos tardío.
+    expect(elemento.props.tiempoEnMarcha).not.toBe("1:37");
+    expect(elemento.props.ritmoMedio).toBe(
+      calcularRitmoMedioIntento(elemento.props.progreso.odometroKm, startedAt, "2026-09-12T09:30:00.000Z")
+    );
+  });
+
+  it("da — en tiempo en marcha y ritmo medio si el intento no recibió ninguna posición GPS", async () => {
+    posicionesMock = [];
+
+    const elemento = await ModoLlegadaLibreConectado({
+      intentoId: 1,
+      destino: null,
+      mensajeLlegada: null,
+      startedAt: "2026-09-12T08:00:00.000Z",
+    });
+
+    expect(elemento.props.tiempoEnMarcha).toBe("—");
+    expect(elemento.props.ritmoMedio).toBe("—");
   });
 });

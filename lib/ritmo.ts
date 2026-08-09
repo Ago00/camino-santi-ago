@@ -4,13 +4,18 @@
 // encontró que anclar estas dos cifras a la hora del navegador de quien mira
 // la web (en vez de al último dato real) las hace subir/desplomarse solas si
 // el móvil deja de enviar señal, sin que haya pasado nada nuevo en el reto.
-// Quien llama decide el instante final según el momento del intento:
-// - "durante" (ModoDurante.tsx, ModoDuranteLibre.tsx): `progreso.ultimaPosicion?.ts`.
-// - "llegada" (ModoLlegada.tsx, ModoLlegadaLibre.tsx): `ended_at` (ya es un
-//   timestamp real de BD, no la hora actual — no tenía el problema de DT-020).
+// Su ampliación (2026-08-09) extendió el mismo criterio a "llegada": ni
+// siquiera `ended_at` (el momento de pulsar "Finalizar" en el panel admin,
+// que puede ir varios minutos por detrás del último dato real) es una
+// referencia válida. Quien llama decide el instante final según el momento
+// del intento, pero SIEMPRE es `progreso.ultimaPosicion?.ts ?? null` en las
+// cuatro pantallas:
+// - "durante" (ModoDurante.tsx, ModoDuranteLibre.tsx).
+// - "llegada" (ModoLlegada.tsx vía `ModoLlegadaConectado` en app/page.tsx,
+//   ModoLlegadaLibre.tsx vía `ModoLlegadaLibreConectado` en app/page.tsx).
 // Ninguna de las dos funciones lee `Date.now()`/`new Date()` internamente:
 // si un cambio futuro reintroduce el bug, tendrá que ser pasando `ahora`
-// explícitamente como argumento, no colándolo por dentro.
+// (o `ended_at`) explícitamente como argumento, no colándolo por dentro.
 
 // Milisegundos transcurridos, no horas: cada función deriva de aquí solo la
 // unidad que necesita (calcularRitmoMedioIntento divide por 3.600.000 una

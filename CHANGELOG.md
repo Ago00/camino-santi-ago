@@ -2,6 +2,24 @@
 
 ---
 
+## 2026-08-09 — La pantalla de llegada ya no cuenta como "caminado" el hueco entre el último paso y pulsar "Finalizar"
+
+**Tipo:** Fix
+
+En la pantalla que se ve al llegar (guiado y libre), el tiempo en marcha y el
+ritmo medio se calculaban hasta el momento en que alguien pulsa "Finalizar"
+en el panel de admin — un instante que puede ir varios minutos por detrás del
+último paso real (Santi guarda el móvil, el admin tarda en escribir el
+mensaje de llegada). Ese hueco se contaba como tiempo caminado, alargando el
+tiempo total y diluyendo el ritmo medio del resumen final.
+
+Ahora ambas cifras se calculan hasta el último dato de posición realmente
+recibido, igual que ya se hizo para la pantalla "en directo" en el arreglo
+anterior. El resto de la pantalla de llegada (mensaje, mapa, minuto a
+minuto) no cambia.
+
+---
+
 ## 2026-08-09 — El modo libre gana tiempo en marcha, ritmo medio y km caminados
 
 **Tipo:** Feature

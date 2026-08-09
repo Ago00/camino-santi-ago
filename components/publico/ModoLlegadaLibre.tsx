@@ -12,6 +12,10 @@
 // Client Component por el mismo motivo que ModoLlegada.tsx: estado local
 // (puntoResaltado) para la interacción de clic → mapa. Los puntos GPS y las
 // entradas del feed llegan ya cargados server-side (app/page.tsx) como prop.
+// `tiempoEnMarcha`/`ritmoMedio` también llegan ya calculados y formateados
+// desde el conector (`ModoLlegadaLibreConectado`, app/page.tsx) — igual que
+// `tiempoTotal`/`ritmoMedio` en ModoLlegada.tsx — para no duplicar aquí el
+// cálculo de la referencia final (DT-020 y su ampliación, ver lib/ritmo.ts).
 
 "use client";
 
@@ -22,7 +26,6 @@ import Stats from "@/components/publico/Stats";
 import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
 import MinutoAMinuto, { type EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
-import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoLibre } from "@/lib/types";
 
 const C = { ink: "#1B211D", gold: "#C9A24B" };
@@ -32,16 +35,18 @@ interface PuntoGps {
   lon: number;
 }
 
-interface ModoLlegadaLibreProps {
+// Exportada por el mismo motivo que ModoLlegadaProps en ModoLlegada.tsx:
+// app/page.tsx (ModoLlegadaLibreConectado) y sus tests la usan para tipar el
+// retorno sin `any`/`as`.
+export interface ModoLlegadaLibreProps {
   progreso: ProgresoPublicoLibre;
   mensajeLlegada: string;
   puntosGps: PuntoGps[];
   entradasMinutoAMinuto: EntradaMinutoAMinutoPublica[];
-  /** Momento en que arrancó el intento (started_at), para "tiempo en marcha". */
-  startedAt: string | null;
-  /** Momento en que se cerró el intento (ended_at) — referencia final del
-   * tiempo en marcha y del ritmo medio, congelados desde la llegada. */
-  endedAt: string | null;
+  /** "H:MM" ya formateado del tiempo en marcha del intento completo. */
+  tiempoEnMarcha: string;
+  /** Ritmo medio del intento completo, ya formateado (km/h). */
+  ritmoMedio: string;
 }
 
 export default function ModoLlegadaLibre({
@@ -49,16 +54,10 @@ export default function ModoLlegadaLibre({
   mensajeLlegada,
   puntosGps,
   entradasMinutoAMinuto,
-  startedAt,
-  endedAt,
+  tiempoEnMarcha,
+  ritmoMedio,
 }: ModoLlegadaLibreProps) {
   const [puntoResaltado, setPuntoResaltado] = useState<{ lat: number; lon: number; hora: string } | null>(null);
-
-  // "Llegada" ya usa timestamps reales de BD (started_at/ended_at), nunca la
-  // hora del navegador — no tiene el problema de DT-020, mismo criterio que
-  // ModoLlegada.tsx (modo guiado).
-  const tiempoEnMarcha = calcularTiempoEnMarchaIntento(startedAt, endedAt);
-  const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, startedAt, endedAt);
 
   return (
     <section className="space-y-5 pt-6">
