@@ -13,14 +13,15 @@ import { aProgresoPublico } from "@/lib/traza/progreso-publico";
 import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
 import { obtenerTextos } from "@/lib/textos/obtener-textos";
 import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
-import { calcularRitmoMedioIntento } from "@/lib/ritmo";
+import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { Fase, ModoIntento, Posicion, ProgresoPublicoGuiado, ProgresoPublicoLibre } from "@/lib/types";
+import type { ReactElement } from "react";
 import PeregrinoLibre from "@/components/publico/PeregrinoLibre";
 import ModoAntes from "@/components/publico/ModoAntes";
 import ModoDurante from "@/components/publico/ModoDurante";
 import ModoDuranteLibre from "@/components/publico/ModoDuranteLibre";
-import ModoLlegada from "@/components/publico/ModoLlegada";
-import ModoLlegadaLibre from "@/components/publico/ModoLlegadaLibre";
+import ModoLlegada, { type ModoLlegadaProps } from "@/components/publico/ModoLlegada";
+import ModoLlegadaLibre, { type ModoLlegadaLibreProps } from "@/components/publico/ModoLlegadaLibre";
 import type { EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
 import RefrescoAlCambiarFase from "@/components/publico/RefrescoAlCambiarFase";
 
@@ -66,13 +67,11 @@ export default async function Home() {
               destino={destinoDelIntento(intentoActivo)}
               mensajeLlegada={intentoActivo.mensaje_llegada}
               startedAt={intentoActivo.started_at}
-              endedAt={intentoActivo.ended_at}
             />
           ) : (
             <ModoLlegadaConectado
               intentoId={intentoActivo.id}
               startedAt={intentoActivo.started_at}
-              endedAt={intentoActivo.ended_at}
               mensajeLlegada={intentoActivo.mensaje_llegada}
               trazaCoords={trazaCoords}
             />
@@ -96,25 +95,33 @@ async function ModoDuranteConectado({
   return <ModoDurante progresoInicial={progresoInicial} iniciadoEn={startedAt} trazaCoords={trazaCoords} />;
 }
 
-async function ModoLlegadaConectado({
+export async function ModoLlegadaConectado({
   intentoId,
   startedAt,
-  endedAt,
   mensajeLlegada,
   trazaCoords,
 }: {
   intentoId: number;
   startedAt: string | null;
-  endedAt: string | null;
   mensajeLlegada: string | null;
   trazaCoords: [number, number][];
-}) {
+}): Promise<ReactElement<ModoLlegadaProps>> {
   const [progreso, entradasMinutoAMinuto] = await Promise.all([
     calcularProgresoDelIntento(intentoId),
     cargarEntradasMinutoAMinuto(intentoId),
   ]);
-  const tiempoTotal = formatearTiempoTotal(startedAt, endedAt);
-  const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, startedAt, endedAt);
+
+  // DT-020 y su ampliación (2026-08-09, docs/tecnico/decisiones-tecnicas.md):
+  // la referencia final de "tiempo en marcha"/"ritmo medio" es siempre el
+  // último punto GPS real recibido, nunca `ended_at` — el momento de pulsar
+  // "Finalizar" en el panel admin puede ir varios minutos por detrás del
+  // último dato real (Santi guarda el móvil, el admin tarda en pulsar el
+  // botón). Sin ninguna posición en todo el intento, `ultimaPosicion` es
+  // null y ambas cifras dan "—" (mismo criterio que DT-020 ya estableció
+  // para "durante"), nunca se cae a `ended_at` como último recurso.
+  const referenciaFinal = progreso.ultimaPosicion?.ts ?? null;
+  const tiempoTotal = calcularTiempoEnMarchaIntento(startedAt, referenciaFinal);
+  const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, startedAt, referenciaFinal);
 
   return (
     <ModoLlegada
@@ -143,23 +150,30 @@ async function ModoDuranteLibreConectado({
   );
 }
 
-async function ModoLlegadaLibreConectado({
+export async function ModoLlegadaLibreConectado({
   intentoId,
   destino,
   mensajeLlegada,
   startedAt,
-  endedAt,
 }: {
   intentoId: number;
   destino: { lat: number; lon: number } | null;
   mensajeLlegada: string | null;
   startedAt: string | null;
-  endedAt: string | null;
-}) {
+}): Promise<ReactElement<ModoLlegadaLibreProps>> {
   const [{ progreso, puntosGps }, entradasMinutoAMinuto] = await Promise.all([
     calcularProgresoLibreDelIntento(intentoId, destino),
     cargarEntradasMinutoAMinuto(intentoId),
   ]);
+
+  // DT-020 y su ampliación (2026-08-09): misma referencia final que el modo
+  // guiado (ver ModoLlegadaConectado arriba) — nunca `ended_at`. El cálculo
+  // vive aquí (en el conector), no dentro de ModoLlegadaLibre.tsx, para que
+  // ambos modos de "llegada" reciban las cifras ya formateadas de la misma
+  // forma (mismo patrón que ModoLlegada.tsx/ModoLlegadaConectado).
+  const referenciaFinal = progreso.ultimaPosicion?.ts ?? null;
+  const tiempoEnMarcha = calcularTiempoEnMarchaIntento(startedAt, referenciaFinal);
+  const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, startedAt, referenciaFinal);
 
   return (
     <ModoLlegadaLibre
@@ -167,8 +181,8 @@ async function ModoLlegadaLibreConectado({
       mensajeLlegada={mensajeLlegada ?? TEXTOS_POR_DEFECTO.mensaje_llegada_default}
       puntosGps={puntosGps}
       entradasMinutoAMinuto={entradasMinutoAMinuto}
-      startedAt={startedAt}
-      endedAt={endedAt}
+      tiempoEnMarcha={tiempoEnMarcha}
+      ritmoMedio={ritmoMedio}
     />
   );
 }
@@ -306,12 +320,4 @@ async function calcularProgresoLibreDelIntento(
   const progreso = calcularProgresoLibre(historico, destino);
   const puntosGps = historico.map((p) => ({ lat: p.lat, lon: p.lon }));
   return { progreso, puntosGps };
-}
-
-function formatearTiempoTotal(startedAt: string | null, endedAt: string | null): string {
-  if (!startedAt || !endedAt) return "—";
-  const minutos = Math.max(0, Math.floor((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 60_000));
-  const horas = Math.floor(minutos / 60);
-  const resto = minutos % 60;
-  return `${horas}:${String(resto).padStart(2, "0")}`;
 }

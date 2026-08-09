@@ -1402,3 +1402,27 @@ notas de cierre de DT-017/DT-018).
    revise, no que el Implementador lo decida en solitario. Detalle completo,
    impacto y solución propuesta en `DEBT.md` ("`GET /api/progreso` no puede
    reflejar `odometroKm` real en modo libre durante el polling en directo").
+
+### Ampliación (2026-08-09) — "llegada" tampoco cumplía el criterio
+
+El análisis original de DT-020 daba por bueno "llegada" en los dos modos
+porque usa `ended_at` (un timestamp real de BD) en vez de `ahora` — pero
+`ended_at` **tampoco es un dato de posición**: es el momento en que alguien
+pulsa "Finalizar" en el panel de admin, que puede ir varios minutos por
+detrás del último punto GPS real (Santi guarda el móvil al llegar, el admin
+tarda en pulsar el botón mientras escribe el mensaje de llegada o
+celebra). Ese hueco se contaba como tiempo caminado, alargando el tiempo
+total y diluyendo el ritmo medio del resumen final — la misma familia de
+problema que este DT identificó para "durante", solo que la referencia no
+válida era `ended_at` en vez de `ahora`.
+
+**Decisión:** `ModoLlegada.tsx` (guiado) y `ModoLlegadaLibre.tsx` (libre)
+pasan también a usar `ultimaPosicion?.ts ?? null` como referencia final
+para tiempo en marcha y ritmo medio, no `ended_at`. `started_at`/`ended_at`
+siguen existiendo en BD sin cambios — solo cambia qué timestamp alimenta
+estas dos cifras concretas. Mismo criterio de "sin posición → '—'" ya
+establecido arriba para el caso sin ningún punto GPS en todo el intento.
+
+Con esto, la regla de DT-020 ("nunca una referencia temporal que no sea un
+dato de posición real") queda aplicada de forma completa y uniforme en las
+cuatro pantallas (durante/llegada × guiado/libre), no solo en dos.

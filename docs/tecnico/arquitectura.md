@@ -43,7 +43,9 @@ camino-santi-ago/
 │   │   │                         # con ultimaPosicion?.ts como referencia final, nunca "ahora")
 │   │   └── ModoLlegadaLibre.tsx   # DT-016: "llegada" del modo libre (sin condicionales en ModoLlegada.tsx);
 │   │                              # CURRENT.md/DT-020 añade Stats.tsx (tiempo en marcha/km/ritmo,
-│   │                              # con ended_at como referencia final)
+│   │                              # ya calculados en app/page.tsx, ModoLlegadaLibreConectado); ampliación
+│   │                              # de DT-020 (2026-08-09): la referencia final es ultimaPosicion?.ts,
+│   │                              # nunca ended_at (el momento de pulsar "Finalizar" en el panel admin)
 │   └── admin/               # F4: secciones del panel
 │       ├── ComposerMinutoAMinuto.tsx  # DT-013: texto + foto opcional; DT-017: envía con
 │       │                              # onSubmit propio (no <form action={fn}>: React 19
@@ -62,8 +64,10 @@ camino-santi-ago/
 │   │                          # calcularTiempoEnMarchaIntento() (CURRENT.md/DT-020) — ambas
 │   │                          # parametrizadas por un instante final explícito (nunca leen
 │   │                          # Date.now()/new Date()); usadas por ModoDurante.tsx,
-│   │                          # ModoDuranteLibre.tsx, ModoLlegadaLibre.tsx y app/page.tsx
-│   │                          # (ModoLlegadaConectado)
+│   │                          # ModoDuranteLibre.tsx y app/page.tsx (ModoLlegadaConectado,
+│   │                          # ModoLlegadaLibreConectado) — ampliación de DT-020
+│   │                          # (2026-08-09): en "llegada" también con ultimaPosicion?.ts como
+│   │                          # referencia final, nunca ended_at
 │   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
 │   ├── rate-limit.ts          # F5: rate limiting en memoria de proceso (DT-011), usado por todos los endpoints públicos
 │   ├── progreso-cache.ts      # DT-014: caché compartida de ProgresoPublico (antes vivía

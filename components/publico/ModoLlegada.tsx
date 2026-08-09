@@ -24,7 +24,9 @@ const C = { ink: "#1B211D", gold: "#C9A24B" };
 
 // Este componente es exclusivo del modo guiado (DT-016): el modo libre usa
 // ModoLlegadaLibre.tsx, un componente propio (sin condicionales aquí).
-interface ModoLlegadaProps {
+// Exportada para que app/page.tsx (ModoLlegadaConectado) pueda anotar su
+// tipo de retorno sin recurrir a `any`/`as` — usada también en sus tests.
+export interface ModoLlegadaProps {
   progreso: ProgresoPublicoGuiado;
   mensajeLlegada: string;
   /** "hh:mm" ya formateado del tiempo total del intento. */
