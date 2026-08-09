@@ -5,14 +5,13 @@
  * legítimo al intento activo y a sus posiciones no descartadas (ver DT-007,
  * principio de mínimo privilegio).
  *
- * Bifurca según el modo del intento activo (DT-016):
- * - guiado: `prepararTraza` + `calcularProgreso` de lib/traza/proyeccion.ts
- *   (dominio ya cerrado y testeado, no se modifica) sobre
- *   `lib/traza/traza.geojson` (la traza de CÁLCULO — nunca
- *   traza-mapa.geojson, ver AGENTS.md), proyectado con `aProgresoPublico`.
- * - libre: `calcularProgresoLibre` de lib/traza/progreso-libre.ts (sin
- *   traza, distancia haversine al destino del intento).
- * En ambos casos el resultado es una rama de la unión `ProgresoPublico`.
+ * El cálculo en sí (bifurcación por modo DT-016, histórico paginado DT-018,
+ * compatibilidad con la migración 0003 sin aplicar) vive en
+ * `lib/traza/progreso-actual.ts` (`calcularProgresoActual`, extraída aquí
+ * por DT-019 para que `crearMinutoAMinuto`, `app/admin/actions.ts`, la
+ * reutilice sin duplicar lógica). Este fichero solo añade la caché y el
+ * rate limiting de la ruta pública — su comportamiento externo no cambia
+ * respecto a antes de la extracción.
  *
  * Caché en memoria de proceso con TTL de 15-20 s (DT-007): evita recalcular
  * en cada petición durante ráfagas de polling client-side (cada 30 s, varios
@@ -25,30 +24,6 @@
  *
  * Rate limiting por IP (DT-011): 60 req/min. Responde 429 sin cuerpo al
  * exceder el límite, antes de consultar la caché o recalcular.
- *
- * Compatibilidad temporal con la migración sin aplicar (ver DEBT.md,
- * "recordatorio: aplicar supabase/migrations/0003_modo_intento.sql"): si las
- * columnas modo/destino_lat/destino_lon todavía no existen en la BD real, la
- * consulta del intento activo falla. Sin manejo explícito, ese error se leía
- * como "sin intento activo" (progresoVacio()) y la web pública mostraba la
- * fase "antes" aunque el intento real estuviera en "durante"/"llegada". En
- * ese caso se reintenta con el select mínimo (solo `id`) y se trata el
- * intento como modo 'guiado', el comportamiento exacto que este endpoint ya
- * tenía antes de DT-016.
- *
- * Histórico de posiciones (DT-018, docs/tecnico/decisiones-tecnicas.md):
- * - Modo guiado: `calcularProgreso` necesita el histórico COMPLETO (el
- *   odómetro suma distancia real entre cada par consecutivo, y el máximo
- *   monótono se calcula sobre toda la secuencia) — se trae paginado con
- *   `obtenerTodasLasFilas` (lib/supabase/paginacion.ts), sin el corte a
- *   1000 filas de PostgREST. La proyección en sí usa ventana deslizante
- *   (lib/traza/proyeccion.ts) para que traer el histórico completo siga
- *   siendo rápido a escala de un día entero de reto.
- * - Modo libre: `calcularProgresoLibre` solo usa la posición no descartada
- *   más reciente, así que este endpoint (con polling cada 30 s) pide
- *   únicamente esa fila (`order(ts desc).limit(1)`) en vez de todo el
- *   histórico — mismo resultado, sin traer miles de filas para quedarse
- *   con una.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
@@ -59,13 +34,7 @@ import {
   obtenerCacheProgreso,
 } from "@/lib/progreso-cache";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
-import { getSupabasePublic } from "@/lib/supabase/public";
-import { obtenerTodasLasFilas } from "@/lib/supabase/paginacion";
-import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
-import { calcularProgreso } from "@/lib/traza/proyeccion";
-import { aProgresoPublico } from "@/lib/traza/progreso-publico";
-import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
-import type { Posicion, ProgresoPublico } from "@/lib/types";
+import { calcularProgresoActual } from "@/lib/traza/progreso-actual";
 
 export const runtime = "nodejs";
 
@@ -89,88 +58,4 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   guardarCacheProgreso(progresoPublico);
 
   return NextResponse.json(progresoPublico);
-}
-
-interface IntentoActivoConModo {
-  id: number;
-  modo: "guiado" | "libre";
-  destino_lat: number | null;
-  destino_lon: number | null;
-}
-
-async function calcularProgresoActual(): Promise<ProgresoPublico> {
-  const supabase = getSupabasePublic();
-
-  const { data: intentoActivo, error: errorIntento } = await supabase
-    .from("intentos")
-    .select("id, modo, destino_lat, destino_lon")
-    .eq("cerrado", false)
-    .maybeSingle();
-
-  const intento: IntentoActivoConModo | null = errorIntento
-    ? await obtenerIntentoActivoModoGuiado(supabase)
-    : intentoActivo;
-
-  if (!intento) {
-    return progresoVacio();
-  }
-
-  if (intento.modo === "libre") {
-    // Solo hace falta la posición no descartada más reciente (DT-018): traer
-    // el histórico completo aquí sería pagar el coste de miles de filas cada
-    // 30 s de polling para quedarse con una sola.
-    const { data: ultimaPosicion } = await supabase
-      .from("posiciones")
-      .select("*")
-      .eq("intento_id", intento.id)
-      .eq("descartado", false)
-      .order("ts", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const historico: Posicion[] = ultimaPosicion ? [ultimaPosicion] : [];
-    const destino =
-      intento.destino_lat !== null && intento.destino_lon !== null
-        ? { lat: intento.destino_lat, lon: intento.destino_lon }
-        : null;
-    return calcularProgresoLibre(historico, destino);
-  }
-
-  // Modo guiado: calcularProgreso necesita el histórico completo (DT-018).
-  const historico = await obtenerTodasLasFilas<Posicion>((desde, hasta) =>
-    supabase
-      .from("posiciones")
-      .select("*")
-      .eq("intento_id", intento.id)
-      .eq("descartado", false)
-      .order("ts", { ascending: true })
-      .range(desde, hasta)
-  );
-
-  const traza = cargarTrazaDeCalculo();
-  const progreso = calcularProgreso(historico, traza);
-
-  return aProgresoPublico(progreso);
-}
-
-/**
- * Compatibilidad temporal: reintenta con el select mínimo (solo `id`) cuando
- * la consulta con `modo`/`destino_lat`/`destino_lon` falla por columnas
- * inexistentes, y trata el intento como modo 'guiado' sin destino.
- */
-async function obtenerIntentoActivoModoGuiado(
-  supabase: ReturnType<typeof getSupabasePublic>
-): Promise<IntentoActivoConModo | null> {
-  const { data } = await supabase
-    .from("intentos")
-    .select("id")
-    .eq("cerrado", false)
-    .maybeSingle();
-
-  return data ? { id: data.id, modo: "guiado", destino_lat: null, destino_lon: null } : null;
-}
-
-function progresoVacio(): ProgresoPublico {
-  const traza = cargarTrazaDeCalculo();
-  return aProgresoPublico(calcularProgreso([], traza));
 }

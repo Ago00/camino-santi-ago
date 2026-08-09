@@ -2,6 +2,26 @@
 
 ---
 
+## 2026-08-09 — Las entradas del minuto a minuto ya no se quedan sin marcador en el mapa
+
+**Tipo:** Fix
+
+Durante la prueba del 2026-08-07, las 16 entradas publicadas en el "minuto a
+minuto" se quedaron sin posición asociada: al pinchar cualquiera desde la web
+para ver dónde estaba Santi en ese momento, no aparecía ningún marcador en el
+mapa. El motivo: la posición se leía de una memoria compartida con la web
+pública que casi nunca estaba "caliente" ese día por la poca gente mirando en
+directo.
+
+Ahora, si esa memoria está vacía en el momento de publicar, se recalcula la
+posición en el momento con el mismo cálculo que usa la web pública — así la
+entrada siempre queda con la posición real más reciente (la misma que vería
+cualquiera recargando la web en ese instante), salvo en el único caso en que
+de verdad todavía no hay ninguna posición registrada (justo tras arrancar el
+reto), donde seguir sin marcador es correcto.
+
+---
+
 ## 2026-08-09 — El mapa y el progreso ya no se congelan pasadas ~4 horas de reto
 
 **Tipo:** Fix

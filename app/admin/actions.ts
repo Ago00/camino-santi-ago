@@ -22,7 +22,8 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subirFotoMinutoAMinuto, ErrorDeSubidaDeFoto } from "@/lib/supabase/storage";
 import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
-import { obtenerCacheProgreso } from "@/lib/progreso-cache";
+import { guardarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
+import { calcularProgresoActual } from "@/lib/traza/progreso-actual";
 import type { ResultadoPublicacion } from "@/lib/types";
 import type { ClaveTexto } from "@/lib/textos/defaults";
 import { CLAVES_TEXTOS } from "@/lib/textos/defaults";
@@ -358,13 +359,23 @@ export async function guardarTexto(clave: string, valor: string): Promise<void> 
  * adjunta, se sube primero a Storage y solo si eso tiene éxito se inserta la
  * fila — así nunca queda una entrada con una subida a medias.
  *
- * El snapshot de posición sale de la caché compartida de `/api/progreso`
- * (`lib/progreso-cache.ts`, DT-014), no de una lectura fresca de
- * `posiciones`: así la coordenada guardada coincide con lo que el mapa
- * público está mostrando en ese momento, en vez de ir "por delante" de la
- * caché de 20 s + polling de 30 s del cliente. Si la caché está vacía o sin
- * `ultimaPosicion`, la entrada se guarda con `lat`/`lon` a null — deliberado,
- * sin fallback a `posiciones` (reintroduciría el problema original).
+ * El snapshot de posición sale, con preferencia, de la caché compartida de
+ * `/api/progreso` (`lib/progreso-cache.ts`, DT-014): así la coordenada
+ * guardada coincide con lo que el mapa público está mostrando en ese
+ * momento, en vez de ir "por delante" de la caché de 20 s + polling de 30 s
+ * del cliente. Si esa caché está vacía en esta instancia serverless
+ * concreta (riesgo aceptado en DT-014: no se comparte entre instancias, y en
+ * la prueba real del 2026-08-07 se observó en el 100 % de las entradas
+ * publicadas, no como caso raro) **no se guarda `lat`/`lon` a null
+ * directamente**: se recalcula el progreso en el momento con
+ * `calcularProgresoActual` (`lib/traza/progreso-actual.ts`, la misma función
+ * que usa `GET /api/progreso`), se usa su `ultimaPosicion` y el resultado se
+ * deja también en la caché compartida (`guardarCacheProgreso`) para que el
+ * próximo lector no tenga que recalcular (DT-019,
+ * docs/tecnico/decisiones-tecnicas.md). Solo si ese recálculo también da
+ * `ultimaPosicion: null` (de verdad no hay ninguna posición registrada
+ * todavía para el intento) la entrada se guarda sin posición — correcto, no
+ * es el bug.
  *
  * **Devuelve el fallo en vez de lanzarlo** (DT-017, única acción del panel que
  * lo hace): Next redacta en producción el mensaje de cualquier error lanzado
@@ -419,7 +430,17 @@ export async function crearMinutoAMinuto(formData: FormData): Promise<ResultadoP
     return { ok: false, mensaje: "No hay ningún intento activo sobre el que publicar." };
   }
 
-  const ultimaPosicion = obtenerCacheProgreso()?.valor.ultimaPosicion ?? null;
+  // DT-019: solo se recalcula si NO hay ninguna entrada en caché — un valor
+  // presente se usa tal cual aunque su `ultimaPosicion` sea null (esa null
+  // ya es la respuesta correcta calculada, no "todavía no se sabe"; ver
+  // DT-014, no se comprueba el TTL al leer esta caché).
+  const cacheProgreso = obtenerCacheProgreso();
+  let ultimaPosicion = cacheProgreso?.valor.ultimaPosicion ?? null;
+  if (!cacheProgreso) {
+    const progresoRecalculado = await calcularProgresoActual();
+    guardarCacheProgreso(progresoRecalculado);
+    ultimaPosicion = progresoRecalculado.ultimaPosicion;
+  }
 
   const { error: errorInsercion } = await supabase.from("minuto_a_minuto").insert({
     intento_id: intentoActivo.id,

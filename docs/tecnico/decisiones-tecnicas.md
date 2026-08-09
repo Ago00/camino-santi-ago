@@ -1195,3 +1195,56 @@ sin tocar; S1 y S2 son capas de defensa alrededor de ella, no un rediseño.
 Los tests de `proyeccion.test.ts` y de la sección 1-4 de
 `proyeccion.ventana.test.ts` (equivalencia numérica, desvío con reenganche,
 hueco largo, rendimiento a escala de un día) siguen en verde sin cambios.
+
+---
+
+## DT-019 — `crearMinutoAMinuto`: si la caché de progreso está vacía, recalcular en el momento (reutilizando el cálculo de `/api/progreso`), no leer `posiciones` en bruto
+
+**Fecha:** 2026-08-09 · **Tarea:** Fix — entradas del minuto a minuto sin posición (`lat`/`lon` a `null`) · **Decisión de arquitectura**
+
+**Contexto.** `crearMinutoAMinuto` (`app/admin/actions.ts`) lee la posición a
+guardar de `lib/progreso-cache.ts` (DT-014), la misma caché en memoria de
+proceso que usa `GET /api/progreso`. Esa caché no se comparte entre
+instancias serverless (mismo patrón que DT-007/DT-011). En la prueba real
+del 2026-08-07, las **16 de 16** entradas publicadas quedaron con
+`lat`/`lon` a `null` — el 100 %, no el caso raro que preveía DT-014
+("escalar si se observa con demasiada frecuencia"). Explicación más
+probable: con poco tráfico público real ese día, casi nunca había una
+petición `GET /api/progreso` reciente que hubiera calentado la caché de la
+instancia que atendía cada publicación.
+
+**Decisión.** Cuando la caché está vacía, `crearMinutoAMinuto` ya no se
+rinde (`lat`/`lon` a `null`): **recalcula el progreso en el momento,
+reutilizando la misma función que ya usa `GET /api/progreso`** para decidir
+qué mostrar (`calcularProgresoActual`, hoy privada de
+`app/api/progreso/route.ts`), extraída a un módulo compartido para que
+ambos puntos de llamada la usen sin duplicar lógica. El resultado recalculado
+también rellena la caché (`guardarCacheProgreso`), igual que hace hoy
+`route.ts` — mismo comportamiento, dos disparadores posibles.
+
+**Por qué esto y no una lectura en bruto de `posiciones` (la primera
+propuesta, descartada tras la pregunta del usuario).** Una lectura directa
+del último punto de `posiciones` puede diferir de lo que la web pública está
+mostrando en ese instante: en modo guiado, `calcularProgreso` puede
+descartar el último punto por velocidad implícita imposible (GPS erróneo) —
+su `ultimaPosicion` no es siempre literalmente la última fila insertada.
+Reutilizar `calcularProgresoActual` en vez de reimplementar una consulta
+aparte garantiza que la entrada del feed queda **siempre** con la misma
+coordenada que vería cualquier visitante recargando la web pública en ese
+mismo instante — es decir, preserva exactamente el objetivo original de
+DT-014 ("coincide con lo que el mapa público está mostrando"), incluso en el
+camino de respaldo, no solo en el camino normal (caché caliente).
+
+**Por qué no la Opción B de `DEBT.md` (persistir el snapshot en `intentos`
+con migración).** Sigue siendo mayor alcance de lo que este bug necesita: el
+100 % observado se explica enteramente por "nadie calentó la caché", y
+recalcular bajo demanda lo resuelve sin tocar el esquema. Se descarta por el
+mismo motivo que ya la descartó DT-014, reforzado por el precedente real de
+este proyecto con una migración pendiente de aplicar a producción
+(`0003_modo_intento`, ver `DEBT.md`/`BUGS.md`) — no repetir ese riesgo de
+proceso a días del reto para un problema que no lo necesita.
+
+**No cambia:** el camino normal (caché caliente) sigue siendo idéntico a
+DT-014 — mismo TTL, misma fuente. El esquema de BD no se toca.
+
+**Actualiza `arquitectura.md`** con el módulo nuevo de progreso compartido.
