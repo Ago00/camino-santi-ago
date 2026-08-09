@@ -15,6 +15,7 @@ import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
 import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
 import { bandaHoraria } from "@/lib/cielo";
+import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoGuiado } from "@/lib/types";
 
 const C = { ink: "#1B211D", ember: "#D9773B" };
@@ -62,8 +63,14 @@ export default function ModoDurante({ progresoInicial, iniciadoEn, trazaCoords }
     return () => clearInterval(id);
   }, []);
 
-  const tiempoEnMarcha = formatearTiempoEnMarcha(iniciadoEn, ahora);
-  const ritmoMedio = calcularRitmoMedio(progreso.odometroKm, iniciadoEn, ahora);
+  // DT-020: tiempo en marcha y ritmo medio se anclan siempre al último punto
+  // GPS real (`ultimaPosicion?.ts`), nunca a `ahora` — si el móvil deja de
+  // enviar señal, estas dos cifras se congelan en vez de seguir moviéndose
+  // solas con el reloj de quien mira la web. `ahora` sigue vivo más abajo,
+  // pero solo alimenta `ultimaSenalTexto` y la banda horaria del mapa.
+  const referenciaFinal = progreso.ultimaPosicion?.ts ?? null;
+  const tiempoEnMarcha = calcularTiempoEnMarchaIntento(iniciadoEn, referenciaFinal);
+  const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, iniciadoEn, referenciaFinal);
   const ultimaSenalTexto = formatearUltimaSenal(progreso.ultimaPosicion?.ts ?? null, ahora);
 
   return (
@@ -123,26 +130,6 @@ function CintaEnDirecto() {
 
 function formatearKm(valor: number): string {
   return valor.toLocaleString("es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
-function formatearTiempoEnMarcha(iniciadoEn: string | null, ahora: Date): string {
-  if (!iniciadoEn) return "—";
-  const inicio = new Date(iniciadoEn).getTime();
-  const transcurridoMin = Math.max(0, Math.floor((ahora.getTime() - inicio) / 60_000));
-  const horas = Math.floor(transcurridoMin / 60);
-  const minutos = transcurridoMin % 60;
-  return `${horas}:${String(minutos).padStart(2, "0")}`;
-}
-
-function calcularRitmoMedio(odometroKm: number, iniciadoEn: string | null, ahora: Date): string {
-  if (!iniciadoEn) return "—";
-  const inicio = new Date(iniciadoEn).getTime();
-  const horasTranscurridas = (ahora.getTime() - inicio) / 3_600_000;
-  if (horasTranscurridas <= 0) return "—";
-  return (odometroKm / horasTranscurridas).toLocaleString("es-ES", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  });
 }
 
 function formatearUltimaSenal(ts: string | null, ahora: Date): string | null {

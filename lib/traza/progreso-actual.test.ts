@@ -151,7 +151,7 @@ describe("calcularProgresoActual", () => {
     expect(rangeMock).toHaveBeenCalledWith(0, 999);
   });
 
-  it("calcula el progreso libre a partir de solo la última posición no descartada", async () => {
+  it("calcula el progreso libre a partir del histórico completo paginado (CURRENT.md/DT-020: necesario para odometroKm)", async () => {
     intentoActivoMock = { id: 9, modo: "libre", destino_lat: 42.1, destino_lon: -8.0 };
     posicionesMock = [
       posicion({ id: 1, lat: 42.0, lon: -8.0, ts: "2026-09-12T09:00:00.000Z" }),
@@ -164,6 +164,11 @@ describe("calcularProgresoActual", () => {
     expect(progreso.modo).toBe("libre");
     if (progreso.modo === "libre") {
       expect(progreso.distanciaRestanteKm).not.toBeNull();
+      // Regresión directa del bloqueo encontrado al implementar CURRENT.md:
+      // con un histórico de una sola fila (el atajo `.limit(1)` de DT-018,
+      // ya revertido) el odómetro siempre daba 0. Con el histórico completo
+      // sí suma el tramo entre las dos posiciones.
+      expect(progreso.odometroKm).toBeGreaterThan(0);
     }
     // La posición más reciente (10:00), no la primera del array.
     expect(progreso.ultimaPosicion).toEqual({
@@ -171,8 +176,11 @@ describe("calcularProgresoActual", () => {
       lon: -8.01,
       ts: "2026-09-12T10:00:00.000Z",
     });
-    expect(limitMock).toHaveBeenCalledWith(1);
-    expect(rangeMock).not.toHaveBeenCalled();
+    // DT-018 revertido para modo libre (nota de cierre,
+    // docs/tecnico/decisiones-tecnicas.md): pagina con .range() igual que
+    // modo guiado, ya no pide solo la última fila con .limit(1).
+    expect(rangeMock).toHaveBeenCalledWith(0, 999);
+    expect(limitMock).not.toHaveBeenCalled();
   });
 
   it("reintenta con el select mínimo y calcula progreso en modo guiado cuando la columna `modo` no existe todavía (migración 0003 sin aplicar)", async () => {

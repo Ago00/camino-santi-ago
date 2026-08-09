@@ -38,10 +38,13 @@ let intentoActivoMinimoMock: { id: number } | null = null;
 let posicionesMock: Posicion[] = [];
 
 // DT-018: mocks propios (no recreados dentro de la factory de `from`) para
-// poder aserir sobre ellos entre tests — el modo guiado llama a `.range()`
-// (paginación completa, lib/supabase/paginacion.ts) y el modo libre a
-// `.limit(1).maybeSingle()` (solo la última posición, sin traer el histórico
-// completo en cada poll de 30 s).
+// poder aserir sobre ellos entre tests. Ambos modos paginan con `.range()`
+// (lib/supabase/paginacion.ts) desde CURRENT.md/DT-020 — `limitMock`/
+// `maybeSingleUltimaPosicionMock` ya no los usa ningún camino de producción
+// (modo libre pedía antes solo la última posición con `.limit(1)
+// .maybeSingle()`, DT-018 original); se conservan como guardarraíl explícito
+// en los tests de abajo (`expect(...).not.toHaveBeenCalled()`) para que una
+// regresión futura a ese atajo no pase desapercibida.
 const rangeMock = vi.fn(() => Promise.resolve({ data: posicionesMock, error: null }));
 const limitMock = vi.fn().mockReturnThis();
 const maybeSingleUltimaPosicionMock = vi.fn(() => {
@@ -221,7 +224,7 @@ describe("GET /api/progreso — rate limiting (DT-011)", () => {
 });
 
 describe("GET /api/progreso — bifurcación por modo del intento activo (DT-016)", () => {
-  it("devuelve la rama 'libre' (distanciaRestanteKm, sin porcentaje ni odómetro) cuando el intento activo está en modo libre", async () => {
+  it("devuelve la rama 'libre' (distanciaRestanteKm y odometroKm, sin porcentaje) cuando el intento activo está en modo libre", async () => {
     intentoActivoMock = { id: 9, modo: "libre", destino_lat: 42.1, destino_lon: -8.0 };
     posicionesMock = [posicion({ id: 1, lat: 42.0, lon: -8.0, ts: "2026-09-12T10:00:00.000Z" })];
 
@@ -234,7 +237,12 @@ describe("GET /api/progreso — bifurcación por modo del intento activo (DT-016
     expect(body.distanciaRestanteKm).toBeCloseTo(11.12, 1);
     expect(body.ultimaPosicion).toEqual({ lat: 42.0, lon: -8.0, ts: "2026-09-12T10:00:00.000Z" });
     expect(body).not.toHaveProperty("porcentaje");
-    expect(body).not.toHaveProperty("odometroKm");
+    // odometroKm (CURRENT.md/DT-020) forma parte del contrato de la rama
+    // libre desde esta tarea. Da 0 aquí porque el histórico mockado solo
+    // tiene una posición (no hay ningún tramo que sumar todavía) — no por
+    // ninguna limitación del endpoint: ver el describe de más abajo,
+    // "modo libre pagina el histórico completo", con dos posiciones.
+    expect(body.odometroKm).toBe(0);
   });
 
   it("devuelve distanciaRestanteKm null en modo libre sin destino fijado", async () => {
@@ -275,7 +283,7 @@ describe("GET /api/progreso — histórico de posiciones sin cortar a 1000 filas
     expect(maybeSingleUltimaPosicionMock).not.toHaveBeenCalled();
   });
 
-  it("modo libre pide solo la última posición (limit 1), sin paginar el histórico completo", async () => {
+  it("modo libre pagina el histórico completo con .range(), igual que modo guiado (CURRENT.md/DT-020 revierte el atajo .limit(1) de DT-018)", async () => {
     intentoActivoMock = { id: 9, modo: "libre", destino_lat: 42.1, destino_lon: -8.0 };
     posicionesMock = [
       posicion({ id: 1, lat: 42.0, lon: -8.0, ts: "2026-09-12T09:00:00.000Z" }),
@@ -286,11 +294,20 @@ describe("GET /api/progreso — histórico de posiciones sin cortar a 1000 filas
     const response = await GET(crearPeticion());
     const body = await response.json();
 
-    expect(limitMock).toHaveBeenCalledWith(1);
-    expect(maybeSingleUltimaPosicionMock).toHaveBeenCalledTimes(1);
-    expect(rangeMock).not.toHaveBeenCalled();
+    // Nota de cierre de DT-018 (docs/tecnico/decisiones-tecnicas.md): desde
+    // que calcularProgresoLibre también calcula odometroKm, modo libre
+    // necesita el histórico completo para sumar tramos — el atajo
+    // .limit(1) (correcto cuando solo hacía falta la última posición) dejaba
+    // el odómetro siempre a 0 en cada poll. Ver también DEBT.md (entrada
+    // resuelta).
+    expect(rangeMock).toHaveBeenCalledWith(0, 999);
+    expect(limitMock).not.toHaveBeenCalled();
+    expect(maybeSingleUltimaPosicionMock).not.toHaveBeenCalled();
     // La posición más reciente (10:00), no la primera del array.
     expect(body.ultimaPosicion).toEqual({ lat: 42.01, lon: -8.01, ts: "2026-09-12T10:00:00.000Z" });
+    // Regresión directa del bug: con el histórico completo, el odómetro
+    // suma el tramo entre las dos posiciones en vez de dar 0.
+    expect(body.odometroKm).toBeGreaterThan(0);
   });
 });
 

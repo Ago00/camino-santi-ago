@@ -34,6 +34,7 @@ function progresoPublicoLibre(overrides: Partial<ProgresoPublicoLibre> = {}): Pr
   return {
     modo: "libre",
     distanciaRestanteKm: null,
+    odometroKm: 0,
     ultimaPosicion: null,
     ...overrides,
   };

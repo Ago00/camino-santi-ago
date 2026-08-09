@@ -436,6 +436,7 @@ describe("Minuto a minuto (DT-013, snapshot de posición vía DT-014/DT-019)", (
     calcularProgresoActualMock.mockResolvedValue({
       modo: "libre",
       distanciaRestanteKm: 11.2,
+      odometroKm: 0,
       ultimaPosicion: { lat: 42.0, lon: -8.0, ts: "2026-08-09T11:05:00.000Z" },
     });
 

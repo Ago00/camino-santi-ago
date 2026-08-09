@@ -40,6 +40,7 @@ export function calcularProgresoLibre(
       ultima && destino
         ? haversineKm(ultima.lat, ultima.lon, destino.lat, destino.lon)
         : null,
+    odometroKm: calcularOdometroLibre(historico),
     ultimaPosicion: ultima
       ? { lat: ultima.lat, lon: ultima.lon, ts: ultima.ts }
       : null,
@@ -59,4 +60,25 @@ function ultimaPosicionNoDescartada(historico: Posicion[]): Posicion | null {
       ? actual
       : masReciente
   );
+}
+
+/**
+ * Distancia real recorrida (DT-020/CURRENT.md): suma `haversineKm` entre
+ * cada par consecutivo de posiciones no descartadas, recorriendo `historico`
+ * en el orden recibido — precondición ya documentada en el resto del
+ * proyecto (histórico ascendente por `ts`, mismo criterio que
+ * `calcularProgreso()` en modo guiado; quien llama es responsable de pedirlo
+ * así, ver `obtenerHistoricoPosiciones` en app/page.tsx). Deliberadamente
+ * SIN ningún filtro de velocidad ni de precisión GPS — a diferencia del
+ * odómetro del modo guiado (`lib/traza/proyeccion.ts`), coherente con la
+ * filosofía ya documentada arriba de este módulo: en modo libre los puntos
+ * se aceptan y se dibujan sin validar si tienen sentido.
+ */
+function calcularOdometroLibre(historico: Posicion[]): number {
+  const validas = historico.filter((p) => !p.descartado);
+  let total = 0;
+  for (let i = 1; i < validas.length; i++) {
+    total += haversineKm(validas[i - 1].lat, validas[i - 1].lon, validas[i].lat, validas[i].lon);
+  }
+  return total;
 }

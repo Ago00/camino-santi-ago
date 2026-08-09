@@ -46,7 +46,11 @@ export default async function Home() {
         {fase === "antes" && <ModoAntes textos={textos} trazaCoords={trazaCoords} />}
         {fase === "durante" && intentoActivo && (
           intentoActivo.modo === "libre" ? (
-            <ModoDuranteLibreConectado intentoId={intentoActivo.id} destino={destinoDelIntento(intentoActivo)} />
+            <ModoDuranteLibreConectado
+              intentoId={intentoActivo.id}
+              destino={destinoDelIntento(intentoActivo)}
+              startedAt={intentoActivo.started_at}
+            />
           ) : (
             <ModoDuranteConectado
               intentoId={intentoActivo.id}
@@ -61,6 +65,8 @@ export default async function Home() {
               intentoId={intentoActivo.id}
               destino={destinoDelIntento(intentoActivo)}
               mensajeLlegada={intentoActivo.mensaje_llegada}
+              startedAt={intentoActivo.started_at}
+              endedAt={intentoActivo.ended_at}
             />
           ) : (
             <ModoLlegadaConectado
@@ -125,22 +131,30 @@ async function ModoLlegadaConectado({
 async function ModoDuranteLibreConectado({
   intentoId,
   destino,
+  startedAt,
 }: {
   intentoId: number;
   destino: { lat: number; lon: number } | null;
+  startedAt: string | null;
 }) {
   const { progreso, puntosGps } = await calcularProgresoLibreDelIntento(intentoId, destino);
-  return <ModoDuranteLibre progresoInicial={progreso} puntosGpsIniciales={puntosGps} />;
+  return (
+    <ModoDuranteLibre progresoInicial={progreso} puntosGpsIniciales={puntosGps} startedAt={startedAt} />
+  );
 }
 
 async function ModoLlegadaLibreConectado({
   intentoId,
   destino,
   mensajeLlegada,
+  startedAt,
+  endedAt,
 }: {
   intentoId: number;
   destino: { lat: number; lon: number } | null;
   mensajeLlegada: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
 }) {
   const [{ progreso, puntosGps }, entradasMinutoAMinuto] = await Promise.all([
     calcularProgresoLibreDelIntento(intentoId, destino),
@@ -153,6 +167,8 @@ async function ModoLlegadaLibreConectado({
       mensajeLlegada={mensajeLlegada ?? TEXTOS_POR_DEFECTO.mensaje_llegada_default}
       puntosGps={puntosGps}
       entradasMinutoAMinuto={entradasMinutoAMinuto}
+      startedAt={startedAt}
+      endedAt={endedAt}
     />
   );
 }

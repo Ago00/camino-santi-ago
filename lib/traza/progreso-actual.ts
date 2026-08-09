@@ -2,10 +2,10 @@
  * calcularProgresoActual(): calcula el `ProgresoPublico` del intento activo
  * en este preciso momento — consulta el intento activo (con compatibilidad
  * temporal si la migración `0003_modo_intento.sql` todavía no está aplicada,
- * ver `DEBT.md`), trae el histórico de posiciones que corresponda según el
- * modo (paginado completo en guiado, DT-018; solo la última posición en
- * libre) y delega el cálculo de dominio a `calcularProgreso`/
- * `calcularProgresoLibre`.
+ * ver `DEBT.md`), trae el histórico completo de posiciones (paginado, DT-018;
+ * ambos modos desde CURRENT.md/DT-020 — ver nota de cierre de DT-018 en
+ * docs/tecnico/decisiones-tecnicas.md) y delega el cálculo de dominio a
+ * `calcularProgreso`/`calcularProgresoLibre`.
  *
  * Extraída de `app/api/progreso/route.ts` (DT-019,
  * docs/tecnico/decisiones-tecnicas.md) para que `GET /api/progreso` y
@@ -54,18 +54,30 @@ interface IntentoActivoConModo {
  * tenía antes de DT-016.
  *
  * Histórico de posiciones (DT-018, docs/tecnico/decisiones-tecnicas.md):
- * - Modo guiado: `calcularProgreso` necesita el histórico COMPLETO (el
+ * ambos modos necesitan el histórico COMPLETO, paginado con
+ * `obtenerTodasLasFilas` (lib/supabase/paginacion.ts, tope de seguridad de
+ * 50.000 filas), sin el corte a 1000 filas de PostgREST.
+ * - Modo guiado: `calcularProgreso` lo necesitaba desde siempre — el
  *   odómetro suma distancia real entre cada par consecutivo, y el máximo
- *   monótono se calcula sobre toda la secuencia) — se trae paginado con
- *   `obtenerTodasLasFilas` (lib/supabase/paginacion.ts), sin el corte a
- *   1000 filas de PostgREST. La proyección en sí usa ventana deslizante
- *   (lib/traza/proyeccion.ts) para que traer el histórico completo siga
- *   siendo rápido a escala de un día entero de reto.
- * - Modo libre: `calcularProgresoLibre` solo usa la posición no descartada
- *   más reciente, así que este endpoint (con polling cada 30 s) pide
- *   únicamente esa fila (`order(ts desc).limit(1)`) en vez de todo el
- *   histórico — mismo resultado, sin traer miles de filas para quedarse
- *   con una.
+ *   monótono se calcula sobre toda la secuencia. La proyección en sí usa
+ *   ventana deslizante (lib/traza/proyeccion.ts) para que traer el
+ *   histórico completo siga siendo rápido a escala de un día entero de reto.
+ * - Modo libre: hasta CURRENT.md/DT-020, `calcularProgresoLibre` solo usaba
+ *   la posición más reciente, así que este endpoint (con polling cada 30 s)
+ *   pedía únicamente esa fila (`order(ts desc).limit(1)`) — optimización de
+ *   DT-018. Desde que `calcularProgresoLibre` también calcula `odometroKm`
+ *   (suma de tramos entre posiciones consecutivas), esa premisa dejó de ser
+ *   cierta: con un histórico de una sola fila el odómetro devuelto en cada
+ *   poll era siempre 0, aunque la carga inicial de página (con el histórico
+ *   completo, `app/page.tsx`) mostrara el valor correcto — revertido a pedir
+ *   el histórico completo, igual que modo guiado. Ver la nota de cierre de
+ *   DT-018 en docs/tecnico/decisiones-tecnicas.md: el coste adicional es
+ *   solo de lectura/paginación (no hay ventana deslizante ni proyección
+ *   sobre traza en modo libre — `calcularProgresoLibre` es O(n) trivial,
+ *   sin relación con el vector de denegación de servicio que motivó S1/S2),
+ *   y queda acotado por el mismo tope de `obtenerTodasLasFilas` y por la
+ *   misma caché compartida TTL 20 s que ya paga modo guiado
+ *   (`lib/progreso-cache.ts`, DT-007).
  */
 export async function calcularProgresoActual(): Promise<ProgresoPublico> {
   const supabase = getSupabasePublic();
@@ -84,20 +96,9 @@ export async function calcularProgresoActual(): Promise<ProgresoPublico> {
     return progresoVacio();
   }
 
-  if (intento.modo === "libre") {
-    // Solo hace falta la posición no descartada más reciente (DT-018): traer
-    // el histórico completo aquí sería pagar el coste de miles de filas cada
-    // 30 s de polling para quedarse con una sola.
-    const { data: ultimaPosicion } = await supabase
-      .from("posiciones")
-      .select("*")
-      .eq("intento_id", intento.id)
-      .eq("descartado", false)
-      .order("ts", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+  const historico = await obtenerHistoricoCompleto(supabase, intento.id);
 
-    const historico: Posicion[] = ultimaPosicion ? [ultimaPosicion] : [];
+  if (intento.modo === "libre") {
     const destino =
       intento.destino_lat !== null && intento.destino_lon !== null
         ? { lat: intento.destino_lat, lon: intento.destino_lon }
@@ -105,21 +106,31 @@ export async function calcularProgresoActual(): Promise<ProgresoPublico> {
     return calcularProgresoLibre(historico, destino);
   }
 
-  // Modo guiado: calcularProgreso necesita el histórico completo (DT-018).
-  const historico = await obtenerTodasLasFilas<Posicion>((desde, hasta) =>
-    supabase
-      .from("posiciones")
-      .select("*")
-      .eq("intento_id", intento.id)
-      .eq("descartado", false)
-      .order("ts", { ascending: true })
-      .range(desde, hasta)
-  );
-
   const traza = cargarTrazaDeCalculo();
   const progreso = calcularProgreso(historico, traza);
 
   return aProgresoPublico(progreso);
+}
+
+/**
+ * Histórico completo de posiciones no descartadas del intento, ascendente
+ * por `ts` (DT-018) — usado por ambos modos desde CURRENT.md/DT-020 (antes,
+ * modo libre solo pedía la última posición; ver docstring de arriba y la
+ * nota de cierre de DT-018).
+ */
+async function obtenerHistoricoCompleto(
+  supabase: ReturnType<typeof getSupabasePublic>,
+  intentoId: number
+): Promise<Posicion[]> {
+  return obtenerTodasLasFilas<Posicion>((desde, hasta) =>
+    supabase
+      .from("posiciones")
+      .select("*")
+      .eq("intento_id", intentoId)
+      .eq("descartado", false)
+      .order("ts", { ascending: true })
+      .range(desde, hasta)
+  );
 }
 
 /**

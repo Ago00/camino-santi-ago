@@ -1,10 +1,11 @@
 // Modo "durante" — intento en modo libre (DT-016): mapa sin traza oficial de
 // fondo (solo la polilínea de puntos GPS recibidos) + distancia restante en
-// línea recta al destino. Sin ETA, sin ritmo, sin % de progreso, sin
-// odómetro (fuera de alcance explícito de DT-016) — de ahí que este
-// componente no reutilice Mojon.tsx ni Stats.tsx (pensados para el dominio
-// guiado). Intenciones, comentarios y minuto a minuto se mantienen igual que
-// en ModoDurante.tsx (mismos componentes, sin tocarlos).
+// línea recta al destino + tiempo en marcha/km caminados/ritmo medio
+// (CURRENT.md — ampliación de DT-016). Sin ETA ni % de progreso (siguen sin
+// sentido sin una ruta fija), de ahí que este componente no reutilice
+// Mojon.tsx — pero sí reutiliza Stats.tsx tal cual, igual que ModoDurante.tsx.
+// Intenciones, comentarios y minuto a minuto se mantienen igual que en
+// ModoDurante.tsx (mismos componentes, sin tocarlos).
 //
 // Polling client-side cada 30 s a GET /api/progreso (mismo patrón que
 // ModoDurante.tsx, DT-007), que en este modo devuelve la rama "libre" de
@@ -19,11 +20,13 @@
 import { useEffect, useState } from "react";
 import Mapa from "@/components/mapa/Mapa";
 import DistanciaRestante from "@/components/publico/DistanciaRestante";
+import Stats from "@/components/publico/Stats";
 import IntencionForm from "@/components/publico/IntencionForm";
 import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
 import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
 import { bandaHoraria } from "@/lib/cielo";
+import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoLibre } from "@/lib/types";
 
 const POLLING_MS = 30_000;
@@ -37,9 +40,15 @@ interface ModoDuranteLibreProps {
   progresoInicial: ProgresoPublicoLibre;
   /** Histórico completo de puntos GPS del intento, cargado server-side. */
   puntosGpsIniciales: PuntoGps[];
+  /** Momento en que arrancó el intento (started_at), para "tiempo en marcha". */
+  startedAt: string | null;
 }
 
-export default function ModoDuranteLibre({ progresoInicial, puntosGpsIniciales }: ModoDuranteLibreProps) {
+export default function ModoDuranteLibre({
+  progresoInicial,
+  puntosGpsIniciales,
+  startedAt,
+}: ModoDuranteLibreProps) {
   const [progreso, setProgreso] = useState(progresoInicial);
   const [puntosGps, setPuntosGps] = useState<PuntoGps[]>(puntosGpsIniciales);
   const [ultimoTs, setUltimoTs] = useState<string | null>(progresoInicial.ultimaPosicion?.ts ?? null);
@@ -71,6 +80,16 @@ export default function ModoDuranteLibre({ progresoInicial, puntosGpsIniciales }
     return () => clearInterval(id);
   }, []);
 
+  // DT-020: tiempo en marcha y ritmo medio se anclan siempre al último punto
+  // GPS real (`ultimaPosicion?.ts`), nunca a la hora del navegador de quien
+  // mira — mismo criterio que ModoDurante.tsx (modo guiado). Este componente
+  // no mantiene ningún estado "ahora" para estas dos cifras, así que no hay
+  // forma de que un cambio futuro las vuelva a alimentar con el reloj del
+  // cliente sin tocar explícitamente esta línea.
+  const referenciaFinal = progreso.ultimaPosicion?.ts ?? null;
+  const tiempoEnMarcha = calcularTiempoEnMarchaIntento(startedAt, referenciaFinal);
+  const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, startedAt, referenciaFinal);
+
   return (
     <section className="space-y-5 pt-5">
       <div className="space-y-3">
@@ -85,6 +104,11 @@ export default function ModoDuranteLibre({ progresoInicial, puntosGpsIniciales }
           />
         </div>
         <DistanciaRestante km={progreso.distanciaRestanteKm} />
+        <Stats
+          tiempoEnMarcha={tiempoEnMarcha}
+          kmAndados={formatearKm(progreso.odometroKm)}
+          ritmoMedio={ritmoMedio}
+        />
         <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} />
       </div>
 
@@ -93,4 +117,8 @@ export default function ModoDuranteLibre({ progresoInicial, puntosGpsIniciales }
       <MuroComentarios />
     </section>
   );
+}
+
+function formatearKm(valor: number): string {
+  return valor.toLocaleString("es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }

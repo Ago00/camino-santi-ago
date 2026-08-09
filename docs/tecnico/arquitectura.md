@@ -38,8 +38,12 @@ camino-santi-ago/
 │   │   ├── RefrescoAlCambiarFase.tsx  # auto-refresco: polling 30 s a /api/fase, reload si cambia (DT-012)
 │   │   ├── MinutoAMinuto.tsx  # DT-013: feed en directo, paginado + poll opcional, clic → mapa
 │   │   ├── DistanciaRestante.tsx  # DT-016: cifra de distancia restante (modo libre), hermano de Mojon.tsx
-│   │   ├── ModoDuranteLibre.tsx   # DT-016: "durante" del modo libre (sin condicionales en ModoDurante.tsx)
-│   │   └── ModoLlegadaLibre.tsx   # DT-016: "llegada" del modo libre (sin condicionales en ModoLlegada.tsx)
+│   │   ├── ModoDuranteLibre.tsx   # DT-016: "durante" del modo libre (sin condicionales en ModoDurante.tsx);
+│   │   │                         # CURRENT.md/DT-020 añade Stats.tsx (tiempo en marcha/km/ritmo,
+│   │   │                         # con ultimaPosicion?.ts como referencia final, nunca "ahora")
+│   │   └── ModoLlegadaLibre.tsx   # DT-016: "llegada" del modo libre (sin condicionales en ModoLlegada.tsx);
+│   │                              # CURRENT.md/DT-020 añade Stats.tsx (tiempo en marcha/km/ritmo,
+│   │                              # con ended_at como referencia final)
 │   └── admin/               # F4: secciones del panel
 │       ├── ComposerMinutoAMinuto.tsx  # DT-013: texto + foto opcional; DT-017: envía con
 │       │                              # onSubmit propio (no <form action={fn}>: React 19
@@ -52,7 +56,14 @@ camino-santi-ago/
 ├── lib/
 │   ├── types.ts              # tipos de dominio (contrato para todas las capas); ProgresoPublico
 │   │                          # es unión discriminada por `modo` desde DT-016 (ProgresoPublicoGuiado
-│   │                          # | ProgresoPublicoLibre)
+│   │                          # | ProgresoPublicoLibre); ProgresoPublicoLibre gana odometroKm
+│   │                          # (CURRENT.md/DT-020, antes solo lo tenía la rama guiada)
+│   ├── ritmo.ts               # dominio puro: calcularRitmoMedioIntento() y
+│   │                          # calcularTiempoEnMarchaIntento() (CURRENT.md/DT-020) — ambas
+│   │                          # parametrizadas por un instante final explícito (nunca leen
+│   │                          # Date.now()/new Date()); usadas por ModoDurante.tsx,
+│   │                          # ModoDuranteLibre.tsx, ModoLlegadaLibre.tsx y app/page.tsx
+│   │                          # (ModoLlegadaConectado)
 │   ├── cielo.ts               # F3: bandaHoraria() — tinte del mapa por hora real
 │   ├── rate-limit.ts          # F5: rate limiting en memoria de proceso (DT-011), usado por todos los endpoints públicos
 │   ├── progreso-cache.ts      # DT-014: caché compartida de ProgresoPublico (antes vivía
@@ -84,7 +95,13 @@ camino-santi-ago/
 │   │   │                         # rendimiento con histórico de un día completo (~7.200 puntos)
 │   │   ├── progreso-publico.ts   # F3: aProgresoPublico() — proyección segura al cliente (rama guiado)
 │   │   ├── progreso-libre.ts     # DT-016: calcularProgresoLibre() — dominio puro del modo libre
-│   │   │                         # (distancia haversine al destino, sin corredor ni validación)
+│   │   │                         # (distancia haversine al destino, sin corredor ni validación);
+│   │   │                         # CURRENT.md/DT-020 añade odometroKm (haversine acumulado entre
+│   │   │                         # posiciones consecutivas del historico recibido, en el orden
+│   │   │                         # recibido, sin filtro de velocidad ni precisión — ver DEBT.md,
+│   │   │                         # "GET /api/progreso no puede reflejar odometroKm real en modo
+│   │   │                         # libre durante el polling": progreso-actual.ts todavía solo le
+│   │   │                         # pasa la última posición en la ruta de polling, no el histórico)
 │   │   ├── progreso-actual.ts    # DT-019: calcularProgresoActual() — orquesta intento activo +
 │   │   │                         # histórico + calcularProgreso/calcularProgresoLibre; extraída
 │   │   │                         # de app/api/progreso/route.ts para que GET /api/progreso y
