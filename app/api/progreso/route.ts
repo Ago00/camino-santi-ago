@@ -35,6 +35,20 @@
  * ese caso se reintenta con el select mínimo (solo `id`) y se trata el
  * intento como modo 'guiado', el comportamiento exacto que este endpoint ya
  * tenía antes de DT-016.
+ *
+ * Histórico de posiciones (DT-018, docs/tecnico/decisiones-tecnicas.md):
+ * - Modo guiado: `calcularProgreso` necesita el histórico COMPLETO (el
+ *   odómetro suma distancia real entre cada par consecutivo, y el máximo
+ *   monótono se calcula sobre toda la secuencia) — se trae paginado con
+ *   `obtenerTodasLasFilas` (lib/supabase/paginacion.ts), sin el corte a
+ *   1000 filas de PostgREST. La proyección en sí usa ventana deslizante
+ *   (lib/traza/proyeccion.ts) para que traer el histórico completo siga
+ *   siendo rápido a escala de un día entero de reto.
+ * - Modo libre: `calcularProgresoLibre` solo usa la posición no descartada
+ *   más reciente, así que este endpoint (con polling cada 30 s) pide
+ *   únicamente esa fila (`order(ts desc).limit(1)`) en vez de todo el
+ *   histórico — mismo resultado, sin traer miles de filas para quedarse
+ *   con una.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
@@ -46,6 +60,7 @@ import {
 } from "@/lib/progreso-cache";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
 import { getSupabasePublic } from "@/lib/supabase/public";
+import { obtenerTodasLasFilas } from "@/lib/supabase/paginacion";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
 import { aProgresoPublico } from "@/lib/traza/progreso-publico";
@@ -100,22 +115,37 @@ async function calcularProgresoActual(): Promise<ProgresoPublico> {
     return progresoVacio();
   }
 
-  const { data: posiciones } = await supabase
-    .from("posiciones")
-    .select("*")
-    .eq("intento_id", intento.id)
-    .eq("descartado", false)
-    .order("ts", { ascending: true });
-
-  const historico: Posicion[] = posiciones ?? [];
-
   if (intento.modo === "libre") {
+    // Solo hace falta la posición no descartada más reciente (DT-018): traer
+    // el histórico completo aquí sería pagar el coste de miles de filas cada
+    // 30 s de polling para quedarse con una sola.
+    const { data: ultimaPosicion } = await supabase
+      .from("posiciones")
+      .select("*")
+      .eq("intento_id", intento.id)
+      .eq("descartado", false)
+      .order("ts", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const historico: Posicion[] = ultimaPosicion ? [ultimaPosicion] : [];
     const destino =
       intento.destino_lat !== null && intento.destino_lon !== null
         ? { lat: intento.destino_lat, lon: intento.destino_lon }
         : null;
     return calcularProgresoLibre(historico, destino);
   }
+
+  // Modo guiado: calcularProgreso necesita el histórico completo (DT-018).
+  const historico = await obtenerTodasLasFilas<Posicion>((desde, hasta) =>
+    supabase
+      .from("posiciones")
+      .select("*")
+      .eq("intento_id", intento.id)
+      .eq("descartado", false)
+      .order("ts", { ascending: true })
+      .range(desde, hasta)
+  );
 
   const traza = cargarTrazaDeCalculo();
   const progreso = calcularProgreso(historico, traza);

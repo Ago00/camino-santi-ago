@@ -2,6 +2,159 @@
 
 ---
 
+## `calcularProgresoLibreDelIntento` (modo libre, `app/page.tsx`) sigue sin caché tras el endurecimiento S1/S2 de DT-018
+
+**Fecha:** 2026-08-09
+**Contexto:** Detectado por el Reviewer en la Ronda 2 de revisión de DT-018
+(endurecimiento post-Seguridad, S1 + S2). Seguridad encontró que
+`app/page.tsx` invocaba el cálculo de progreso en cada visita sin caché ni
+rate limiting (issue 2 de su informe), nombrando explícitamente
+`calcularProgresoDelIntento` y `calcularProgresoLibreDelIntento` como las
+dos funciones a proteger. El fix aplicado (S2) solo extendió la caché
+compartida (`lib/progreso-cache.ts`) a `calcularProgresoDelIntento` (modo
+guiado) — el Implementador dejó fuera `calcularProgresoLibreDelIntento`
+(modo libre) razonando que el vector de coste que motivó el hallazgo (S1: el
+fallback O(m) de `calcularProgreso`/`proyectarPunto` sobre la traza) no
+existe en `calcularProgresoLibre` (una única `haversineKm`, sin ventana ni
+Turf sobre la traza).
+**Problema:** El razonamiento es correcto para el vector de cómputo
+cuadrático, pero `calcularProgresoLibreDelIntento` sigue pagando en cada
+visita sin caché el coste de `obtenerHistoricoPosiciones` — un fetch
+paginado que puede llegar hasta el tope de seguridad de 50.000 filas
+(`lib/supabase/paginacion.ts`) — más un `.map()` O(n) para construir
+`puntosGps`. Sin caché ni rate limiting en la ruta `/` (a diferencia de
+`GET /api/progreso`, protegido con 60 req/min y TTL de caché), un histórico
+adversarial grande sigue costando lectura de BD y trabajo O(n) repetido en
+cada carga de página, aunque de una clase de coste bastante más barata que
+la que motivó el bloqueante original (lineal, no cuadrático). El texto
+literal del "fix requerido" de Seguridad nombraba ambas funciones.
+**Impacto:** Bajo-medio. Seguridad ya evaluó por separado la parte de
+volumen/memoria de `obtenerTodasLasFilas` como "resuelta correctamente"
+(tope de 50.000 filas, sin acumulación sin cota), así que el peor caso está
+acotado, no es un vector de denegación de servicio sin límite. El riesgo
+residual es de lectura de BD y transferencia repetidas (una carga de página
+por visitante, sin límite de frecuencia), no de cómputo descontrolado.
+**Solución propuesta:** Extender el mismo patrón ya implementado y testeado
+para `calcularProgresoDelIntento` (caché compartida `lib/progreso-cache.ts`,
+condición `cache.valor.modo === "libre"` simétrica a la ya existente para
+"guiado") a `calcularProgresoLibreDelIntento`. Barato de implementar (mismo
+código, ~10 líneas) y cierra la ambigüedad del texto literal del issue 2 de
+Seguridad sin depender de una interpretación de alcance.
+**Prioridad:** Media — trasladado explícitamente a Seguridad en la Ronda 2
+para que decida si lo exige antes de aprobar (ver `docs/tareas/CURRENT.md`,
+Historial de revisión, Ronda 2).
+
+---
+
+## `obtenerTodasLasFilas` pierde en silencio el resto del histórico si una página intermedia falla
+
+**Fecha:** 2026-08-09
+**Contexto:** Detectado por el Reviewer en la revisión de DT-018 (paginación
+completa del histórico de posiciones + ventana deslizante en
+`calcularProgreso`). `lib/supabase/paginacion.ts` (`obtenerTodasLasFilas`)
+pagina con `.range()` en bucle, ordenado por `ts` ascendente. Si una página
+intermedia devuelve error (timeout de red, problema puntual de Supabase), la
+función registra un `console.warn` y devuelve las filas ya acumuladas hasta
+ese punto — sin ninguna señal para quien llama de que el histórico está
+incompleto.
+**Problema:** Como la paginación va de más antiguo a más reciente, un fallo
+en una página tardía trunca justo las posiciones más recientes — la misma
+forma de fallo (datos incompletos servidos como si fueran completos, sin
+aviso visible) que motivó esta tarea, aunque aquí el disparador es un error
+transitorio de red/BD en vez del límite duro de 1000 filas de PostgREST.
+`calcularProgreso`/`calcularProgresoLibreDelIntento` no tienen forma de saber
+que el histórico que recibieron no es el completo.
+**Impacto:** Bajo en la práctica: a diferencia del bug original (congelado el
+resto del reto), aquí el siguiente poll (TTL de caché 15-20 s, DT-007, más el
+polling de 30 s del cliente) vuelve a pedir el histórico completo desde cero,
+así que un fallo transitorio se autocorrige en cuestión de segundos, no de
+horas. El riesgo residual es un fallo persistente (no transitorio) en una
+página intermedia, que degradaría el progreso mostrado de forma sostenida sin
+ningún indicio en la web pública — solo visible en los logs de Vercel.
+**Solución propuesta:** Propagar si el resultado es parcial (por ejemplo
+`{ filas: T[], completo: boolean }` en vez de `T[]` a secas) para que quien
+llama pueda decidir (no cachear un resultado parcial, o registrar con más
+severidad); o reintentar una vez la página fallida antes de rendirse. Mínimo
+viable: subir el nivel de log de `console.warn` a `console.error` para que
+destaque más en Vercel si se repite.
+**Prioridad:** Baja — mitigado por la ventana de recálculo corta (15-30 s) y
+consistente con el patrón de "rechazo silencioso con log" ya usado en el
+resto del proyecto (`/api/track`).
+
+---
+
+## Ningún guardarraíl protege el invariante `VENTANA_PROYECCION_FALLBACK_MAX_M > DESVIO_MENOR_MAX_M`
+
+**Fecha:** 2026-08-09
+**Contexto:** Detectado por el Reviewer en la revisión de DT-018. El umbral
+de fallback de la ventana deslizante (`VENTANA_PROYECCION_FALLBACK_MAX_M`,
+300 m) debe quedar por encima de `DESVIO_MENOR_MAX_M` (250 m) para que
+cualquier punto en ruta o con desvío menor siempre se resuelva por ventana —
+así lo documenta un comentario extenso en `lib/traza/umbrales.ts`, y así lo
+exigía DT-018 explícitamente. No existe `lib/traza/umbrales.test.ts` ni
+ninguna aserción en tiempo de módulo que compruebe la relación entre ambas
+constantes.
+**Problema:** Si en el futuro (posiblemente el mismo día del reto, dado que
+`umbrales.ts` está pensado para ajustarse en caliente) alguien sube
+`DESVIO_MENOR_MAX_M` sin subir también `VENTANA_PROYECCION_FALLBACK_MAX_M`,
+el fallback de escaneo completo dejaría de dispararse en desvíos reales que
+hoy sí lo activan — degradación silenciosa de precisión, sin ningún error
+visible ni test que lo detecte.
+**Impacto:** Nulo hoy (los valores actuales, 300 > 250, cumplen el
+invariante). El riesgo es puramente de mantenimiento futuro.
+**Solución propuesta:** Un test de una línea en un `lib/traza/umbrales.test.ts`
+nuevo: `expect(VENTANA_PROYECCION_FALLBACK_MAX_M).toBeGreaterThan(DESVIO_MENOR_MAX_M)`.
+Alternativa equivalente: una aserción `if (...) throw` a nivel de módulo en
+`umbrales.ts`.
+**Prioridad:** Baja — barato de arreglar, sin urgencia mientras nadie toque
+esos dos valores por separado.
+
+---
+
+## `proyeccion.ventana.test.ts` añade ~45 s a `pnpm test` por diseño (comparación contra una réplica O(n×m) del algoritmo anterior)
+
+**Fecha:** 2026-08-09
+**Contexto:** Generado al implementar DT-018 (paginación completa del
+histórico de posiciones + ventana deslizante en `calcularProgreso`, ver
+`docs/tecnico/decisiones-tecnicas.md`). El test obligatorio de "el mismo
+resultado con y sin ventana a escala de miles de puntos" necesita ejecutar
+una réplica fiel del algoritmo **sin** ventana (`calcularProgresoSinVentana`,
+definida solo en el propio test) — deliberadamente O(n×m), la misma
+complejidad que esta tarea corrige — para comparar sus resultados contra
+`calcularProgreso()` real y demostrar equivalencia numérica, no solo
+diseño. A 2000 puntos (la escala exacta validada en DT-018) esa réplica
+tarda ~79 s de bloqueo síncrono, lo bastante para que el propio runner de
+Vitest reportara un `[vitest-worker]: Timeout calling "onTaskUpdate"` como
+"Unhandled Error" — un falso positivo de infraestructura (los 6 tests
+seguían en verde), pero un aviso que ensucia la salida de `pnpm test` y
+podría, en una máquina más lenta o con más contención, degenerar en un
+fallo real. Se redujo a 1000 puntos (~22 s), que ya no reprodujo el aviso en
+varias ejecuciones, a costa de no cubrir exactamente la misma escala que
+midió DT-018 (2000 y 7200 puntos) en el test de equivalencia — el test de
+**rendimiento** aparte sí cubre los 7200 puntos completos, pero solo con el
+algoritmo con ventana (rápido), nunca con la réplica O(n×m).
+**Problema:** El fichero por sí solo añade ~45 s a la ejecución completa de
+`pnpm test` (que sin él tarda ~11 s), y ese tiempo depende de la máquina —
+en una CI más lenta o más cargada podría volver a acercarse al umbral que
+dispara el aviso de timeout del worker.
+**Impacto:** Ninguno en corrección (los tests son deterministas y están en
+verde). El coste es de tiempo de desarrollo (cada `pnpm test` completo tarda
+notablemente más) y un riesgo residual de que el aviso de timeout reaparezca
+en un entorno más lento, sin que eso signifique que el código esté roto.
+**Solución propuesta:** Si el tiempo de test se vuelve un problema práctico,
+mover el test de equivalencia a un fichero/suite aparte que no corra en
+cada `pnpm test` local (por ejemplo un script manual o un job de CI
+separado, mismo criterio que otros proyectos aplican a tests de
+integración pesados), manteniendo el test de rendimiento (rápido, ~2 s) en
+la suite estándar. Alternativa más simple: bajar aún más la escala del test
+de equivalencia (por ejemplo 500 puntos) si en la práctica no aporta más
+confianza que 1000.
+**Prioridad:** Baja — no bloquea nada, es un tradeoff de rigor (comparación
+numérica real, no solo diseño) contra velocidad de la suite, y ya está
+documentado en el propio fichero de test.
+
+---
+
 ## El reintento automático de `crearMinutoAMinuto` no es idempotente: puede publicar la misma entrada dos veces
 
 **Fecha:** 2026-08-09

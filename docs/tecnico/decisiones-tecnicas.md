@@ -1021,3 +1021,177 @@ solo en `docs/tareas/CURRENT.md`, que se archiva al cerrar la tarea.
    se midió la tabla de este DT: esas fotos siguen codificándose a resolución
    nativa byte por byte igual, y una foto de 24 o 48 MP acaba en 4032×3024,
    que es exactamente la resolución para la que existen las mediciones.
+
+---
+
+## DT-018 — Histórico de posiciones: paginación completa + proyección con ventana deslizante en `calcularProgreso`
+
+**Fecha:** 2026-08-09 · **Tarea:** Corte a 1000 filas del histórico de posiciones · **Decisión de arquitectura**
+
+**Contexto.** PostgREST (Supabase) limita a 1000 filas cualquier `SELECT` sin
+`Range` explícito. Las dos consultas que alimentan el progreso y el mapa
+(`app/api/progreso/route.ts`, `app/page.tsx`) piden el histórico completo sin
+paginar. Verificado con la clave `anon` real: 564 puntos (2 h 21 min) del
+intento 10 quedaron fuera de todo lo que el histórico alimenta —
+`ultimaPosicion`, `odometroKm`, `porcentaje`/`kmAvanzados`/`kmRestantes`, la
+polilínea del mapa en modo libre. En modo guiado real (30 h, ~7200 puntos a
+15 s de cadencia), el corte llegaría a las ~4 h de empezar.
+
+**Hallazgo que cambió el alcance de la tarea.** Medido con el algoritmo real
+del proyecto (`tsx`, sin reimplementar nada) contra la traza real
+(`traza.geojson`, 7951 vértices, 110,43 km) y un histórico sintético a ritmo
+humano constante (4,5 km/h, cadencia 15 s — por debajo del umbral de 15 km/h
+de `VELOCIDAD_MAX_KMH`, para que ningún punto se descarte y el benchmark mida
+el camino real de `calcularProgreso`, no el atajo barato del rechazo por
+velocidad):
+
+| n (puntos) | `calcularProgreso` actual (full-scan por punto) |
+|---|---|
+| 2000 (≈ 8,3 h de reto) | 53,2-53,9 s |
+| 7200 (≈ 30 h de reto, día completo) | **281,4 s (4,7 min)** |
+
+**Arreglar solo el corte de 1000 filas habría sido peligroso, no una mejora.**
+Con la paginación arreglada pero el algoritmo intacto, cada recálculo de
+`/api/progreso` con el histórico de un día completo tardaría varios minutos —
+muy por encima de cualquier timeout de función serverless (el proyecto no
+declara `maxDuration`, así que aplica el límite por defecto de la plataforma).
+La causa: `calcularProgreso` proyecta cada punto del histórico sobre **toda**
+la traza con `@turf/nearest-point-on-line` (`O(n × m)`, con `m` = 7951
+segmentos) — la misma complejidad ya señalada como deuda en `DEBT.md`
+("`kmAcumulados` se calcula pero no se usa").
+
+**Decisión — dos cambios, ninguno cambia el contrato externo de nada:**
+
+1. **Paginación completa donde de verdad hace falta el histórico entero.**
+   Función compartida que pagina con `.range()` en bucle hasta agotar
+   (con tope de seguridad y logging si se alcanza, para no colgarse en
+   silencio ante un caso patológico). Se usa en `calcularProgreso` (modo
+   guiado, siempre necesita el histórico completo: el odómetro suma
+   distancia real entre cada par consecutivo, y el máximo monótono se
+   calcula sobre toda la secuencia) y en la construcción inicial de
+   `puntosGps` del mapa en modo libre (`app/page.tsx`, solo en la carga de
+   página).
+2. **La ruta de polling en modo libre deja de pedir el histórico completo.**
+   `calcularProgresoLibre` solo usa la posición no descartada más reciente
+   — cambia a `.order(ts desc).limit(1)` en `/api/progreso`. Mismo
+   resultado, sin traer miles de filas para quedarse con una.
+3. **Proyección con ventana deslizante dentro de `calcularProgreso`** (el
+   cambio que hace viable el punto 1 a escala de un día completo). Como el
+   histórico se procesa en orden cronológico y una persona caminando no
+   teletransporta, se mantiene el índice de traza del último punto
+   proyectado y cada punto siguiente busca primero solo en una ventana de
+   **±30 segmentos** (±≈417 m de corredor) alrededor de ese índice — con
+   `@turf/nearest-point-on-line` sobre un *slice* de `traza.coordenadas`, no
+   sobre la traza completa. Si la mejor coincidencia de la ventana queda a
+   más de **300 m** (por encima de `DESVIO_MENOR_MAX_M`, así que cualquier
+   punto en ruta o con desvío menor siempre se resuelve por ventana; solo un
+   desvío mayor o un hueco de datos largo puede no encajar), se reintenta
+   con un escaneo completo de la traza — igual que hace hoy el código sin
+   ventana — y el índice se realinea desde ahí. La ventana y el umbral se
+   suben a `lib/traza/umbrales.ts` como constantes nombradas (`VENTANA_...`,
+   mismo criterio que el resto de umbrales: ajustables en caliente el día
+   del reto si hiciera falta).
+
+   **Medido con el algoritmo real, ventana ±30 / umbral 300 m:**
+
+   | Escenario | Full-scan (actual) | Con ventana | Diferencia |
+   |---|---|---|---|
+   | 2000 puntos, marcha normal | 53,2-53,9 s | 0,71 s (75,2×) | odómetro 0,0000 km |
+   | 7200 puntos, marcha normal (día completo) | 281,4 s | **2,87 s** | (extrapolado de lo anterior, mismo patrón) |
+   | 500 puntos con desvío real de ~3 km (300 normal → 50 desviados → 150 reenganchados) | referencia | 0,0 s de diferencia perceptible, 3 escaneos completos de 500 | odómetro y `kmAvanzados` **idénticos** (0,0000 km), `separacionM` idéntico |
+
+   El caso del desvío confirma que el mecanismo de respaldo (reintentar con
+   escaneo completo) preserva la corrección exacta incluso cuando alguien se
+   sale de la traza más allá de la ventana — nunca da un resultado distinto
+   al del código actual, solo tarda más en ese caso puntual (raro, no es el
+   estado estable de las 30 h).
+
+**No cambia:** el contrato externo de `calcularProgreso` (mismo
+`Posicion[]` + `TrazaPreparada` → mismo `Progreso`), `progreso-libre.ts`,
+`separacionDeTrazaM` (llamada una vez por posición entrante en `/api/track`,
+no en un bucle sobre el histórico — sin problema de escala, no se toca), ni
+el esquema de BD.
+
+**Alternativas valoradas.**
+- **Paginar sin optimizar el algoritmo (descartada tras medirlo).** Era la
+  propuesta inicial de esta tarea. Los datos de arriba la descartan: habría
+  cambiado "el mapa se congela a las 4 h" por "el endpoint tarda minutos en
+  responder ya desde la primera hora" — un fallo distinto, y peor, no una
+  solución.
+- **Persistir progreso incremental en `intentos`, actualizado en la
+  ingesta (descartada).** Resuelve el mismo problema de raíz sin necesidad de
+  recorrer el histórico en cada lectura, pero exige tocar el endpoint de
+  ingesta y el esquema de BD, con migración, a días del reto — el mismo
+  criterio de riesgo/alcance por el que ya se descartó en DT-007 (Opción C) y
+  en la entrada de `DEBT.md` sobre `kmAcumulados`. La ventana deslizante logra
+  la misma robustez (validada con los mismos datos: full-day baja de 281 s a
+  2,87 s, dentro de cualquier presupuesto de timeout razonable) sin tocar
+  ingesta ni esquema. Queda registrada como mejora de fondo si en producción
+  real hiciera falta ir más allá.
+
+**Actualiza `arquitectura.md`** con la función de paginación nueva, y
+`umbrales.ts` con las dos constantes de la ventana.
+
+### Nota de cierre (2026-08-09) — endurecimiento post-revisión de Seguridad (S1 + S2)
+
+Aprobado por el Reviewer sin bloqueantes en la Ronda 1. El Agente de
+Seguridad encontró 2 bloqueantes reales, ambos alrededor del propio
+mecanismo de respaldo de la ventana deslizante — corregidos antes del
+cierre. Se dejan escritos aquí porque este documento es el registro
+permanente (mismo criterio que la nota de cierre de DT-017).
+
+**El hallazgo.** El fallback a escaneo completo (arriba: "si la mejor
+coincidencia de la ventana queda a más de 300 m, reintenta con un escaneo
+completo") cuesta lo mismo por punto (~39 ms medidos) que el problema
+original que esta tarea resuelve. Y ese umbral de 300 m
+(`VENTANA_PROYECCION_FALLBACK_MAX_M`) es tres órdenes de magnitud más
+estricto que el filtro de plausibilidad geográfica de `/api/track` (100 km,
+`SEPARACION_TRAZA_MAX_KM`, DT-006). Eso deja un hueco: alguien con el token
+de `/api/track` filtrado (riesgo residual ya aceptado en DT-006/DT-011, con
+sus propias capas de defensa) puede mandar puntos deliberadamente a más de
+300 m entre sí —pero dentro de esos 100 km, y a velocidad plausible
+insertando huecos de tiempo— para forzar que cada punto dispare el escaneo
+completo. Con el rate limit de 40 req/min (DT-011), ~300 puntos
+(~8 min de envío) ya bastarían para que un solo recálculo de
+`calcularProgreso` tardara ~11,7 s — por encima de cualquier timeout
+serverless. Y como esos puntos quedan persistidos (no `descartado`), el
+coste se repite en cada recálculo futuro, no solo una vez: la ventana,
+pensada para resolver un problema de volumen, reabría el mismo problema por
+una vía de contenido.
+
+**S1 — tope de seguridad al número de fallbacks por llamada.** Nueva
+constante `VENTANA_PROYECCION_MAX_FALLBACKS = 50` en `umbrales.ts`.
+`calcularProgreso` mantiene un contador propio de la llamada (nunca a nivel
+de módulo, para no filtrar estado entre invocaciones distintas); al agotar
+el tope, los puntos restantes usan el resultado de la ventana tal cual
+—aunque su separación supere el umbral de fiabilidad— en vez de seguir
+pagando el escaneo completo, y se registra un único `console.warn` (mismo
+patrón que el tope de seguridad de `lib/supabase/paginacion.ts`). Con ~39
+ms/fallback, 50 fallbacks acotan el peor caso a ~2 s por invocación — muy
+por encima de cuántas veces se desviaría Santi de verdad más de 300 m
+durante 30 h reales (unas pocas, no cientos), y muy por debajo de cualquier
+timeout serverless. Validado con benchmark adversarial real (no solo
+diseño) en `lib/traza/proyeccion.ventana.test.ts`: 300 puntos con el
+patrón exacto descrito arriba se calculan en ~1,1 s con el tope activo,
+frente a varios segundos (réplica sin ventana ni tope, escalado
+linealmente) sin él.
+
+**S2 — la carga de página pública (`app/page.tsx`) amplificaba S1.** A
+diferencia de `GET /api/progreso` (que ya usa la caché compartida
+`lib/progreso-cache.ts`, TTL 15-20 s, DT-007/DT-014), `calcularProgresoDelIntento`
+recalculaba desde cero en cada visita — cada visitante real durante un
+ataque habría vuelto a disparar el cálculo caro. Se reutiliza la misma
+caché compartida ya existente (consultar antes de calcular, guardar
+después), sin infraestructura nueva: el invariante de que solo hay un
+intento activo a la vez (`docs/tecnico/arquitectura.md`) hace seguro
+compartir la caché entre `/api/progreso` y esta función, ya que ambas
+calculan el progreso del mismo (único) intento en curso. `export const
+dynamic = "force-dynamic"` no cambia — la página sigue siendo dinámica,
+solo que dentro de la ventana de caché no repite el cálculo caro.
+
+**No cambia nada del comportamiento validado en la decisión original**: la
+ventana para el caso normal (no adversarial) sigue exactamente igual,
+sin tocar; S1 y S2 son capas de defensa alrededor de ella, no un rediseño.
+Los tests de `proyeccion.test.ts` y de la sección 1-4 de
+`proyeccion.ventana.test.ts` (equivalencia numérica, desvío con reenganche,
+hueco largo, rendimiento a escala de un día) siguen en verde sin cambios.

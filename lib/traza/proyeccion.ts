@@ -28,6 +28,9 @@ import {
   DESVIO_MENOR_MAX_M,
   VELOCIDAD_MAX_KMH,
   PRECISION_MAX_M,
+  VENTANA_PROYECCION_SEGMENTOS,
+  VENTANA_PROYECCION_FALLBACK_MAX_M,
+  VENTANA_PROYECCION_MAX_FALLBACKS,
 } from "@/lib/traza/umbrales";
 
 // ---------------------------------------------------------------------------
@@ -151,28 +154,29 @@ export function calcularProgreso(
 
   const trazaTurf = buildTrazaTurf(traza);
 
-  // Primer punto válido: ancla el origen del porcentaje (DT-005).
-  // La proyección del primer punto determina desde dónde se mide el 0%.
-  const kmPrimerPunto = (() => {
-    const snap = nearestPointOnLine(
-      trazaTurf,
-      point([validas[0].lon, validas[0].lat]),
-      { units: "kilometers" }
-    );
-    return snap.properties.location ?? 0;
-  })();
-
   // Con un solo punto el avance desde el ancla es 0: porcentaje = 0.
   // La fórmula da (kmPrimerPunto - kmPrimerPunto) / denominador = 0, que es correcto.
-
-  // maxKmAvanzados arranca en el primer punto (la barra no puede bajar de su posición inicial).
-  let maxKmAvanzados = kmPrimerPunto;
+  let kmPrimerPunto = 0;
+  let maxKmAvanzados = 0;
   let odometroKm = 0;
   let puntosDescartados = 0;
   let ultimaPosicionValida: Posicion | null = null;
+  let ultimaSeparacionM = 0;
 
   // La última posición procesada con éxito (para calcular velocidad entre puntos).
   let prevProcesada: Posicion | null = null;
+
+  // Ventana deslizante (DT-018): índice de traza del último punto proyectado
+  // con éxito, usado como referencia para acotar la búsqueda del siguiente.
+  // null en el primer punto del bucle (sin referencia previa: escaneo
+  // completo directo, igual que hacía siempre el código anterior a DT-018).
+  let indiceVentana: number | null = null;
+  let esPrimeraProyeccion = true;
+
+  // Tope de seguridad al fallback de escaneo completo (S1, endurecimiento
+  // post-revisión de Seguridad de DT-018 — ver umbrales.ts): estado
+  // mutable propio de ESTA llamada, nunca compartido entre invocaciones.
+  const estadoFallback: EstadoFallbackVentana = { usados: 0, avisado: false };
 
   for (const pos of validas) {
     // Rechazo por velocidad implícita imposible
@@ -208,23 +212,34 @@ export function calcularProgreso(
       }
     }
 
-    // Proyección sobre la traza
-    const snap = nearestPointOnLine(
+    // Proyección sobre la traza — ventana deslizante alrededor del último
+    // índice conocido, con reintento de escaneo completo si hace falta,
+    // acotado por el tope de seguridad de estadoFallback (DT-018 + S1, ver
+    // proyectarPunto más abajo).
+    const proyeccion = proyectarPunto(
+      traza,
       trazaTurf,
-      point([pos.lon, pos.lat]),
-      { units: "kilometers" }
+      pos.lat,
+      pos.lon,
+      indiceVentana,
+      estadoFallback
     );
+    indiceVentana = proyeccion.indice;
 
-    // location es la distancia acumulada desde el inicio hasta el punto de snap
-    const kmProyectado = snap.properties.location ?? 0;
-
-    // Barra monótona: solo avanzamos, nunca retrocedemos
-    if (kmProyectado > maxKmAvanzados) {
-      maxKmAvanzados = kmProyectado;
+    if (esPrimeraProyeccion) {
+      // Primer punto válido: ancla el origen del porcentaje (DT-005). La
+      // barra no puede bajar de la posición donde arrancó el intento.
+      kmPrimerPunto = proyeccion.kmProyectado;
+      maxKmAvanzados = proyeccion.kmProyectado;
+      esPrimeraProyeccion = false;
+    } else if (proyeccion.kmProyectado > maxKmAvanzados) {
+      // Barra monótona: solo avanzamos, nunca retrocedemos.
+      maxKmAvanzados = proyeccion.kmProyectado;
     }
 
     prevProcesada = pos;
     ultimaPosicionValida = pos;
+    ultimaSeparacionM = proyeccion.separacionM;
   }
 
   if (ultimaPosicionValida === null) {
@@ -235,13 +250,11 @@ export function calcularProgreso(
     };
   }
 
-  // Calcular separación de la última posición válida
-  const snapFinal = nearestPointOnLine(
-    trazaTurf,
-    point([ultimaPosicionValida.lon, ultimaPosicionValida.lat]),
-    { units: "kilometers" }
-  );
-  const separacionM = (snapFinal.properties.dist ?? 0) * 1000;
+  // Separación de la última posición válida: ya se calculó en el propio
+  // bucle (última iteración que no hizo `continue`) — no hace falta una
+  // segunda proyección completa aquí, sea cual sea el método (ventana o
+  // escaneo completo) que la haya resuelto.
+  const separacionM = ultimaSeparacionM;
 
   // Porcentaje anclado al primer punto del intento (DT-005):
   //   porcentaje = (avanceActual − avancePrimerPunto) / (longitudTotal − avancePrimerPunto) × 100
@@ -306,6 +319,153 @@ function buildTrazaTurf(
   traza: TrazaPreparada
 ): Feature<LineString> {
   return lineString(traza.coordenadas);
+}
+
+// ---------------------------------------------------------------------------
+// Proyección con ventana deslizante (DT-018)
+// ---------------------------------------------------------------------------
+
+interface ResultadoProyeccion {
+  /** Distancia acumulada global (km) desde el inicio de la traza hasta el punto de snap. */
+  kmProyectado: number;
+  /** Distancia perpendicular del punto original a la traza, en metros. */
+  separacionM: number;
+  /** Índice global (en traza.coordenadas) del vértice que abre el segmento de snap — referencia para la ventana del siguiente punto. */
+  indice: number;
+}
+
+/**
+ * Estado mutable del tope de seguridad al fallback de escaneo completo
+ * (S1, endurecimiento post-revisión de Seguridad de DT-018). Vive en el
+ * scope de UNA llamada a calcularProgreso() — nunca a nivel de módulo, para
+ * no filtrar el contador entre invocaciones distintas.
+ */
+interface EstadoFallbackVentana {
+  /** Escaneos completos ya gastados en esta llamada. */
+  usados: number;
+  /** Evita repetir el mismo console.warn en cada punto tras alcanzar el tope. */
+  avisado: boolean;
+}
+
+/**
+ * Proyecta un punto sobre la traza, con ventana deslizante alrededor del
+ * índice del último punto proyectado con éxito (DT-018,
+ * docs/tecnico/decisiones-tecnicas.md — números medidos incluidos).
+ *
+ * Sin esta ventana, cada punto del histórico proyecta contra los ~7.951
+ * vértices completos de la traza (@turf/nearest-point-on-line es O(m) por
+ * llamada, sin importar dónde caiga el punto) — medido: 281 s con el
+ * histórico de un día completo de reto (~7.200 puntos), muy por encima de
+ * cualquier timeout de función serverless. Como el histórico se procesa en
+ * orden cronológico y una persona caminando no teletransporta, el punto
+ * siguiente casi siempre proyecta cerca de donde proyectó el anterior:
+ * buscar primero en una ventana de ±VENTANA_PROYECCION_SEGMENTOS segmentos
+ * (sobre un *slice* de traza.coordenadas, no la traza completa) reduce el
+ * coste por punto en el caso normal de O(m) a O(ventana) — medido: 2,87 s
+ * con el mismo histórico de un día completo.
+ *
+ * Si la mejor coincidencia dentro de la ventana queda a más de
+ * VENTANA_PROYECCION_FALLBACK_MAX_M (por encima de DESVIO_MENOR_MAX_M, ver
+ * umbrales.ts), la ventana no es de fiar — desvío mayor real que se sale
+ * del corredor de ±417 m, o un hueco largo en el histórico que salta muchos
+ * segmentos de golpe (varias horas sin señal) — y se reintenta con un
+ * escaneo completo de la traza, exactamente el comportamiento de antes de
+ * esta ventana, realineando el índice desde el resultado de ese escaneo.
+ * Esto garantiza que la ventana nunca da un resultado distinto al escaneo
+ * completo: solo más rápido en el caso normal, más lento (nunca incorrecto)
+ * en el caso puntual del fallback. Validado numéricamente contra una
+ * implementación de referencia sin ventana en proyeccion.ventana.test.ts.
+ *
+ * S1 (endurecimiento post-revisión de Seguridad, ver nota de cierre de
+ * DT-018): el propio fallback cuesta lo mismo que el problema que la
+ * ventana resuelve, y su umbral de disparo (300 m) es tres órdenes de
+ * magnitud más estricto que el filtro de plausibilidad geográfica de
+ * `/api/track` (100 km, DT-006) — alguien con el token filtrado podría
+ * forzar un escaneo completo por punto con desvíos deliberados fuera de
+ * ventana pero dentro de esos 100 km. `estadoFallback` acota a
+ * VENTANA_PROYECCION_MAX_FALLBACKS el número de escaneos completos por
+ * llamada; agotado el tope, los puntos siguientes usan el resultado de la
+ * ventana tal cual (degradado, pero acotado en coste) en vez de seguir
+ * pagando el escaneo completo. Validado con benchmark adversarial en
+ * proyeccion.ventana.test.ts.
+ *
+ * @param indiceReferencia Índice de traza del último punto proyectado, o
+ *   null para el primer punto del histórico (sin referencia: escaneo
+ *   completo directo, no cuenta contra el tope — ocurre como máximo una vez
+ *   por llamada).
+ * @param estadoFallback Contador del tope de seguridad de ESTA llamada.
+ */
+function proyectarPunto(
+  traza: TrazaPreparada,
+  trazaTurf: Feature<LineString>,
+  lat: number,
+  lon: number,
+  indiceReferencia: number | null,
+  estadoFallback: EstadoFallbackVentana
+): ResultadoProyeccion {
+  if (indiceReferencia !== null) {
+    const desde = Math.max(0, indiceReferencia - VENTANA_PROYECCION_SEGMENTOS);
+    const hasta = Math.min(
+      traza.coordenadas.length - 1,
+      indiceReferencia + VENTANA_PROYECCION_SEGMENTOS
+    );
+
+    // hasta > desde: hace falta al menos 2 vértices para formar una
+    // LineString válida. Con trazas minúsculas (fixtures de test) la
+    // ventana cubre siempre la traza entera, así que el resultado coincide
+    // con el escaneo completo por construcción.
+    if (hasta > desde) {
+      const sliceTurf = lineString(traza.coordenadas.slice(desde, hasta + 1));
+      const snap = nearestPointOnLine(sliceTurf, point([lon, lat]), {
+        units: "kilometers",
+      });
+      const separacionM = (snap.properties.dist ?? 0) * 1000;
+
+      if (separacionM <= VENTANA_PROYECCION_FALLBACK_MAX_M) {
+        return {
+          kmProyectado: traza.kmAcumulados[desde] + (snap.properties.location ?? 0),
+          separacionM,
+          indice: desde + (snap.properties.index ?? 0),
+        };
+      }
+
+      // La ventana no basta: haría falta un escaneo completo. Antes de
+      // pagarlo, comprobar el tope de seguridad (S1) — sin él, este mismo
+      // "fuera de la ventana" es el vector de DoS descrito arriba.
+      if (estadoFallback.usados >= VENTANA_PROYECCION_MAX_FALLBACKS) {
+        if (!estadoFallback.avisado) {
+          estadoFallback.avisado = true;
+          console.warn(
+            `calcularProgreso: alcanzado el tope de seguridad de ${VENTANA_PROYECCION_MAX_FALLBACKS} ` +
+              "escaneos completos de la traza en una misma llamada. Usando el resultado de la " +
+              "ventana (posiblemente menos preciso) para los puntos restantes en vez de seguir " +
+              "pagando el escaneo completo — posible desvío masivo genuino o histórico adversarial."
+          );
+        }
+        // Degradación aceptada: se devuelve el resultado de la ventana tal
+        // cual, aunque su separación supere el umbral de fiabilidad. Nunca
+        // ocurre en uso normal del reto (ver umbrales.ts).
+        return {
+          kmProyectado: traza.kmAcumulados[desde] + (snap.properties.location ?? 0),
+          separacionM,
+          indice: desde + (snap.properties.index ?? 0),
+        };
+      }
+
+      estadoFallback.usados++;
+      // Cae al escaneo completo de abajo — mismo resultado que daría el
+      // código sin ventana para este punto.
+    }
+  }
+
+  const snap = nearestPointOnLine(trazaTurf, point([lon, lat]), {
+    units: "kilometers",
+  });
+  return {
+    kmProyectado: snap.properties.location ?? 0,
+    separacionM: (snap.properties.dist ?? 0) * 1000,
+    indice: snap.properties.index ?? 0,
+  };
 }
 
 function extraerLineString(
