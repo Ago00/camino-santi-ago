@@ -778,3 +778,15 @@ Este archivo es la pizarra compartida entre todos los agentes del pipeline: los
 subagentes corren aislados y no ven la conversación, así que lo único que
 comparten es lo que está escrito aquí. Lo gobierna el Orquestador, que lo crea al
 empezar cada tarea con la plantilla del framework y lo archiva al cerrarla.
+
+---
+
+## Cierre
+
+**PR #18 fusionado a `main` y desplegado a producción.** Verificación en
+dispositivo real hecha por Santi directamente contra
+`https://camino-santi-ago-sage.vercel.app` (sin pasar por la preview, por
+decisión explícita): foto horizontal, foto vertical (sin salir tumbada), foto
+sin comprimir intencionadamente pesada (activando 48 MP / buscando una foto
+con mucha textura) y entrada solo de texto. Resultado: **todo correcto**,
+confirmado por el usuario. Tarea cerrada por completo.
