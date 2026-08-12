@@ -41,6 +41,9 @@ export interface Intento {
   started_at: string | null; // ISO 8601
   ended_at: string | null; // ISO 8601
   mensaje_llegada: string | null;
+  /** Foto opcional de llegada (DT-024), URL pública del bucket `minuto-a-minuto`
+   * con prefijo `llegada-`. null = sin foto. */
+  foto_llegada_url: string | null;
   created_at: string; // ISO 8601
 }
 

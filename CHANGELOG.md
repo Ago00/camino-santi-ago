@@ -2,6 +2,31 @@
 
 ---
 
+## 2026-08-12 — Fix de seguridad: límite de longitud del mensaje de llegada también en el servidor
+
+**Tipo:** Fix
+
+El mensaje de llegada solo se limitaba a 1000 caracteres en el navegador
+(fácilmente evitable). Ahora el servidor también lo rechaza si supera ese
+límite, igual que ya hacía con el resto de textos del panel — encontrado en
+la revisión de seguridad de la tarea anterior.
+
+---
+
+## 2026-08-12 — "Finalizar" ahora muestra una preview real y permite añadir una foto de llegada
+
+**Tipo:** Feature
+
+Al finalizar el reto desde el panel admin, el botón "Finalizar" ya no pide
+confirmación con un aviso genérico del navegador: abre un panel donde se
+edita el mensaje de llegada, se puede adjuntar (o quitar) una foto opcional,
+y se ve exactamente cómo va a quedar la pantalla de llegada en la web
+pública antes de confirmar — mismo tratamiento visual, en directo mientras
+se escribe. La foto se comprime en el propio móvil antes de subirse, igual
+que ya hacían las fotos del feed "minuto a minuto".
+
+---
+
 ## 2026-08-12 — Arreglada la pestaña "Tráfico": había dejado de cargar
 
 **Tipo:** Fix
@@ -30,6 +55,9 @@ momento (durante si el reto está en marcha o ya llegó, antes si no ha
 empezado). También hay un botón "Reset" que adelanta el contador a ahora
 mismo sin borrar ningún dato — útil para "empezar a contar de cero" en un
 momento concreto sin perder el histórico completo.
+
+---
+
 ## 2026-08-12 — "¡AUPA ATLETI!" al pinchar el peregrino
 
 **Tipo:** Feature
@@ -38,6 +66,9 @@ Al pinchar el monigote que deambula por la web, además del enfado ya
 existente, ahora aparece un "¡AUPA ATLETI!" grande a pantalla completa,
 rojiblanco, con una entrada tipo estallido — como si el propio peregrino lo
 gritara.
+
+---
+
 ## 2026-08-12 — Nueva sección de presentación antes del formulario de comentarios
 
 **Tipo:** Feature
@@ -46,6 +77,9 @@ En la pantalla previa al reto, antes del formulario de comentarios ahora
 aparece un kicker + título + texto de presentación, igual que ya tenía el
 formulario de intenciones justo encima ("Por qué lo hago" / "Por
 intenciones"). Editable desde `/admin` → Textos.
+
+---
+
 ## 2026-08-12 — El gráfico de "Tráfico" ya no corta la hora de inicio ni el punto "ahora"
 
 **Tipo:** Fix

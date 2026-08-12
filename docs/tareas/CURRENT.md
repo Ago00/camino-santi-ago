@@ -1,39 +1,80 @@
 # Tarea en curso
 
-## Prompt clarificado
+## Prompt / decisión a implementar
 
-Pestaña "Tráfico" del panel admin (DT-023, `docs/tecnico/decisiones-tecnicas.md`):
-- Contador reseteable (`config_trafico.cuenta_desde`, botón "Reset" con confirmación) en vez de rango fijo al intento activo.
-- Clasificación de visitas en fases antes/durante/después del intento relevante (activo, o el más reciente si no hay ninguno activo), en memoria, sobre una única consulta de `visitas_web` filtrada por `ts >= cuenta_desde`.
-- Pestañas por fase vía `?fase=`, mismo patrón que `?gran=`.
+Sustituir el `window.confirm()` + `<textarea>` plano que usa hoy "Finalizar"
+(`components/admin/ActividadAcciones.tsx`) por un modal con:
+- Mensaje de llegada editable (igual que hoy).
+- Foto opcional: adjuntar/reemplazar/quitar, con compresión en el navegador
+  (mismo patrón que el feed "minuto a minuto", DT-013/DT-017).
+- Preview real (no aproximada) del recuadro kicker/título/mensaje tal como
+  se ve en `components/publico/ModoLlegada.tsx`.
 
-Nota: DT-023 no existía todavía en `decisiones-tecnicas.md` al empezar esta tarea (el fichero terminaba en DT-022) — se ha añadido como parte de esta tarea, con el contenido resumido en el prompt del Orquestador, para no dejar la documentación técnica desactualizada.
+Decisión completa (ya no era DT-024 en el repo al empezar — el Implementador
+la escribió al cerrar, ver nota de LESSONS.md sobre desviaciones que deben
+quedar en el documento de decisiones): `docs/tecnico/decisiones-tecnicas.md`,
+entrada **DT-024**.
 
-## Implementación
+## Rama
 
-**Rama:** `feature/trafico-fases-reset`
+`feature/finalizar-preview-foto`
 
-**Archivos nuevos:**
-- `supabase/migrations/0005_config_trafico.sql` — tabla `config_trafico`, fila única.
-- `lib/trafico/fases.ts` + `lib/trafico/fases.test.ts` — clasificación pura por fase (dominio).
+## Archivos modificados / creados
 
-**Archivos modificados:**
-- `lib/types.ts` — tipo `ConfigTrafico`.
-- `lib/supabase/admin.ts` — tabla `config_trafico` en `BaseDeDatos`.
-- `app/admin/actions.ts` — `resetearContadorTrafico` (al final del fichero).
-- `lib/admin/navegacion.ts` — `FaseTraficoTab`/`esFaseTraficoValida`.
-- `app/admin/page.tsx` — lee `?fase=`, lo pasa a `SeccionTrafico`.
-- `components/admin/SeccionTrafico.tsx` — reescrito: lee `config_trafico`, intento relevante, clasifica por fase, selector de fase, botón Reset.
-- `CHANGELOG.md`, `DEBT.md`, `docs/tecnico/decisiones-tecnicas.md` (nueva entrada DT-023).
+**Nuevos:**
+- `supabase/migrations/0006_foto_llegada.sql` — columna `intentos.foto_llegada_url`
+- `components/admin/ModalFinalizar.tsx`
+- `components/publico/RecuadroLlegada.tsx` (extraído de `ModoLlegada.tsx`)
+- `components/publico/FotoLlegada.tsx`
+- `components/admin/SeccionActividad.test.ts`
+
+**Modificados:**
+- `lib/types.ts` — `Intento.foto_llegada_url`
+- `lib/supabase/storage.ts` / `.test.ts` — `subirFotoLlegada()`, helper interno `subirFotoAlBucket`
+- `app/admin/actions.ts` / `.test.ts` — `finalizarReto` pasa a `FormData` → `ResultadoPublicacion`
+- `app/page.tsx` / `.test.ts` — `ModoLlegadaConectado` lee `foto_llegada_url` (`obtenerFotoLlegadaUrl`, consulta separada)
+- `components/admin/SeccionActividad.tsx` — `obtenerIntentoActividad` (consulta separada), pasa `textos`/foto a `ActividadAcciones`
+- `components/admin/ActividadAcciones.tsx` — "Finalizar" abre `ModalFinalizar`
+- `components/publico/ModoLlegada.tsx` — usa `RecuadroLlegada`/`FotoLlegada`, pinta la foto si existe
+- `app/admin/page.test.ts` — `beforeAll` con timeout propio (30 s) para el `import()` pesado (ver DEBT.md, entrada resuelta)
+- `docs/tecnico/decisiones-tecnicas.md` (DT-024), `docs/tecnico/arquitectura.md`, `docs/tecnico/modelo-datos.md`, `CHANGELOG.md`, `DEBT.md`
 
 ## Quality gates
 
-- `pnpm typecheck` — verde, cero errores.
-- `pnpm lint` — verde, cero errores/warnings.
-- `pnpm test` — verde, 399 tests (399 pasan, incluye 22 nuevos en `lib/trafico/fases.test.ts`).
+- `pnpm typecheck` — verde, 0 errores.
+- `pnpm lint` — verde, 0 errores.
+- `pnpm test` — 35/35 ficheros y 386/386 tests en verde. `pnpm test` completo
+  reporta exit code 1 por un "Unhandled Error" de infraestructura de Vitest
+  (`[vitest-worker]: Timeout calling "onTaskUpdate"`) originado en
+  `lib/traza/proyeccion.ventana.test.ts` — fichero preexistente, no tocado en
+  esta tarea, deuda ya documentada en `DEBT.md` (actualizada con esta
+  observación). Verificado que `pnpm vitest run --exclude
+  "**/proyeccion.ventana.test.ts"` da exit code 0 con los mismos 386 tests
+  en verde.
 
-## Alcance respetado
+## Decisiones de implementación (bloqueos menores resueltos sin pausar)
 
-No se ha tocado ningún fichero de la lista de exclusión (`Mojon.tsx`, `DistanciaRestante.tsx`, `PerfilElevacion.tsx`, `Stats.tsx`, `IntencionForm.tsx`, `ComentarioForm.tsx`, `MuroComentarios.tsx`, `MinutoAMinuto.tsx`, `PeregrinoLibre.tsx`, `ModoLlegada.tsx`, `ActividadAcciones.tsx`). `app/admin/actions.ts` solo se ha tocado para añadir la acción nueva al final, sin reordenar ni modificar las existentes.
+1. `finalizarReto` cambia de firma (`mensaje: string` → `FormData`) y de
+   contrato de error (`throw` → `ResultadoPublicacion`), igual que
+   `crearMinutoAMinuto` (DT-017) — necesario porque ahora puede fallar la
+   subida de una foto, y Next redacta el mensaje de cualquier `throw` en
+   producción. Documentado en DT-024.
+2. `foto_llegada_url` se consulta por separado de `modo`/`destino_lat`/
+   `destino_lon` (que ya tienen su propio fallback de compatibilidad con la
+   migración 0003 sin aplicar) para no acoplar dos migraciones
+   independientes en el mismo `select`.
+3. `app/admin/page.test.ts` movido a `beforeAll` para el `import()` pesado —
+   cierra una deuda preexistente que el crecimiento del árbol de imports de
+   esta tarea convirtió en fallo consistente.
 
-Sin bloqueos mayores. Sin push ni PR (lo gestiona el Orquestador desde el hilo principal).
+## Deuda generada
+
+Ver `DEBT.md`: "Recordatorio: aplicar `supabase/migrations/0006_foto_llegada.sql`
+contra producción" (Alta) y "Objeto huérfano en Storage al reemplazar la foto
+de llegada" (Baja).
+
+## Fix post-revisión de Seguridad
+
+`finalizarReto` gana un tope de 1000 caracteres server-side para el mensaje
+de llegada (antes solo se limitaba en el cliente) — bloqueante encontrado
+por Seguridad, corregido antes de fusionar. Ver nota de cierre de DT-024.

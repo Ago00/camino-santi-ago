@@ -2,6 +2,39 @@
 
 ---
 
+## `docs/producto/funcionalidades.md` no refleja el modal "Finalizar" con preview real ni la foto de llegada opcional (DT-024)
+
+**Fecha:** 2026-08-12
+**Contexto:** Revisión de la tarea "Modal Finalizar con preview real y foto de llegada opcional" (DT-024). Mismo patrón ya registrado varias veces en `docs/LESSONS.md` ("Features cerradas por el pipeline técnico dejan `docs/producto/` desactualizado si nadie invoca al Agente de Producto al cierre"): esta tarea cambia de forma visible cómo Santi finaliza el reto (modal con preview real en vez de `window.confirm()`, más una foto de llegada opcional), con `CHANGELOG.md` y documentación técnica (`decisiones-tecnicas.md`, `arquitectura.md`, `modelo-datos.md`) al día, pero `docs/producto/funcionalidades.md` (línea ~69-71, entrada "Finalizar") sigue describiendo solo "cierra el reto con un mensaje de llegada, editable antes de enviar... Pide confirmación" — sin mencionar el modal, la preview real ni la foto opcional.
+**Problema:** Documentación de producto desactualizada respecto al comportamiento real de "Finalizar".
+**Impacto:** Puramente documental. Cero efecto en comportamiento.
+**Solución propuesta:** El Agente de Producto actualiza la entrada "Finalizar" de `funcionalidades.md` para describir el modal, la preview real (mismo marcado que la pantalla de llegada pública) y la foto opcional (adjuntar/reemplazar/quitar).
+**Prioridad:** Baja.
+
+---
+
+## Recordatorio: aplicar `supabase/migrations/0006_foto_llegada.sql` contra producción
+
+**Fecha:** 2026-08-12
+**Contexto:** Tarea "Modal Finalizar con preview real y foto de llegada opcional" (DT-024, `docs/tecnico/decisiones-tecnicas.md`). Igual que `0003_modo_intento.sql` y `0004_visitas_web.sql` (ver entradas de este mismo fichero), la migración `0006_foto_llegada.sql` (columna `intentos.foto_llegada_url`) no se aplica sola contra Supabase — hace falta pegarla a mano en el editor SQL del proyecto (o `supabase db push`) antes de que exista la columna en la base de datos real.
+**Problema:** Con el código de esta tarea desplegado y la migración sin aplicar, cualquier `UPDATE` que incluya `foto_llegada_url` desde `finalizarReto` (al adjuntar o quitar una foto) falla contra la BD real con un error de Postgres de "columna no existe" (`column intentos.foto_llegada_url does not exist`, código `42703`); del mismo modo, las consultas dedicadas (`obtenerFotoLlegadaUrl` en `app/page.tsx`, `obtenerIntentoActividad` en `components/admin/SeccionActividad.tsx`) fallan con el mismo tipo de error.
+**Impacto (mientras la migración no esté aplicada):** Acotado por diseño, no por parche posterior: las dos consultas de lectura degradan a `foto_llegada_url: null` sin romper la carga de la pantalla de llegada ni del panel admin (ver DT-024, punto 5, y sus tests en `app/page.test.ts`/`components/admin/SeccionActividad.test.ts`). `finalizarReto` sí puede fallar de verdad si se intenta adjuntar o quitar una foto — devuelve `{ ok: false, mensaje: "No se pudo finalizar el reto." }` (visible en `ModalFinalizar.tsx`) en vez de completar la transición de fase; finalizar SIN tocar la foto (caso más común) no se ve afectado, porque ese caso ni siquiera incluye `foto_llegada_url` en el `UPDATE`.
+**Solución propuesta:** Aplicar `supabase/migrations/0006_foto_llegada.sql` contra el proyecto Supabase de producción. Una vez aplicada, tanto la lectura como la escritura de la foto de llegada funcionan sin ningún cambio de código adicional.
+**Prioridad:** Alta — hasta que se aplique, "Finalizar" con foto (adjuntar o quitar) falla; finalizar sin tocar la foto funciona con normalidad.
+
+---
+
+## Objeto huérfano en Storage al reemplazar la foto de llegada (DT-024)
+
+**Fecha:** 2026-08-12
+**Contexto:** Tarea "Modal Finalizar con preview real y foto de llegada opcional" (DT-024). Cuando se adjunta una foto nueva en una finalización posterior a otra que ya tenía foto, `finalizarReto` sube la nueva y sobrescribe `foto_llegada_url` — el objeto anterior en el bucket `minuto-a-minuto` no se borra.
+**Problema:** El objeto viejo queda en Storage sin ninguna fila que lo referencie.
+**Impacto:** Bajo — mismo criterio ya aceptado explícitamente en DT-013 para `eliminarMinutoAMinuto` (el feed "minuto a minuto" tiene el mismo comportamiento desde el principio). Solo consume espacio de Storage, sin efecto visible para ningún usuario.
+**Solución propuesta:** Si algún día se resuelve para el feed "minuto a minuto" (ver la entrada de DT-013 en este mismo fichero, si existe, o la nota de la propia migración), aplicar la misma solución aquí (borrar el objeto anterior antes o después de subir el nuevo, con el nombre guardado en la fila previa a sobrescribirla).
+**Prioridad:** Baja.
+
+---
+
 ## Recordatorio: aplicar `supabase/migrations/0005_config_trafico.sql` contra producción
 
 **Fecha:** 2026-08-12
@@ -19,23 +52,24 @@ aplicar, cualquier `SELECT`/`UPDATE` contra `config_trafico` (lectura de
 `resetearContadorTrafico` en `app/admin/actions.ts`) falla contra la BD real
 con un error de Postgres de "tabla no existe" (`relation "config_trafico"
 does not exist`, código `42P01`).
-**Impacto (mientras la migración no esté aplicada):** Sin regresión visible
-en la lectura: `SeccionTrafico.tsx` trata explícitamente ese error como "sin
-cutoff" (`obtenerCuentaDesde()` devuelve una fecha muy antigua sin loguear
-nada, ver comentario de cabecera de la función) — la pestaña "Tráfico" sigue
-funcionando exactamente igual que antes de esta tarea, con todo el histórico
-de `visitas_web` contando como "antes" (no hay intento con el que comparar
-fases todavía si tampoco existe ninguna fila de `intentos`, o se clasifica
-normalmente si sí la hay). El botón "Reset" sí falla de forma visible: la
-Server Action lanza `Error("No se pudo resetear el contador de tráfico.")`,
-que Next.js redacta en producción — Santi vería un error genérico al pulsar
-"Reset" hasta que la migración esté aplicada.
+**Impacto (mientras la migración no esté aplicada):** El botón "Reset" falla
+de forma visible: la Server Action lanza
+`Error("No se pudo resetear el contador de tráfico.")`, que Next.js redacta
+en producción — Santi vería un error genérico al pulsar "Reset" hasta que la
+migración esté aplicada. La lectura ya no arriesga el timeout de la función
+serverless que sí llegó a darse en producción justo por la ausencia de esta
+migración (ver la nota de cierre de DT-023 y la lección nueva en
+`docs/LESSONS.md`): `obtenerCuentaDesde()` ya no cae a "sin cutoff" cuando
+`config_trafico` no existe, sino al mismo límite acotado que ya tenía DT-022
+(inicio del intento relevante, o un tope fijo de 3 días si tampoco hay
+ningún intento) — bug real ya corregido, no solo una degradación teórica.
 **Solución propuesta:** Aplicar `supabase/migrations/0005_config_trafico.sql`
 contra el proyecto Supabase de producción. Una vez aplicada, tanto la lectura
 de fases como el botón "Reset" funcionan sin ningún cambio de código
 adicional.
 **Prioridad:** Alta — hasta que se aplique, el botón "Reset" no funciona
-(aunque el resto de la pestaña "Tráfico" y del admin no se ven afectados).
+(el resto de la pestaña "Tráfico" y del admin ya no se ven afectados, tras
+el fix del timeout).
 
 ---
 
@@ -354,6 +388,23 @@ confianza que 1000.
 numérica real, no solo diseño) contra velocidad de la suite, y ya está
 documentado en el propio fichero de test.
 
+**Actualización (2026-08-12, verificado durante las quality gates de DT-024):**
+el "falso positivo de infraestructura" descrito arriba dejó de ser solo un
+aviso que ensucia la salida: en esta máquina, ejecutando la suite completa
+(`pnpm test`, ~35 ficheros), el mismo `[vitest-worker]: Timeout calling
+"onTaskUpdate"` hace que el proceso termine con código de salida 1 —
+`Test Files 35 passed (35)`, `Tests 386 passed (386)`, pero
+`[ELIFECYCLE] Test failed`. Confirmado que no lo causan los cambios de
+DT-024: reproducible en aislamiento ejecutando solo
+`lib/traza/proyeccion.ventana.test.ts` (que DT-024 no toca), y el resto de
+la suite (excluyendo ese fichero) pasa en verde con exit code 0. Sube la
+prioridad práctica de la solución propuesta (mover el test de equivalencia
+fuera de `pnpm test` estándar) porque ya no es solo cosmético: puede hacer
+que una quality gate se reporte como roja estando todo el código correcto.
+**Prioridad:** Media (era Baja) — no indica ningún bug de producto ni de
+dominio, pero puede bloquear en falso el cierre de cualquier tarea futura si
+alguien exige `pnpm test` con exit code 0 sin mirar el detalle.
+
 ---
 
 ## El reintento automático de `crearMinutoAMinuto` no es idempotente: puede publicar la misma entrada dos veces
@@ -541,7 +592,8 @@ pero no queda protegido para cambios futuros.
 
 ## `app/admin/page.test.ts` agota el timeout de 5 s en la primera ejecución de la suite completa
 
-**Fecha:** 2026-08-09
+**Fecha:** 2026-08-09 · **Resuelta:** 2026-08-12, tarea DT-024 (Modal Finalizar con preview
+real y foto de llegada opcional)
 **Contexto:** Detectado al ejecutar las quality gates de DT-017. En la primera
 ejecución tras añadir módulos nuevos (caché de transformación de Vitest
 fría), el test "redirige a /admin/login sin cookie de sesión" falló con
@@ -556,12 +608,19 @@ prueba. Un fallo así en una quality gate hace dudar de un cambio correcto.
 **Impacto:** Bajo — no indica ningún problema real de producción y se
 reproduce solo con la caché fría. El coste es de confianza en la suite: obliga
 a reejecutar para distinguir un fallo real de uno de tiempo.
-**Solución propuesta:** Dar a ese fichero un timeout propio holgado
-(`describe`/`it` con timeout explícito, o `testTimeout` por fichero), que es
-lo mínimo; o mover el `await import()` del cuerpo del test a un
-`beforeAll`, de forma que el coste de importar el árbol del panel no cuente
-contra el timeout de un test concreto.
-**Prioridad:** Baja.
+**Resolución:** El Implementador de DT-024 (ModalFinalizar + RecuadroLlegada/
+FotoLlegada + lib/envio/lib/imagen, sumados al árbol de `app/admin/page.tsx`)
+encontró que el problema había dejado de ser intermitente: los tres tests del
+fichero fallaban de forma consistente, incluso con caché caliente, al
+ejecutar la suite completa junto a `proyeccion.ventana.test.ts` (~78 s,
+ver la entrada de este fichero sobre ese test). Se aplicó la segunda solución
+ya propuesta aquí: mover el `await import("@/app/admin/page")` (y el de
+`@/lib/auth/admin-session`) a un `beforeAll` con su propio timeout holgado
+(30 s) — Node cachea el módulo tras la primera importación, así que
+repetirlo por test no aportaba nada salvo pagar su coste de transformación
+contra el timeout de 5 s de cada `it()`. Verificado en verde de forma
+repetida, tanto en aislamiento como dentro de `pnpm test` completo.
+**Prioridad:** Cerrada.
 
 ---
 

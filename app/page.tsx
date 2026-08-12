@@ -135,10 +135,11 @@ async function ModoLlegadaConectado({
   trazaCoords: [number, number][];
   textos: Textos;
 }) {
-  const [progreso, entradasMinutoAMinuto, historico] = await Promise.all([
+  const [progreso, entradasMinutoAMinuto, historico, fotoLlegadaUrl] = await Promise.all([
     calcularProgresoDelIntento(intentoId),
     cargarEntradasMinutoAMinuto(intentoId),
     obtenerHistoricoPosicionesCacheado(intentoId),
+    obtenerFotoLlegadaUrl(intentoId),
   ]);
   const tiempoTotal = formatearTiempoTotal(startedAt, endedAt);
   const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, startedAt, endedAt);
@@ -154,8 +155,39 @@ async function ModoLlegadaConectado({
       trazaCoords={trazaCoords}
       entradasMinutoAMinuto={entradasMinutoAMinuto}
       textos={textos}
+      fotoLlegadaUrl={fotoLlegadaUrl}
     />
   );
+}
+
+/**
+ * Foto opcional de llegada (DT-024). Consulta propia y deliberadamente
+ * separada de `obtenerIntentoActivo` (no se añade `foto_llegada_url` a su
+ * select): esa función ya tiene su propio fallback de compatibilidad para la
+ * migración 0003 (`modo`/`destino_lat`/`destino_lon`, ver DEBT.md) — sumarle
+ * una tercera columna nueva (0006, también pendiente de aplicar contra
+ * producción) acoplaría dos migraciones independientes en el mismo `select`
+ * y podría hacer que, si solo faltara `foto_llegada_url`, el fallback
+ * "olvidara" también `modo`/`destino_lat`/`destino_lon` aunque esos sí
+ * existan ya. Con la consulta separada, si la columna no existe todavía la
+ * pantalla de llegada se sirve igual, simplemente sin foto — la ruta
+ * silenciosa a la que este proyecto recurre siempre ante una migración sin
+ * aplicar (ver DEBT.md, "recordatorio: aplicar 0004/0003 contra producción").
+ */
+export async function obtenerFotoLlegadaUrl(intentoId: number): Promise<string | null> {
+  try {
+    const supabase = getSupabasePublic();
+    const { data, error } = await supabase
+      .from("intentos")
+      .select("foto_llegada_url")
+      .eq("id", intentoId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data.foto_llegada_url;
+  } catch {
+    return null;
+  }
 }
 
 async function ModoDuranteLibreConectado({

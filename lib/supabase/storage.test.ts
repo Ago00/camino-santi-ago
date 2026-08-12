@@ -24,7 +24,9 @@ vi.mock("@/lib/supabase/admin", () => ({
   })),
 }));
 
-const { subirFotoMinutoAMinuto, ErrorDeSubidaDeFoto } = await import("@/lib/supabase/storage");
+const { subirFotoMinutoAMinuto, subirFotoLlegada, ErrorDeSubidaDeFoto } = await import(
+  "@/lib/supabase/storage"
+);
 const { TAMANO_MAXIMO_FOTO_BYTES, PRESUPUESTO_COMPRESION_BYTES } = await import(
   "@/lib/imagen/limites-subida"
 );
@@ -121,6 +123,45 @@ describe("subirFotoMinutoAMinuto — error de Storage", () => {
   it("marca sus fallos como ErrorDeSubidaDeFoto, que es lo que la Server Action puede enseñar al usuario", async () => {
     await expect(
       subirFotoMinutoAMinuto(crearArchivo({ type: "image/gif", size: 100 }))
+    ).rejects.toBeInstanceOf(ErrorDeSubidaDeFoto);
+  });
+});
+
+describe("subirFotoLlegada (DT-024) — mismo bucket, prefijo distinto en el nombre", () => {
+  it("sube al mismo bucket público minuto-a-minuto con un nombre prefijado 'llegada-'", async () => {
+    const url = await subirFotoLlegada(crearArchivo({ type: "image/jpeg", size: 100 }));
+
+    expect(url).toContain("minuto-a-minuto");
+    const [nombreSubido] = uploadSpy.mock.calls[0] as [string, File, unknown];
+    expect(nombreSubido).toMatch(/^llegada-.*\.jpg$/);
+  });
+
+  it("no colisiona con el nombre que generaría subirFotoMinutoAMinuto para el mismo instante (prefijo distinto)", async () => {
+    await subirFotoMinutoAMinuto(crearArchivo({ type: "image/png", size: 100 }));
+    const [nombreFeed] = uploadSpy.mock.calls[0] as [string, File, unknown];
+
+    await subirFotoLlegada(crearArchivo({ type: "image/png", size: 100 }));
+    const [nombreLlegada] = uploadSpy.mock.calls[1] as [string, File, unknown];
+
+    expect(nombreLlegada).not.toBe(nombreFeed);
+    expect(nombreLlegada.startsWith("llegada-")).toBe(true);
+    expect(nombreFeed.startsWith("llegada-")).toBe(false);
+  });
+
+  it("aplica las mismas reglas de validación (tipo MIME, tamaño máximo) que subirFotoMinutoAMinuto", async () => {
+    await expect(
+      subirFotoLlegada(crearArchivo({ type: "application/pdf", size: 100 }))
+    ).rejects.toThrow(/formato/i);
+    await expect(
+      subirFotoLlegada(crearArchivo({ type: "image/jpeg", size: TAMANO_MAXIMO_FOTO_BYTES + 1 }))
+    ).rejects.toThrow(/máximo/i);
+    expect(uploadSpy).not.toHaveBeenCalled();
+  });
+
+  it("lanza ErrorDeSubidaDeFoto si Supabase devuelve error al subir", async () => {
+    uploadSpy.mockResolvedValueOnce({ error: new Error("fallo de red") });
+    await expect(
+      subirFotoLlegada(crearArchivo({ type: "image/jpeg", size: 100 }))
     ).rejects.toBeInstanceOf(ErrorDeSubidaDeFoto);
   });
 });

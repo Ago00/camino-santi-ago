@@ -4,8 +4,10 @@
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
+import { obtenerTextos } from "@/lib/textos/obtener-textos";
 import ActividadAcciones from "@/components/admin/ActividadAcciones";
 import CrearPrimerIntentoBoton from "@/components/admin/CrearPrimerIntentoBoton";
+import type { Fase } from "@/lib/types";
 
 const C = { ink: "#1B211D", muted: "#4A5450" };
 
@@ -15,13 +17,42 @@ const ETIQUETA_FASE: Record<"antes" | "durante" | "llegada", string> = {
   llegada: "Llegada",
 };
 
-export default async function SeccionActividad() {
+interface IntentoActividad {
+  id: number;
+  fase: Fase;
+  started_at: string | null;
+  mensaje_llegada: string | null;
+  foto_llegada_url: string | null;
+}
+
+/**
+ * `foto_llegada_url` (DT-024, migración 0006) en consulta separada del resto
+ * de columnas, con el mismo criterio que `obtenerFotoLlegadaUrl` en
+ * `app/page.tsx`: si la migración no está aplicada todavía en producción, el
+ * fallo de esta columna sola no debe tumbar la lectura de fase/mensaje, que
+ * no dependen de ella.
+ */
+export async function obtenerIntentoActividad(): Promise<IntentoActividad | null> {
   const supabase = getSupabaseAdmin();
-  const { data: intentoActivo } = await supabase
+  const { data: intentoConFoto, error } = await supabase
+    .from("intentos")
+    .select("id, fase, started_at, mensaje_llegada, foto_llegada_url")
+    .eq("cerrado", false)
+    .maybeSingle();
+
+  if (!error) return intentoConFoto;
+
+  const { data: intentoSinFoto } = await supabase
     .from("intentos")
     .select("id, fase, started_at, mensaje_llegada")
     .eq("cerrado", false)
     .maybeSingle();
+
+  return intentoSinFoto ? { ...intentoSinFoto, foto_llegada_url: null } : null;
+}
+
+export default async function SeccionActividad() {
+  const [intentoActivo, textos] = await Promise.all([obtenerIntentoActividad(), obtenerTextos()]);
 
   if (!intentoActivo) {
     return (
@@ -58,6 +89,9 @@ export default async function SeccionActividad() {
       <ActividadAcciones
         fase={intentoActivo.fase}
         mensajeLlegadaDefault={intentoActivo.mensaje_llegada ?? TEXTOS_POR_DEFECTO.mensaje_llegada_default}
+        fotoLlegadaUrlActual={intentoActivo.foto_llegada_url}
+        llegadaKicker={textos.llegada_kicker}
+        llegadaTitulo={textos.llegada_titulo}
       />
     </div>
   );

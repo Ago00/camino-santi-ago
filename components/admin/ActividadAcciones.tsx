@@ -3,16 +3,18 @@
 //
 // - antes  → elegir modo (guiado/libre, DT-016) + Iniciar (confirmación, por
 //             simetría con las demás transiciones)
-// - durante → Finalizar (confirmación; edita el mensaje de llegada antes de
-//             enviar) + Reiniciar (confirmación; aborta el intento en marcha)
+// - durante → Finalizar (abre ModalFinalizar.tsx, DT-024: mensaje + foto
+//             opcional + preview real) + Reiniciar (confirmación; aborta el
+//             intento en marcha)
 // - llegada → Retomar (SIN confirmación: reversible con otro Finalizar,
 //             mismo intento) + Reiniciar (confirmación: cierra de verdad)
 
 "use client";
 
 import { useState, useTransition } from "react";
-import { finalizarReto, iniciarReto, reiniciarReto, retomarReto } from "@/app/admin/actions";
+import { iniciarReto, reiniciarReto, retomarReto } from "@/app/admin/actions";
 import BotonConfirmable from "@/components/admin/BotonConfirmable";
+import ModalFinalizar from "@/components/admin/ModalFinalizar";
 import type { ModoIntento } from "@/lib/types";
 
 const C = { eucalipto: "#2F5D50", peligro: "#B03A2E" };
@@ -20,15 +22,35 @@ const C = { eucalipto: "#2F5D50", peligro: "#B03A2E" };
 interface ActividadAccionesProps {
   fase: "antes" | "durante" | "llegada";
   mensajeLlegadaDefault: string;
+  /** Foto de llegada ya subida en una finalización anterior, o null. Se le
+   * pasa al modal para que sepa si mostrar "Quitar foto" desde el principio. */
+  fotoLlegadaUrlActual: string | null;
+  /** Kicker/título de la pantalla de llegada (editables en la pestaña
+   * "Textos"), para la preview real del modal. */
+  llegadaKicker: string;
+  llegadaTitulo: string;
 }
 
-export default function ActividadAcciones({ fase, mensajeLlegadaDefault }: ActividadAccionesProps) {
+export default function ActividadAcciones({
+  fase,
+  mensajeLlegadaDefault,
+  fotoLlegadaUrlActual,
+  llegadaKicker,
+  llegadaTitulo,
+}: ActividadAccionesProps) {
   if (fase === "antes") {
     return <IniciarConModo />;
   }
 
   if (fase === "durante") {
-    return <FinalizarYReiniciar mensajeLlegadaDefault={mensajeLlegadaDefault} />;
+    return (
+      <FinalizarYReiniciar
+        mensajeLlegadaDefault={mensajeLlegadaDefault}
+        fotoLlegadaUrlActual={fotoLlegadaUrlActual}
+        llegadaKicker={llegadaKicker}
+        llegadaTitulo={llegadaTitulo}
+      />
+    );
   }
 
   return <RetomarYReiniciar />;
@@ -165,42 +187,28 @@ function SelectorModoBoton({
   );
 }
 
-function FinalizarYReiniciar({ mensajeLlegadaDefault }: { mensajeLlegadaDefault: string }) {
-  const [mensaje, setMensaje] = useState(mensajeLlegadaDefault);
-  const [pendiente, startTransition] = useTransition();
-
-  function finalizar() {
-    if (!window.confirm("¿Finalizar el reto? La web pública pasará a mostrar el mensaje de llegada.")) {
-      return;
-    }
-    startTransition(async () => {
-      await finalizarReto(mensaje);
-    });
-  }
+function FinalizarYReiniciar({
+  mensajeLlegadaDefault,
+  fotoLlegadaUrlActual,
+  llegadaKicker,
+  llegadaTitulo,
+}: {
+  mensajeLlegadaDefault: string;
+  fotoLlegadaUrlActual: string | null;
+  llegadaKicker: string;
+  llegadaTitulo: string;
+}) {
+  const [modalAbierto, setModalAbierto] = useState(false);
 
   return (
     <div className="space-y-3">
-      <div>
-        <label className="text-[12.5px] font-medium" style={{ color: "#4A5450" }}>
-          Mensaje de llegada
-        </label>
-        <textarea
-          value={mensaje}
-          onChange={(e) => setMensaje(e.target.value)}
-          rows={3}
-          maxLength={1000}
-          className="mt-1 w-full resize-none rounded-lg border bg-white px-3 py-2 text-[14px] outline-none"
-          style={{ borderColor: "#00000015" }}
-        />
-      </div>
       <div className="flex flex-wrap gap-2">
         <button
-          onClick={finalizar}
-          disabled={mensaje.trim().length === 0 || pendiente}
-          className="rounded-full px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50"
+          onClick={() => setModalAbierto(true)}
+          className="rounded-full px-4 py-2 text-[13px] font-medium text-white"
           style={{ background: C.eucalipto }}
         >
-          {pendiente ? "Finalizando…" : "Finalizar"}
+          Finalizar
         </button>
         <BotonConfirmable
           etiqueta="Reiniciar"
@@ -210,6 +218,16 @@ function FinalizarYReiniciar({ mensajeLlegadaDefault }: { mensajeLlegadaDefault:
           variante="peligro"
         />
       </div>
+
+      {modalAbierto && (
+        <ModalFinalizar
+          mensajeLlegadaDefault={mensajeLlegadaDefault}
+          fotoLlegadaUrlActual={fotoLlegadaUrlActual}
+          kicker={llegadaKicker}
+          titulo={llegadaTitulo}
+          onClose={() => setModalAbierto(false)}
+        />
+      )}
     </div>
   );
 }

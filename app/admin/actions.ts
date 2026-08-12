@@ -20,7 +20,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { subirFotoMinutoAMinuto, ErrorDeSubidaDeFoto } from "@/lib/supabase/storage";
+import { subirFotoMinutoAMinuto, subirFotoLlegada, ErrorDeSubidaDeFoto } from "@/lib/supabase/storage";
 import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
 import { guardarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
 import { calcularProgresoActual } from "@/lib/traza/progreso-actual";
@@ -172,13 +172,69 @@ export async function iniciarReto(params: IniciarRetoParams): Promise<void> {
 
 /**
  * durante → llegada, sobre el intento activo actual, con el mensaje de
- * llegada editado (o el default, ya prellenado por el cliente).
+ * llegada editado (o el default, ya prellenado por el cliente) y, opcional,
+ * la foto de llegada (DT-024, `components/admin/ModalFinalizar.tsx`).
+ *
+ * El `FormData` distingue TRES casos para `foto_llegada_url`, según lo que
+ * envía el modal:
+ * - Ni `foto` ni `quitarFoto`: NO se toca la columna (se omite del `UPDATE`).
+ *   Necesario para que Retomar → Finalizar de nuevo sin adjuntar nada no
+ *   borre una foto ya subida en una finalización anterior.
+ * - `foto` presente (fichero no vacío): se sube a Storage y su URL
+ *   reemplaza la anterior. El objeto viejo en Storage queda huérfano —
+ *   aceptado, mismo criterio que `eliminarMinutoAMinuto` (DT-013).
+ * - `quitarFoto === "true"` (y sin `foto`): la columna pasa a `null`.
+ *
+ * **Devuelve el fallo en vez de lanzarlo** (mismo motivo y patrón que
+ * `crearMinutoAMinuto`, DT-017): la subida de la foto puede fallar de forma
+ * esperada (formato o tamaño), y Next redacta en producción el mensaje de
+ * cualquier error lanzado desde el servidor — un `throw` no dejaría ver el
+ * motivo real en el modal.
  */
-export async function finalizarReto(mensaje: string): Promise<void> {
-  await requerirSesion();
-  const mensajeLimpio = mensaje.trim();
+export async function finalizarReto(formData: FormData): Promise<ResultadoPublicacion> {
+  try {
+    await requerirSesion();
+  } catch (error) {
+    if (error instanceof SesionInvalidaError) {
+      return { ok: false, mensaje: "Tu sesión de admin ha caducado. Vuelve a entrar y reintenta." };
+    }
+    throw error;
+  }
+
+  const mensajeLimpio = String(formData.get("mensaje") ?? "").trim();
   if (mensajeLimpio.length === 0) {
-    throw new Error("El mensaje de llegada no puede estar vacío.");
+    return { ok: false, mensaje: "El mensaje de llegada no puede estar vacío." };
+  }
+  if (mensajeLimpio.length > 1000) {
+    return { ok: false, mensaje: "El mensaje de llegada no puede superar 1000 caracteres." };
+  }
+
+  const cambios: {
+    fase: "llegada";
+    ended_at: string;
+    mensaje_llegada: string;
+    foto_llegada_url?: string | null;
+  } = {
+    fase: "llegada",
+    ended_at: new Date().toISOString(),
+    mensaje_llegada: mensajeLimpio,
+  };
+
+  const foto = formData.get("foto");
+  const quitarFoto = formData.get("quitarFoto") === "true";
+
+  if (foto instanceof File && foto.size > 0) {
+    try {
+      cambios.foto_llegada_url = await subirFotoLlegada(foto);
+    } catch (error) {
+      if (error instanceof ErrorDeSubidaDeFoto) {
+        return { ok: false, mensaje: error.message };
+      }
+      console.error("Fallo inesperado al subir la foto de llegada", error);
+      return { ok: false, mensaje: "No se pudo subir la foto. Vuelve a intentarlo." };
+    }
+  } else if (quitarFoto) {
+    cambios.foto_llegada_url = null;
   }
 
   const supabase = getSupabaseAdmin();
@@ -189,20 +245,14 @@ export async function finalizarReto(mensaje: string): Promise<void> {
     .maybeSingle();
 
   if (errorBusqueda || !intentoActivo || intentoActivo.fase !== "durante") {
-    throw new Error("No hay ningún intento en fase 'durante' que finalizar.");
+    return { ok: false, mensaje: "No hay ningún intento en fase 'durante' que finalizar." };
   }
 
-  const { error } = await supabase
-    .from("intentos")
-    .update({
-      fase: "llegada",
-      ended_at: new Date().toISOString(),
-      mensaje_llegada: mensajeLimpio,
-    })
-    .eq("id", intentoActivo.id);
+  const { error } = await supabase.from("intentos").update(cambios).eq("id", intentoActivo.id);
 
-  if (error) throw new Error("No se pudo finalizar el reto.");
+  if (error) return { ok: false, mensaje: "No se pudo finalizar el reto." };
   revalidarAdmin();
+  return { ok: true };
 }
 
 /**
