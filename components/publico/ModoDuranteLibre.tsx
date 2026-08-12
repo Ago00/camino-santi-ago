@@ -115,6 +115,7 @@ export default function ModoDuranteLibre({
           tiempoEnMarcha={tiempoEnMarcha}
           kmAndados={formatearKm(progreso.odometroKm)}
           ritmoMedio={ritmoMedio}
+          textos={textos}
         />
         <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} />
       </div>

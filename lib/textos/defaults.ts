@@ -19,6 +19,11 @@ export const CLAVES_TEXTOS = [
   "llegada_titulo",
   "llegada_libre_kicker",
   "llegada_libre_titulo",
+  "durante_en_directo_kicker",
+  "durante_en_directo_titulo",
+  "stats_label_en_marcha",
+  "stats_label_caminados",
+  "stats_label_ritmo_medio",
 ] as const;
 
 export type ClaveTexto = (typeof CLAVES_TEXTOS)[number];
@@ -39,4 +44,9 @@ export const TEXTOS_POR_DEFECTO: Record<ClaveTexto, string> = {
   llegada_titulo: "¡Ha llegado a Santiago!",
   llegada_libre_kicker: "Intento completado",
   llegada_libre_titulo: "¡Ha llegado!",
+  durante_en_directo_kicker: "En directo · ahora mismo",
+  durante_en_directo_titulo: "Estoy caminando",
+  stats_label_en_marcha: "En marcha",
+  stats_label_caminados: "Caminados",
+  stats_label_ritmo_medio: "Ritmo medio",
 };

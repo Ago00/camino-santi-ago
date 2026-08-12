@@ -94,7 +94,7 @@ export default function ModoLlegada({
             puntoResaltado={puntoResaltado}
           />
         </div>
-        <Stats tiempoEnMarcha={tiempoTotal} kmAndados={formatearKm(progreso.odometroKm)} ritmoMedio={ritmoMedio} />
+        <Stats tiempoEnMarcha={tiempoTotal} kmAndados={formatearKm(progreso.odometroKm)} ritmoMedio={ritmoMedio} textos={textos} />
         <MinutoAMinuto
           polling={false}
           entradasIniciales={entradasMinutoAMinuto}
