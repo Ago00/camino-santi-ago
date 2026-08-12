@@ -92,7 +92,7 @@ export default function ModoLlegadaLibre({
             puntoResaltado={puntoResaltado}
           />
         </div>
-        <DistanciaRestante km={progreso.distanciaRestanteKm} />
+        <DistanciaRestante km={progreso.distanciaRestanteKm} textos={textos} />
         <Stats
           tiempoEnMarcha={tiempoEnMarcha}
           kmAndados={formatearKm(progreso.odometroKm)}

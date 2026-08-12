@@ -126,7 +126,7 @@ export default function ModoDurante({
             puntoResaltado={puntoResaltado}
           />
         </div>
-        <Mojon kmRestantes={formatearKm(progreso.kmRestantes)} pct={progreso.porcentaje} />
+        <Mojon kmRestantes={formatearKm(progreso.kmRestantes)} pct={progreso.porcentaje} textos={textos} />
         <Stats
           tiempoEnMarcha={tiempoEnMarcha}
           kmAndados={formatearKm(progreso.odometroKm)}

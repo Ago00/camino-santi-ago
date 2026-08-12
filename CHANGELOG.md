@@ -15,6 +15,20 @@ editen desde el panel.
 
 ---
 
+## 2026-08-12 — Los textos de la pantalla "antes" y del progreso en directo ya se pueden editar desde el panel
+
+**Tipo:** Feature
+
+Nuevos textos editables desde `/admin` en la pantalla previa al reto (badge de
+la ruta, kickers y títulos de cada bloque, nombre y subtítulo bajo la foto de
+quien camina) y en los indicadores de progreso que se ven mientras el reto
+está en marcha (el mojón kilométrico, la distancia restante en modo libre y
+las etiquetas del perfil de elevación). El título de marca "Camino de
+Santi·ago" y su subtítulo se mantienen fijos, sin editar, por su tratamiento
+visual especial.
+
+---
+
 ## 2026-08-12 — Nueva pestaña "Tráfico" en el panel: cuánta gente visita la web durante el reto
 
 **Tipo:** Feature
