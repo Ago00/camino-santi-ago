@@ -545,3 +545,31 @@ export async function eliminarMinutoAMinuto(id: number): Promise<void> {
   if (error) throw new Error("No se pudo eliminar la entrada.");
   revalidarAdmin();
 }
+
+// ---------------------------------------------------------------------------
+// Tráfico (DT-023)
+// ---------------------------------------------------------------------------
+
+/**
+ * Adelanta `config_trafico.cuenta_desde` a ahora: las visitas anteriores
+ * dejan de contar en la pestaña "Tráfico", pero ninguna fila de `visitas_web`
+ * se borra ni se toca — es un cambio de corte, no un borrado. Pide
+ * confirmación en el cliente (`BotonConfirmable`).
+ *
+ * Compatibilidad temporal con la migración sin aplicar (ver DEBT.md, mismo
+ * patrón que 0003/0004): si `config_trafico` todavía no existe en
+ * producción, este UPDATE falla contra la BD real — se traduce en un mensaje
+ * claro en vez de dejar que el error crudo de Postgres llegue al cliente.
+ */
+export async function resetearContadorTrafico(): Promise<void> {
+  await requerirSesion();
+  const supabase = getSupabaseAdmin();
+
+  const { error } = await supabase
+    .from("config_trafico")
+    .update({ cuenta_desde: new Date().toISOString() })
+    .eq("id", 1);
+
+  if (error) throw new Error("No se pudo resetear el contador de tráfico.");
+  revalidarAdmin();
+}

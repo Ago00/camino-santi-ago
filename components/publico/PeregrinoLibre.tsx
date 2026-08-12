@@ -2,6 +2,13 @@
 // que se desvanecen y se enfada 3 s al pincharlo. Cara de dibujo (sin foto
 // real) — patrón fielmente copiado del mockup aprobado
 // (design-sandbox/app/camino/page.tsx, PeregrinoLibre + PeregrinoAndando).
+//
+// Al pinchar, además del enfado ya existente, un "grito" a pantalla completa
+// ("¡AUPA ATLETI!", rojiblanco, con una entrada tipo estallido) — pedido
+// explícito de Santi. `grito` es un contador, no un booleano: usarlo como
+// `key` de AnimatePresence hace que cada clic reinicie la animación desde
+// cero aunque el grito anterior siga en pantalla (en vez de no hacer nada
+// porque "ya está en true").
 
 "use client";
 
@@ -9,6 +16,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 
 const C = { eucalipto: "#2F5D50", gold: "#C9A24B" };
+const DURACION_GRITO_MS = 1400;
 
 interface Huella {
   id: number;
@@ -35,6 +43,13 @@ export default function PeregrinoLibre() {
     angryRef.current = v;
     setAngryState(v);
   };
+  // Contador de clics, no un booleano: cada clic tiene que reiniciar la
+  // animación desde cero aunque el grito anterior siga en pantalla. `null`
+  // = sin grito montado — AnimatePresence necesita que el hijo desaparezca
+  // de verdad (no solo quedar en opacity:0) para no acumular un <div> nuevo
+  // en el DOM en cada clic durante las 30 h que dura el reto.
+  const [gritoId, setGritoId] = useState<number | null>(null);
+  const gritoIdRef = useRef(0);
 
   const nuevoDestino = () => {
     const size = 44;
@@ -59,6 +74,9 @@ export default function PeregrinoLibre() {
 
   const enfadar = () => {
     setAngry(true);
+    const id = ++gritoIdRef.current;
+    setGritoId(id);
+    setTimeout(() => setGritoId((actual) => (actual === id ? null : actual)), DURACION_GRITO_MS);
     nuevoDestino();
     if (calmRef.current) clearTimeout(calmRef.current);
     calmRef.current = setTimeout(() => setAngry(false), 3000);
@@ -106,6 +124,7 @@ export default function PeregrinoLibre() {
 
   return (
     <>
+      <AnimatePresence>{gritoId !== null && <Grito key={gritoId} />}</AnimatePresence>
       {huellas.map((h) => (
         <div
           key={h.id}
@@ -136,6 +155,56 @@ export default function PeregrinoLibre() {
         </motion.div>
       </motion.div>
     </>
+  );
+}
+
+/**
+ * Grito a pantalla completa al pinchar el peregrino. `pointer-events-none`
+ * en todo el árbol: es puramente decorativo, nunca debe bloquear ningún
+ * click real de la web mientras está en pantalla (~1,4 s).
+ */
+function Grito() {
+  return (
+    <motion.div
+      className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center"
+      style={{ textShadow: "0 3px 0 #1B211D" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: [0, 1, 1, 0] }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 1.4, times: [0, 0.12, 0.75, 1], ease: "easeInOut" }}
+    >
+      <motion.div
+        className="text-center"
+        initial={{ scale: 0.15, rotate: -10 }}
+        animate={{ scale: [0.15, 1.18, 0.96, 1.05, 1], rotate: [-10, 4, -3, 1, 0] }}
+        transition={{ duration: 0.85, times: [0, 0.45, 0.65, 0.82, 1], ease: "easeOut" }}
+      >
+        <div
+          className="[font-family:var(--font-fraunces)] italic leading-[0.95]"
+          style={{
+            fontSize: "clamp(46px, 13vw, 128px)",
+            fontWeight: 800,
+            color: "#CE2029",
+            WebkitTextStroke: "2.5px white",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          ¡AUPA
+        </div>
+        <div
+          className="[font-family:var(--font-fraunces)] italic leading-[0.95]"
+          style={{
+            fontSize: "clamp(46px, 13vw, 128px)",
+            fontWeight: 800,
+            color: "#ffffff",
+            WebkitTextStroke: "2.5px #CE2029",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          ATLETI!
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 

@@ -25,7 +25,16 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Comentario, Intencion, Intento, MinutoAMinuto, Posicion, Texto, VisitaWeb } from "@/lib/types";
+import type {
+  Comentario,
+  ConfigTrafico,
+  Intencion,
+  Intento,
+  MinutoAMinuto,
+  Posicion,
+  Texto,
+  VisitaWeb,
+} from "@/lib/types";
 
 /**
  * Esquema de BD tipado para el cliente Supabase (espejo de lib/types.ts).
@@ -93,6 +102,12 @@ export interface BaseDeDatos {
         Row: Pick<VisitaWeb, keyof VisitaWeb>;
         Insert: Omit<VisitaWeb, "id" | "created_at">;
         Update: Partial<VisitaWeb>;
+        Relationships: [];
+      };
+      config_trafico: {
+        Row: Pick<ConfigTrafico, keyof ConfigTrafico>;
+        Insert: Partial<ConfigTrafico>;
+        Update: Partial<ConfigTrafico>;
         Relationships: [];
       };
     };

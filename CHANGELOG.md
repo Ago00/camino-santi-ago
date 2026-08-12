@@ -27,6 +27,73 @@ que ya hacían las fotos del feed "minuto a minuto".
 
 ---
 
+## 2026-08-12 — Arreglada la pestaña "Tráfico": había dejado de cargar
+
+**Tipo:** Fix
+
+Justo después de fusionar el cambio anterior (fases antes/durante/después),
+la pestaña "Tráfico" dejó de cargar en producción. La causa: mientras la
+migración que guarda el punto de "empezar a contar" no esté aplicada, la
+pestaña intentaba traer el histórico completo de visitas sin ningún límite
+— con tráfico real ya acumulado, eso podía tardar más de lo que aguanta la
+función del servidor. Ahora, en ese caso, se acota igual que antes de este
+cambio (desde que empezó el reto, o como mucho los últimos 3 días si el
+reto ni siquiera ha empezado todavía).
+
+---
+
+## 2026-08-12 — La pestaña "Tráfico" ahora distingue antes/durante/después y se puede resetear el contador
+
+**Tipo:** Feature
+
+La pestaña "Tráfico" del panel admin ya no se limita al rango del intento
+activo: ahora trae todo el histórico de visitas y lo reparte en tres
+pestañas — antes, durante y después del reto — para poder ver de un vistazo,
+por ejemplo, cuánta gente entró mientras Santi caminaba frente a cuánta
+entró después de llegar. Se abre en la pestaña que tiene sentido según el
+momento (durante si el reto está en marcha o ya llegó, antes si no ha
+empezado). También hay un botón "Reset" que adelanta el contador a ahora
+mismo sin borrar ningún dato — útil para "empezar a contar de cero" en un
+momento concreto sin perder el histórico completo.
+
+---
+
+## 2026-08-12 — "¡AUPA ATLETI!" al pinchar el peregrino
+
+**Tipo:** Feature
+
+Al pinchar el monigote que deambula por la web, además del enfado ya
+existente, ahora aparece un "¡AUPA ATLETI!" grande a pantalla completa,
+rojiblanco, con una entrada tipo estallido — como si el propio peregrino lo
+gritara.
+
+---
+
+## 2026-08-12 — Nueva sección de presentación antes del formulario de comentarios
+
+**Tipo:** Feature
+
+En la pantalla previa al reto, antes del formulario de comentarios ahora
+aparece un kicker + título + texto de presentación, igual que ya tenía el
+formulario de intenciones justo encima ("Por qué lo hago" / "Por
+intenciones"). Editable desde `/admin` → Textos.
+
+---
+
+## 2026-08-12 — El gráfico de "Tráfico" ya no corta la hora de inicio ni el punto "ahora"
+
+**Tipo:** Fix
+
+En el gráfico de la pestaña "Tráfico", la etiqueta de la primera hora
+(izquierda) y, cuando el último tramo caía justo en una hora en punto, la
+zona del punto "ahora" (derecha) se recortaban a la mitad — un SVG oculta
+por defecto cualquier trazo que se salga de su ancho, y esas etiquetas iban
+centradas justo sobre el primer y el último punto, sin margen a los lados.
+Añadido un margen horizontal al gráfico para que ninguna etiqueta quede
+cortada, sea cual sea el número de tramos.
+
+---
+
 ## 2026-08-12 — El gráfico de "Tráfico" ahora deja claro que son visitas y muestra la cifra de cada tramo
 
 **Tipo:** Mejora

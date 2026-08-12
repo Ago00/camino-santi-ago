@@ -1,17 +1,32 @@
-// Sección "Tráfico" del panel admin (DT-022, docs/tecnico/decisiones-tecnicas.md):
+// Sección "Tráfico" del panel admin (DT-022/DT-023, docs/tecnico/decisiones-tecnicas.md):
 // cuánta gente visita la web pública durante el reto. Server Component, sin
 // polling (se actualiza al recargar la pestaña) — mismo patrón que
-// SeccionActividad/SeccionMapa. Rango: desde `started_at` del intento activo
-// hasta ahora (no por día de calendario, la marcha puede cruzar medianoche).
-// La granularidad (5 min/30 min/1 h) llega como prop desde ?gran= — misma
-// consulta en bruto, solo cambia el agrupado al pintar (lib/trafico/bucketing.ts).
+// SeccionActividad/SeccionMapa.
+//
+// El rango de datos traídos de BD ya no es el intento activo: es TODO lo que
+// haya desde `config_trafico.cuenta_desde` (DT-023, ajustable con el botón
+// "Reset" sin borrar nada), clasificado en memoria en tres fases —
+// antes/durante/después del intento relevante (activo o, si no hay ninguno
+// activo, el más reciente) — con `lib/trafico/fases.ts`. La granularidad
+// (5 min/30 min/1 h, ?gran=) y la fase mostrada (?fase=) llegan como query
+// string, mismo patrón que el resto del panel.
 
 import Link from "next/link";
+import { resetearContadorTrafico } from "@/app/admin/actions";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { obtenerTodasLasFilas } from "@/lib/supabase/paginacion";
 import { agruparVisitasEnTramos, type GranularidadTrafico, type TramoTrafico } from "@/lib/trafico/bucketing";
 import { agruparPorOrigen, agruparPorRuta } from "@/lib/trafico/desglose";
+import {
+  clasificarVisitasPorFase,
+  faseTraficoPorDefecto,
+  rangoDeFase,
+  type FaseTraficoVisita,
+  type IntentoParaFase,
+} from "@/lib/trafico/fases";
+import type { FaseTraficoTab } from "@/lib/admin/navegacion";
 import type { VisitaWeb } from "@/lib/types";
+import BotonConfirmable from "@/components/admin/BotonConfirmable";
 import GraficoTraficoScroll from "@/components/admin/GraficoTraficoScroll";
 
 const C = { ink: "#1B211D", muted: "#4A5450", eucalipto: "#2F5D50" };
@@ -22,49 +37,93 @@ const OPCIONES_GRANULARIDAD: { valor: GranularidadTrafico; etiqueta: string }[] 
   { valor: "1h", etiqueta: "1 hora" },
 ];
 
+const ETIQUETAS_FASE: Record<FaseTraficoVisita, string> = {
+  antes: "Antes",
+  durante: "Durante",
+  despues: "Después",
+};
+
+/**
+ * Tope de días hacia atrás cuando no hay `config_trafico` NI ningún intento
+ * del que colgar el corte (nunca se ha pulsado "Iniciar" todavía) — evita
+ * traer el histórico COMPLETO de `visitas_web` sin límite en ese caso (ver
+ * `obtenerCuentaDesde`). 3 días es de sobra para cualquier tráfico de
+ * pruebas antes del reto real, sin arriesgar el timeout de la función
+ * serverless con semanas de tráfico acumulado.
+ */
+const LIMITE_SIN_CONFIG_DIAS = 3;
+
 const ANCHO_POR_TRAMO_PX = 22;
 const ALTO_GRAFICO_PX = 140;
 const MARGEN_SUPERIOR_PX = 16; // hueco arriba para la cifra de cada punto
 const ALTO_SVG_PX = ALTO_GRAFICO_PX + MARGEN_SUPERIOR_PX + 36; // + hueco debajo para las etiquetas de hora
+// Un <svg> recorta por defecto cualquier trazo fuera de [0,width]x[0,height]
+// (a diferencia de un <div> normal). Las etiquetas de hora van centradas
+// (textAnchor="middle") justo sobre el primer y el último punto — sin este
+// margen, la mitad de esas etiquetas queda fuera del ancho del SVG y se
+// recorta silenciosamente (bug real reportado: "la hora de inicio se corta
+// y el 'ahora' también" — el último tramo puede coincidir con una hora en
+// punto y sufrir el mismo recorte por el lado derecho).
+const MARGEN_HORIZONTAL_PX = 22;
 
 interface SeccionTraficoProps {
   granularidad: GranularidadTrafico;
+  /** Fase pedida por la URL (`?fase=`), ya validada; `undefined` si no vino o no era válida. */
+  faseQuery: FaseTraficoTab | undefined;
 }
 
-export default async function SeccionTrafico({ granularidad }: SeccionTraficoProps) {
+export default async function SeccionTrafico({ granularidad, faseQuery }: SeccionTraficoProps) {
   const supabase = getSupabaseAdmin();
+  const ahora = new Date();
 
   const { data: intentoActivo } = await supabase
     .from("intentos")
-    .select("id, started_at")
+    .select("id, started_at, ended_at")
     .eq("cerrado", false)
     .maybeSingle();
 
-  if (!intentoActivo || !intentoActivo.started_at) {
-    return (
-      <p className="text-[14px]" style={{ color: C.muted }}>
-        Todavía no ha empezado el reto — no hay ningún rango de tiempo que mostrar.
-      </p>
-    );
-  }
+  const intentoRelevante =
+    intentoActivo ??
+    (
+      await supabase
+        .from("intentos")
+        .select("id, started_at, ended_at")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    ).data;
 
-  const desde = new Date(intentoActivo.started_at);
-  const ahora = new Date();
+  const intentoParaFase: IntentoParaFase | null = intentoRelevante
+    ? {
+        startedAt: intentoRelevante.started_at ? new Date(intentoRelevante.started_at) : null,
+        endedAt: intentoRelevante.ended_at ? new Date(intentoRelevante.ended_at) : null,
+      }
+    : null;
+
+  const cuentaDesde = await obtenerCuentaDesde(intentoParaFase, ahora);
 
   const visitas = await obtenerTodasLasFilas<VisitaWeb>((rangoDesde, rangoHasta) =>
     supabase
       .from("visitas_web")
       .select("*")
-      .gte("ts", desde.toISOString())
+      .gte("ts", cuentaDesde.toISOString())
       .order("ts", { ascending: true })
       .range(rangoDesde, rangoHasta)
   );
 
-  const totalVisitas = visitas.length;
-  const visitantesUnicos = new Set(visitas.map((v) => v.visitante_id)).size;
-  const tramos = agruparVisitasEnTramos(visitas, desde, ahora, granularidad);
-  const porRuta = agruparPorRuta(visitas);
-  const porOrigen = agruparPorOrigen(visitas);
+  const visitasPorFase = clasificarVisitasPorFase(visitas, intentoParaFase);
+  const fasesDisponibles = fasesDisponiblesPara(intentoParaFase);
+  const faseActiva: FaseTraficoVisita =
+    faseQuery && fasesDisponibles.includes(faseQuery) ? faseQuery : faseTraficoPorDefecto(intentoParaFase);
+
+  const visitasFase = visitasPorFase[faseActiva];
+  const rango = rangoDeFase(faseActiva, cuentaDesde, intentoParaFase, ahora);
+
+  const totalVisitas = visitasFase.length;
+  const visitantesUnicos = new Set(visitasFase.map((v) => v.visitante_id)).size;
+  const tramos = rango ? agruparVisitasEnTramos(visitasFase, rango.desde, rango.hasta, granularidad) : [];
+  const porRuta = agruparPorRuta(visitasFase);
+  const porOrigen = agruparPorOrigen(visitasFase);
 
   return (
     <div className="space-y-4">
@@ -73,7 +132,21 @@ export default async function SeccionTrafico({ granularidad }: SeccionTraficoPro
         <TarjetaMetrica etiqueta="Visitantes únicos" valor={visitantesUnicos} />
       </div>
 
-      <SelectorGranularidad activa={granularidad} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {fasesDisponibles.length > 1 && (
+          <SelectorFase activa={faseActiva} disponibles={fasesDisponibles} granularidad={granularidad} />
+        )}
+        <BotonConfirmable
+          etiqueta="Reset"
+          etiquetaPendiente="Reseteando…"
+          mensajeConfirmacion="¿Resetear el contador de tráfico? No se borra nada, pero todas las visitas de antes de ahora dejan de contar en el panel."
+          accion={resetearContadorTrafico}
+          variante="peligro"
+          className="shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-medium disabled:opacity-50"
+        />
+      </div>
+
+      <SelectorGranularidad activa={granularidad} fase={faseActiva} />
 
       {totalVisitas === 0 ? (
         <div
@@ -99,6 +172,42 @@ export default async function SeccionTrafico({ granularidad }: SeccionTraficoPro
   );
 }
 
+/**
+ * Lee `config_trafico` (fila única, id=1). Si la tabla o la fila no existen
+ * todavía (migración 0005 sin aplicar contra producción, mismo criterio que
+ * 0003/0004 — ver DEBT.md), NO cae a "desde siempre": eso significaría traer
+ * el histórico COMPLETO de `visitas_web` sin límite temporal, con tráfico
+ * real acumulado, en 50 páginas secuenciales de 1.000 filas
+ * (`obtenerTodasLasFilas`) — de sobra para agotar el timeout de la función
+ * serverless (bug real: la pestaña dejó de cargar en producción justo por
+ * esto, ver nota de cierre de DT-023). En su lugar cae al mismo criterio que
+ * tenía DT-022 antes de esta tarea: acotado al inicio del intento relevante
+ * si existe. Solo si tampoco hay ningún intento (nunca se ha iniciado nada
+ * todavía) cae a los últimos `LIMITE_SIN_CONFIG_DIAS` días desde `ahora` —
+ * nunca "desde siempre" sin ningún límite. Sin log — es un estado esperado
+ * mientras la migración no se aplique, no un error real.
+ */
+async function obtenerCuentaDesde(intento: IntentoParaFase | null, ahora: Date): Promise<Date> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("config_trafico").select("cuenta_desde").eq("id", 1).maybeSingle();
+
+  if (!error && data) return new Date(data.cuenta_desde);
+  if (intento?.startedAt) return intento.startedAt;
+  return new Date(ahora.getTime() - LIMITE_SIN_CONFIG_DIAS * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Fases con contenido potencial según el intento relevante (DT-023): "antes"
+ * siempre; "durante" solo si el reto ha empezado alguna vez (`startedAt`);
+ * "despues" solo si además ese intento está cerrado (`endedAt`).
+ */
+function fasesDisponiblesPara(intento: IntentoParaFase | null): FaseTraficoVisita[] {
+  const fases: FaseTraficoVisita[] = ["antes"];
+  if (intento?.startedAt) fases.push("durante");
+  if (intento?.endedAt) fases.push("despues");
+  return fases;
+}
+
 function TarjetaMetrica({ etiqueta, valor }: { etiqueta: string; valor: number }) {
   return (
     <div className="rounded-2xl border p-4" style={{ borderColor: "#00000012", background: "white" }}>
@@ -112,13 +221,40 @@ function TarjetaMetrica({ etiqueta, valor }: { etiqueta: string; valor: number }
   );
 }
 
-function SelectorGranularidad({ activa }: { activa: GranularidadTrafico }) {
+function SelectorFase({
+  activa,
+  disponibles,
+  granularidad,
+}: {
+  activa: FaseTraficoVisita;
+  disponibles: FaseTraficoVisita[];
+  granularidad: GranularidadTrafico;
+}) {
+  return (
+    <div className="flex gap-2">
+      {disponibles.map((fase) => (
+        <Link
+          key={fase}
+          href={`/admin?tab=trafico&gran=${granularidad}&fase=${fase}`}
+          className="rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors"
+          style={
+            activa === fase ? { background: C.eucalipto, color: "white" } : { color: C.ink, background: "#00000008" }
+          }
+        >
+          {ETIQUETAS_FASE[fase]}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function SelectorGranularidad({ activa, fase }: { activa: GranularidadTrafico; fase: FaseTraficoVisita }) {
   return (
     <div className="flex gap-2">
       {OPCIONES_GRANULARIDAD.map((opcion) => (
         <Link
           key={opcion.valor}
-          href={`/admin?tab=trafico&gran=${opcion.valor}`}
+          href={`/admin?tab=trafico&gran=${opcion.valor}&fase=${fase}`}
           className="rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors"
           style={
             activa === opcion.valor
@@ -135,11 +271,12 @@ function SelectorGranularidad({ activa }: { activa: GranularidadTrafico }) {
 
 function GraficoTrafico({ tramos }: { tramos: TramoTrafico[] }) {
   const maxCuenta = Math.max(...tramos.map((t) => t.cuenta), 1);
-  const anchoSvg = Math.max(tramos.length * ANCHO_POR_TRAMO_PX, 320);
+  const anchoContenido = Math.max(tramos.length * ANCHO_POR_TRAMO_PX, 320 - MARGEN_HORIZONTAL_PX * 2);
+  const anchoSvg = anchoContenido + MARGEN_HORIZONTAL_PX * 2;
   const lineaBaseY = MARGEN_SUPERIOR_PX + ALTO_GRAFICO_PX;
 
   const puntos = tramos.map((tramo, i) => {
-    const x = i * ANCHO_POR_TRAMO_PX + ANCHO_POR_TRAMO_PX / 2;
+    const x = MARGEN_HORIZONTAL_PX + i * ANCHO_POR_TRAMO_PX + ANCHO_POR_TRAMO_PX / 2;
     const y = MARGEN_SUPERIOR_PX + ALTO_GRAFICO_PX - (tramo.cuenta / maxCuenta) * (ALTO_GRAFICO_PX - 8);
     return { x, y, tramo };
   });

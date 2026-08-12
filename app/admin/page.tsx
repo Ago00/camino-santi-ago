@@ -15,6 +15,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import {
+  esFaseTraficoValida,
   esFiltroComentarioValido,
   esGranularidadValida,
   esTabValida,
@@ -55,6 +56,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     ? params.filtroComentarios
     : "todos";
   const granularidad = esGranularidadValida(params.gran) ? params.gran : "30m";
+  const faseTraficoQuery = esFaseTraficoValida(params.fase) ? params.fase : undefined;
 
   return (
     <div className="min-h-dvh w-full" style={{ background: C.paper, color: C.ink }}>
@@ -73,7 +75,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           {tab === "intenciones" && <SeccionIntenciones offset={intOffset} />}
           {tab === "comentarios" && <SeccionComentarios filtro={filtroComentarios} />}
           {tab === "minutoaminuto" && <SeccionMinutoAMinuto />}
-          {tab === "trafico" && <SeccionTrafico granularidad={granularidad} />}
+          {tab === "trafico" && <SeccionTrafico granularidad={granularidad} faseQuery={faseTraficoQuery} />}
           {tab === "textos" && <SeccionTextos />}
         </main>
       </div>

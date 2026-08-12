@@ -118,6 +118,18 @@ export interface VisitaWeb {
   created_at: string; // ISO 8601
 }
 
+/**
+ * Fila única de configuración del contador de tráfico (DT-023). `cuenta_desde`
+ * es el corte a partir del cual una `VisitaWeb` cuenta en la pestaña
+ * "Tráfico" del panel admin — el botón "Reset" la adelanta a `now()`, sin
+ * borrar ninguna fila de `visitas_web`.
+ */
+export interface ConfigTrafico {
+  id: number; // siempre 1, fila única
+  cuenta_desde: string; // ISO 8601
+  created_at: string; // ISO 8601
+}
+
 // ---------------------------------------------------------------------------
 // Tipos del dominio de progreso (proyeccion.ts)
 // ---------------------------------------------------------------------------

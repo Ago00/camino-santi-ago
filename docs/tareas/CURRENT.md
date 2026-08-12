@@ -72,3 +72,9 @@ entrada **DT-024**.
 Ver `DEBT.md`: "Recordatorio: aplicar `supabase/migrations/0006_foto_llegada.sql`
 contra producción" (Alta) y "Objeto huérfano en Storage al reemplazar la foto
 de llegada" (Baja).
+
+## Fix post-revisión de Seguridad
+
+`finalizarReto` gana un tope de 1000 caracteres server-side para el mensaje
+de llegada (antes solo se limitaba en el cliente) — bloqueante encontrado
+por Seguridad, corregido antes de fusionar. Ver nota de cierre de DT-024.

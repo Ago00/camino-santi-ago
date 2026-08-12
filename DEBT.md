@@ -35,6 +35,44 @@
 
 ---
 
+## Recordatorio: aplicar `supabase/migrations/0005_config_trafico.sql` contra producción
+
+**Fecha:** 2026-08-12
+**Contexto:** Tarea "Fases de tráfico (antes/durante/después) + reset del
+contador" (DT-023, `docs/tecnico/decisiones-tecnicas.md`). Igual que
+`0003_modo_intento.sql` y `0004_visitas_web.sql` (ver entradas de deuda de
+este mismo fichero), la migración `0005_config_trafico.sql` (tabla
+`config_trafico`, fila única con `cuenta_desde`, sin política RLS para
+`anon`) no se aplica sola contra Supabase — hace falta pegarla a mano en el
+editor SQL del proyecto (o `supabase db push`) antes de que exista la tabla
+en la base de datos real.
+**Problema:** Con el código de esta tarea desplegado y la migración sin
+aplicar, cualquier `SELECT`/`UPDATE` contra `config_trafico` (lectura de
+`cuenta_desde` en `SeccionTrafico.tsx`, botón "Reset" →
+`resetearContadorTrafico` en `app/admin/actions.ts`) falla contra la BD real
+con un error de Postgres de "tabla no existe" (`relation "config_trafico"
+does not exist`, código `42P01`).
+**Impacto (mientras la migración no esté aplicada):** El botón "Reset" falla
+de forma visible: la Server Action lanza
+`Error("No se pudo resetear el contador de tráfico.")`, que Next.js redacta
+en producción — Santi vería un error genérico al pulsar "Reset" hasta que la
+migración esté aplicada. La lectura ya no arriesga el timeout de la función
+serverless que sí llegó a darse en producción justo por la ausencia de esta
+migración (ver la nota de cierre de DT-023 y la lección nueva en
+`docs/LESSONS.md`): `obtenerCuentaDesde()` ya no cae a "sin cutoff" cuando
+`config_trafico` no existe, sino al mismo límite acotado que ya tenía DT-022
+(inicio del intento relevante, o un tope fijo de 3 días si tampoco hay
+ningún intento) — bug real ya corregido, no solo una degradación teórica.
+**Solución propuesta:** Aplicar `supabase/migrations/0005_config_trafico.sql`
+contra el proyecto Supabase de producción. Una vez aplicada, tanto la lectura
+de fases como el botón "Reset" funcionan sin ningún cambio de código
+adicional.
+**Prioridad:** Alta — hasta que se aplique, el botón "Reset" no funciona
+(el resto de la pestaña "Tráfico" y del admin ya no se ven afectados, tras
+el fix del timeout).
+
+---
+
 ## Recordatorio: aplicar `supabase/migrations/0004_visitas_web.sql` contra producción
 
 **Fecha:** 2026-08-12
