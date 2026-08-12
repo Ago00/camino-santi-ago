@@ -28,6 +28,7 @@ import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
 import { bandaHoraria } from "@/lib/cielo";
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoLibre } from "@/lib/types";
+import type { Textos } from "@/lib/textos/obtener-textos";
 
 const POLLING_MS = 30_000;
 
@@ -42,12 +43,18 @@ interface ModoDuranteLibreProps {
   puntosGpsIniciales: PuntoGps[];
   /** Momento en que arrancó el intento (started_at), para "tiempo en marcha". */
   startedAt: string | null;
+  /**
+   * Textos editables desde /admin (fontanería previa a repartir su uso real
+   * entre DistanciaRestante/Stats/formularios/MinutoAMinuto).
+   */
+  textos: Textos;
 }
 
 export default function ModoDuranteLibre({
   progresoInicial,
   puntosGpsIniciales,
   startedAt,
+  textos,
 }: ModoDuranteLibreProps) {
   const [progreso, setProgreso] = useState(progresoInicial);
   const [puntosGps, setPuntosGps] = useState<PuntoGps[]>(puntosGpsIniciales);

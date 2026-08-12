@@ -51,12 +51,14 @@ export default async function Home() {
               intentoId={intentoActivo.id}
               destino={destinoDelIntento(intentoActivo)}
               startedAt={intentoActivo.started_at}
+              textos={textos}
             />
           ) : (
             <ModoDuranteConectado
               intentoId={intentoActivo.id}
               startedAt={intentoActivo.started_at}
               trazaCoords={trazaCoords}
+              textos={textos}
             />
           )
         )}
@@ -90,10 +92,12 @@ async function ModoDuranteConectado({
   intentoId,
   startedAt,
   trazaCoords,
+  textos,
 }: {
   intentoId: number;
   startedAt: string | null;
   trazaCoords: [number, number][];
+  textos: Textos;
 }) {
   // DT-021: el mapa público en modo guiado pinta el recorrido GPS real, no la
   // traza oficial — el histórico completo se carga aquí (mismo
@@ -111,6 +115,7 @@ async function ModoDuranteConectado({
       iniciadoEn={startedAt}
       trazaCoords={trazaCoords}
       puntosGpsIniciales={puntosGpsIniciales}
+      textos={textos}
     />
   );
 }
@@ -157,14 +162,21 @@ async function ModoDuranteLibreConectado({
   intentoId,
   destino,
   startedAt,
+  textos,
 }: {
   intentoId: number;
   destino: { lat: number; lon: number } | null;
   startedAt: string | null;
+  textos: Textos;
 }) {
   const { progreso, puntosGps } = await calcularProgresoLibreDelIntento(intentoId, destino);
   return (
-    <ModoDuranteLibre progresoInicial={progreso} puntosGpsIniciales={puntosGps} startedAt={startedAt} />
+    <ModoDuranteLibre
+      progresoInicial={progreso}
+      puntosGpsIniciales={puntosGps}
+      startedAt={startedAt}
+      textos={textos}
+    />
   );
 }
 
