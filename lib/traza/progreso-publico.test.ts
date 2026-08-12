@@ -34,6 +34,7 @@ function progresoBase(overrides: Partial<Progreso> = {}): Progreso {
     separacionM: 12.4,
     ultimaPosicion: posicionCompleta(),
     puntosDescartados: 3,
+    puntoProyectado: { lat: 42.551, lon: -8.641 },
     ...overrides,
   };
 }
@@ -71,12 +72,15 @@ describe("aProgresoPublico", () => {
     expect(claves.sort()).toEqual(["lat", "lon", "ts"]);
   });
 
-  it("no expone separacionM ni puntosDescartados (internos del dominio, no del contrato público)", () => {
+  it("no expone separacionM, puntosDescartados ni puntoProyectado (internos del dominio, no del contrato público)", () => {
     const publico = aProgresoPublico(progresoBase());
     const claves = Object.keys(publico);
 
     expect(claves).not.toContain("separacionM");
     expect(claves).not.toContain("puntosDescartados");
+    // DT-021: puntoProyectado es exclusivo del admin (lib/traza/datos-mapa-admin.ts),
+    // el público nunca debe recibirlo.
+    expect(claves).not.toContain("puntoProyectado");
   });
 
   it("devuelve ultimaPosicion null cuando el progreso no tiene ninguna posición válida", () => {

@@ -20,6 +20,7 @@ import TabsAdmin from "@/components/admin/TabsAdmin";
 import BotonCerrarSesion from "@/components/admin/BotonCerrarSesion";
 import SeccionActividad from "@/components/admin/SeccionActividad";
 import SeccionPosicion from "@/components/admin/SeccionPosicion";
+import SeccionMapa from "@/components/admin/SeccionMapa";
 import SeccionIntenciones from "@/components/admin/SeccionIntenciones";
 import SeccionComentarios from "@/components/admin/SeccionComentarios";
 import SeccionMinutoAMinuto from "@/components/admin/SeccionMinutoAMinuto";
@@ -61,6 +62,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         <main className="mt-5">
           {tab === "actividad" && <SeccionActividad />}
           {tab === "posicion" && <SeccionPosicion offset={posOffset} />}
+          {tab === "mapa" && <SeccionMapa />}
           {tab === "intenciones" && <SeccionIntenciones offset={intOffset} />}
           {tab === "comentarios" && <SeccionComentarios filtro={filtroComentarios} />}
           {tab === "minutoaminuto" && <SeccionMinutoAMinuto />}

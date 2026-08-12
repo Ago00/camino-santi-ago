@@ -162,6 +162,7 @@ export function calcularProgreso(
   let puntosDescartados = 0;
   let ultimaPosicionValida: Posicion | null = null;
   let ultimaSeparacionM = 0;
+  let ultimoPuntoProyectado: { lat: number; lon: number } | null = null;
 
   // La última posición procesada con éxito (para calcular velocidad entre puntos).
   let prevProcesada: Posicion | null = null;
@@ -240,6 +241,7 @@ export function calcularProgreso(
     prevProcesada = pos;
     ultimaPosicionValida = pos;
     ultimaSeparacionM = proyeccion.separacionM;
+    ultimoPuntoProyectado = proyeccion.puntoProyectado;
   }
 
   if (ultimaPosicionValida === null) {
@@ -287,6 +289,7 @@ export function calcularProgreso(
     separacionM,
     ultimaPosicion: ultimaPosicionValida,
     puntosDescartados,
+    puntoProyectado: ultimoPuntoProyectado,
   };
 }
 
@@ -304,6 +307,7 @@ function progresoEnCero(longitudTotalKm: number): Progreso {
     separacionM: 0,
     ultimaPosicion: null,
     puntosDescartados: 0,
+    puntoProyectado: null,
   };
 }
 
@@ -332,6 +336,8 @@ interface ResultadoProyeccion {
   separacionM: number;
   /** Índice global (en traza.coordenadas) del vértice que abre el segmento de snap — referencia para la ventana del siguiente punto. */
   indice: number;
+  /** Punto de la traza oficial sobre el que Turf snapea (DT-021) — lat/lon del `snap.geometry.coordinates` que ya calculaba internamente y hasta ahora se descartaba. */
+  puntoProyectado: { lat: number; lon: number };
 }
 
 /**
@@ -426,6 +432,7 @@ function proyectarPunto(
           kmProyectado: traza.kmAcumulados[desde] + (snap.properties.location ?? 0),
           separacionM,
           indice: desde + (snap.properties.index ?? 0),
+          puntoProyectado: puntoDeSnap(snap),
         };
       }
 
@@ -449,6 +456,7 @@ function proyectarPunto(
           kmProyectado: traza.kmAcumulados[desde] + (snap.properties.location ?? 0),
           separacionM,
           indice: desde + (snap.properties.index ?? 0),
+          puntoProyectado: puntoDeSnap(snap),
         };
       }
 
@@ -465,7 +473,19 @@ function proyectarPunto(
     kmProyectado: snap.properties.location ?? 0,
     separacionM: (snap.properties.dist ?? 0) * 1000,
     indice: snap.properties.index ?? 0,
+    puntoProyectado: puntoDeSnap(snap),
   };
+}
+
+/**
+ * Extrae lat/lon del punto snapeado que Turf ya calcula en `nearestPointOnLine`
+ * (DT-021) — `snap.geometry.coordinates` viene en formato [lon, lat].
+ */
+function puntoDeSnap(snap: {
+  geometry: { coordinates: number[] };
+}): { lat: number; lon: number } {
+  const [lon, lat] = snap.geometry.coordinates;
+  return { lat, lon };
 }
 
 function extraerLineString(

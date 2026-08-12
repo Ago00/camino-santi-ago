@@ -129,6 +129,23 @@ Idea promovida desde "Ideas v2" y ampliada con fotos. Ver DT-013
 
 ---
 
+## Post-F5 — Mapa: traza real vs. traza oficial (hecho, 2026-08-12)
+
+Mapa público en modo guiado pinta el recorrido GPS real en vez de la traza
+oficial (mismo comportamiento que modo libre); panel admin gana pestaña
+"Mapa" con ambas trazas y el punto de referencia del cálculo. Ver DT-021
+(`docs/tecnico/decisiones-tecnicas.md`) y
+`docs/tareas/historico/2026-08-12-mapa-traza-real-vs-oficial.md`.
+
+- [x] Mapa público, modo guiado: pinta `puntosGps` (real), no la traza
+      oficial recortada; marcador de destino ⛪
+- [x] Panel admin: pestaña "Mapa" nueva (traza real + oficial + línea de
+      referencia al punto proyectado)
+- [x] Reviewer y Seguridad aprobados (2 rondas de Seguridad — bloqueante de
+      coste corregido)
+
+---
+
 ## Ideas v2 (fuera de alcance v1)
 
 - Hitos automáticos (cada pueblo, cada 10 km)

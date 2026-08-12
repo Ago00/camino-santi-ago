@@ -12,6 +12,7 @@
 export const TABS_ADMIN = [
   { valor: "actividad", etiqueta: "Actividad" },
   { valor: "posicion", etiqueta: "Posición" },
+  { valor: "mapa", etiqueta: "Mapa" },
   { valor: "intenciones", etiqueta: "Intenciones" },
   { valor: "comentarios", etiqueta: "Comentarios" },
   { valor: "minutoaminuto", etiqueta: "Minuto a minuto" },

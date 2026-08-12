@@ -20,6 +20,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { limpiarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
+import { limpiarCacheHistorico } from "@/lib/historico-cache";
 import type { Posicion, ProgresoPublico, TrazaPreparada } from "@/lib/types";
 
 interface IntentoMock {
@@ -101,7 +102,8 @@ function posicion(overrides: Partial<Posicion>): Posicion {
   };
 }
 
-const { obtenerIntentoActivo, calcularProgresoDelIntento } = await import("@/app/page");
+const { obtenerIntentoActivo, calcularProgresoDelIntento, obtenerHistoricoPosicionesCacheado } =
+  await import("@/app/page");
 
 beforeEach(() => {
   intentoConModoMock = null;
@@ -110,6 +112,7 @@ beforeEach(() => {
   posicionesMock = [];
   rangeMock.mockClear();
   limpiarCacheProgreso();
+  limpiarCacheHistorico();
 });
 
 describe("obtenerIntentoActivo()", () => {
@@ -217,5 +220,48 @@ describe("calcularProgresoDelIntento() — reutiliza la caché compartida (S2, e
 
     expect(resultado.modo).toBe("guiado");
     expect(rangeMock).toHaveBeenCalledWith(0, 999);
+  });
+});
+
+describe("obtenerHistoricoPosicionesCacheado() — fix post-revisión de Seguridad de DT-021", () => {
+  it("sirve el histórico cacheado dentro del TTL sin volver a consultar posiciones", async () => {
+    const { guardarCacheHistorico } = await import("@/lib/historico-cache");
+    const historicoCacheado = [posicion({ id: 42, lat: 1, lon: 1 })];
+    guardarCacheHistorico(historicoCacheado);
+
+    posicionesMock = [posicion({ id: 999, lat: 9, lon: 9 })]; // si se consultara, daría otro resultado
+
+    const resultado = await obtenerHistoricoPosicionesCacheado(1);
+
+    expect(resultado).toEqual(historicoCacheado);
+    expect(rangeMock).not.toHaveBeenCalled();
+  });
+
+  it("consulta y guarda en caché cuando no hay nada cacheado", async () => {
+    posicionesMock = [posicion({ id: 1, lat: 0, lon: 0 })];
+
+    const resultado = await obtenerHistoricoPosicionesCacheado(1);
+
+    expect(resultado).toEqual(posicionesMock);
+    expect(rangeMock).toHaveBeenCalledWith(0, 999);
+
+    const { obtenerCacheHistorico } = await import("@/lib/historico-cache");
+    expect(obtenerCacheHistorico()?.valor).toEqual(resultado);
+  });
+
+  it("se comparte entre calcularProgresoDelIntento y una llamada directa posterior — la segunda no vuelve a consultar Supabase", async () => {
+    posicionesMock = [
+      posicion({ id: 1, lat: 0, lon: 0, ts: "2026-09-12T08:00:00.000Z" }),
+      posicion({ id: 2, lat: 0.45049, lon: 0, ts: "2026-09-12T13:00:00.000Z" }),
+    ];
+
+    await calcularProgresoDelIntento(1);
+    expect(rangeMock).toHaveBeenCalledTimes(1);
+
+    rangeMock.mockClear();
+    const historico = await obtenerHistoricoPosicionesCacheado(1);
+
+    expect(historico).toEqual(posicionesMock);
+    expect(rangeMock).not.toHaveBeenCalled();
   });
 });

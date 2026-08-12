@@ -2,6 +2,13 @@
 // Sigue fielmente el mockup (design-sandbox/app/camino/page.tsx, ModoDurante).
 // Polling client-side cada 30 s a GET /api/progreso (DT-007) para reflejar
 // la posición y el progreso más recientes sin depender de Realtime.
+//
+// DT-021: el mapa público en modo guiado ya no pinta la traza oficial
+// (trazaCoords sigue entrando como prop porque ModoLlegada.tsx la sigue
+// usando, pero este componente ya no se la pasa a <Mapa>) — pinta el
+// recorrido GPS real (histórico completo, prop `puntosGpsIniciales`), mismo
+// patrón que ModoDuranteLibre.tsx: se carga una vez server-side y crece en
+// el cliente en cada poll cuando `ultimaPosicion.ts` cambia.
 
 "use client";
 
@@ -21,6 +28,11 @@ import type { ProgresoPublicoGuiado } from "@/lib/types";
 const C = { ink: "#1B211D", ember: "#D9773B" };
 const POLLING_MS = 30_000;
 
+interface PuntoGps {
+  lat: number;
+  lon: number;
+}
+
 // Este componente es exclusivo del modo guiado (DT-016): el modo libre usa
 // ModoDuranteLibre.tsx, un componente propio (sin condicionales aquí).
 interface ModoDuranteProps {
@@ -28,10 +40,19 @@ interface ModoDuranteProps {
   /** Momento en que arrancó el intento (started_at), para "tiempo en marcha". */
   iniciadoEn: string | null;
   trazaCoords: [number, number][];
+  /** Histórico completo de puntos GPS del intento, cargado server-side (DT-021). */
+  puntosGpsIniciales: PuntoGps[];
 }
 
-export default function ModoDurante({ progresoInicial, iniciadoEn, trazaCoords }: ModoDuranteProps) {
+export default function ModoDurante({
+  progresoInicial,
+  iniciadoEn,
+  trazaCoords,
+  puntosGpsIniciales,
+}: ModoDuranteProps) {
   const [progreso, setProgreso] = useState(progresoInicial);
+  const [puntosGps, setPuntosGps] = useState<PuntoGps[]>(puntosGpsIniciales);
+  const [ultimoTs, setUltimoTs] = useState<string | null>(progresoInicial.ultimaPosicion?.ts ?? null);
   const [hora, setHora] = useState(() => bandaHoraria(new Date()));
   const [ahora, setAhora] = useState(() => new Date());
   const [puntoResaltado, setPuntoResaltado] = useState<{
@@ -45,7 +66,13 @@ export default function ModoDurante({ progresoInicial, iniciadoEn, trazaCoords }
       try {
         const response = await fetch("/api/progreso");
         if (response.ok) {
-          setProgreso(await response.json());
+          const data: ProgresoPublicoGuiado = await response.json();
+          setProgreso(data);
+          if (data.ultimaPosicion && data.ultimaPosicion.ts !== ultimoTs) {
+            const nuevaPosicion = data.ultimaPosicion;
+            setUltimoTs(nuevaPosicion.ts);
+            setPuntosGps((previos) => [...previos, { lat: nuevaPosicion.lat, lon: nuevaPosicion.lon }]);
+          }
         }
       } catch {
         // Fallo puntual de red: se mantiene el último progreso conocido,
@@ -53,7 +80,7 @@ export default function ModoDurante({ progresoInicial, iniciadoEn, trazaCoords }
       }
     }, POLLING_MS);
     return () => clearInterval(id);
-  }, []);
+  }, [ultimoTs]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -81,9 +108,11 @@ export default function ModoDurante({ progresoInicial, iniciadoEn, trazaCoords }
         <div className="relative overflow-hidden rounded-2xl border shadow-sm" style={{ borderColor: "#00000012" }}>
           <Mapa
             trazaCoords={trazaCoords}
+            variante="ruta"
             hora={hora}
             modo="directo"
             posicionActual={progreso.ultimaPosicion}
+            puntosGps={puntosGps}
             ultimaSenalTexto={ultimaSenalTexto}
             puntoResaltado={puntoResaltado}
           />
