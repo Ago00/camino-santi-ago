@@ -10,6 +10,7 @@
 import { useId } from "react";
 import { motion } from "motion/react";
 import { perfilElevacion, calcularDesnivel } from "@/lib/traza/perfil-elevacion";
+import type { Textos } from "@/lib/textos/obtener-textos";
 
 const C = {
   ink: "#1B211D",
@@ -17,7 +18,11 @@ const C = {
   ember: "#D9773B",
 };
 
-export default function PerfilElevacion() {
+interface PerfilElevacionProps {
+  textos: Textos;
+}
+
+export default function PerfilElevacion({ textos }: PerfilElevacionProps) {
   const distanciaTotal = perfilElevacion[perfilElevacion.length - 1].km;
   const { ascensoM, descensoM } = calcularDesnivel(perfilElevacion);
   const primerPunto = perfilElevacion[0];
@@ -26,16 +31,16 @@ export default function PerfilElevacion() {
   return (
     <div className="overflow-hidden rounded-2xl border" style={{ borderColor: "#00000012", background: "#FBFAF7" }}>
       <div className="grid grid-cols-3 gap-px" style={{ background: "#00000010" }}>
-        <MiniStat icon={<IconRoute />} value={distanciaTotal.toFixed(0)} unit="km" label="distancia" />
-        <MiniStat icon={<IconUp />} value={ascensoM.toFixed(0)} unit="m" label="ascenso" color={C.ember} />
-        <MiniStat icon={<IconDown />} value={descensoM.toFixed(0)} unit="m" label="descenso" color={C.eucalipto} />
+        <MiniStat icon={<IconRoute />} value={distanciaTotal.toFixed(0)} unit="km" label={textos.perfil_label_distancia} />
+        <MiniStat icon={<IconUp />} value={ascensoM.toFixed(0)} unit="m" label={textos.perfil_label_ascenso} color={C.ember} />
+        <MiniStat icon={<IconDown />} value={descensoM.toFixed(0)} unit="m" label={textos.perfil_label_descenso} color={C.eucalipto} />
       </div>
 
       <div className="px-4 pb-4 pt-5">
         <PerfilSVG datos={perfilElevacion} />
         <div className="mt-1.5 flex justify-between font-mono text-[10px] tabular-nums" style={{ color: "#9AA29C" }}>
-          <span>O Porriño · {primerPunto.m} m</span>
-          <span>Santiago · {ultimoPunto.m} m</span>
+          <span>{textos.perfil_origen_nombre} · {primerPunto.m} m</span>
+          <span>{textos.perfil_destino_nombre} · {ultimoPunto.m} m</span>
         </div>
       </div>
     </div>
