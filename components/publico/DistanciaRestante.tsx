@@ -3,14 +3,17 @@
 // sin barra de progreso: en modo libre no hay porcentaje ni traza oficial
 // contra la que medirlo — solo la distancia haversine al destino.
 
+import type { Textos } from "@/lib/textos/obtener-textos";
+
 const C = { ink: "#1B211D" };
 
 interface DistanciaRestanteProps {
   /** null si aún no hay ninguna posición registrada o el intento no tiene destino. */
   km: number | null;
+  textos: Textos;
 }
 
-export default function DistanciaRestante({ km }: DistanciaRestanteProps) {
+export default function DistanciaRestante({ km, textos }: DistanciaRestanteProps) {
   return (
     <div
       className="overflow-hidden rounded-2xl"
@@ -21,7 +24,7 @@ export default function DistanciaRestante({ km }: DistanciaRestanteProps) {
           className="mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em]"
           style={{ color: "#8A928C" }}
         >
-          Destino
+          {textos.distancia_restante_kicker}
         </div>
         <div className="flex items-baseline gap-2">
           <span
@@ -37,7 +40,7 @@ export default function DistanciaRestante({ km }: DistanciaRestanteProps) {
           )}
         </div>
         <div className="mt-1 text-[12px]" style={{ color: "#7C857F" }}>
-          en línea recta hasta el destino
+          {textos.distancia_restante_subtitulo}
         </div>
       </div>
     </div>

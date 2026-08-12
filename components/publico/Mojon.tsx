@@ -1,6 +1,8 @@
 // Mojón kilométrico: cifra de km restantes + barra de progreso monótona.
 // Sigue fielmente el mockup (design-sandbox/app/camino/page.tsx, componente Mojon).
 
+import type { Textos } from "@/lib/textos/obtener-textos";
+
 const C = {
   ink: "#1B211D",
   gold: "#C9A24B",
@@ -9,9 +11,10 @@ const C = {
 interface MojonProps {
   kmRestantes: string; // ya formateado (p.ej. "42,7")
   pct: number; // 0-100
+  textos: Textos;
 }
 
-export default function Mojon({ kmRestantes, pct }: MojonProps) {
+export default function Mojon({ kmRestantes, pct, textos }: MojonProps) {
   return (
     <div
       className="overflow-hidden rounded-2xl"
@@ -24,7 +27,7 @@ export default function Mojon({ kmRestantes, pct }: MojonProps) {
               className="mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em]"
               style={{ color: "#8A928C" }}
             >
-              Santiago
+              {textos.mojon_destino_kicker}
             </div>
             <div className="flex items-baseline gap-2">
               <span
@@ -38,7 +41,7 @@ export default function Mojon({ kmRestantes, pct }: MojonProps) {
               </span>
             </div>
             <div className="mt-1 text-[12px]" style={{ color: "#7C857F" }}>
-              te faltan para llegar
+              {textos.mojon_subtitulo}
             </div>
           </div>
         </div>
@@ -55,7 +58,7 @@ export default function Mojon({ kmRestantes, pct }: MojonProps) {
           className="mt-1.5 flex justify-between font-mono text-[10px] tabular-nums"
           style={{ color: "#9AA29C" }}
         >
-          <span>O Porriño · 0</span>
+          <span>{textos.mojon_origen_label}</span>
           <span style={{ color: "#D9773B" }}>{Math.round(pct)}% recorrido</span>
           <span>100</span>
         </div>
