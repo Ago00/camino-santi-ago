@@ -24,7 +24,8 @@ const OPCIONES_GRANULARIDAD: { valor: GranularidadTrafico; etiqueta: string }[] 
 
 const ANCHO_POR_TRAMO_PX = 22;
 const ALTO_GRAFICO_PX = 140;
-const ALTO_SVG_PX = 176; // deja hueco debajo para las etiquetas de hora
+const MARGEN_SUPERIOR_PX = 16; // hueco arriba para la cifra de cada punto
+const ALTO_SVG_PX = ALTO_GRAFICO_PX + MARGEN_SUPERIOR_PX + 36; // + hueco debajo para las etiquetas de hora
 
 interface SeccionTraficoProps {
   granularidad: GranularidadTrafico;
@@ -82,9 +83,14 @@ export default async function SeccionTrafico({ granularidad }: SeccionTraficoPro
           Sin visitas todavía en este rango.
         </div>
       ) : (
-        <GraficoTraficoScroll>
-          <GraficoTrafico tramos={tramos} />
-        </GraficoTraficoScroll>
+        <div className="space-y-1.5">
+          <div className="text-[12px] uppercase tracking-wide" style={{ color: C.muted }}>
+            Visitas por tramo
+          </div>
+          <GraficoTraficoScroll>
+            <GraficoTrafico tramos={tramos} />
+          </GraficoTraficoScroll>
+        </div>
       )}
 
       <TablaDesglose titulo="Por página" filas={porRuta.map((f) => ({ etiqueta: f.ruta, cuenta: f.cuenta }))} />
@@ -130,10 +136,11 @@ function SelectorGranularidad({ activa }: { activa: GranularidadTrafico }) {
 function GraficoTrafico({ tramos }: { tramos: TramoTrafico[] }) {
   const maxCuenta = Math.max(...tramos.map((t) => t.cuenta), 1);
   const anchoSvg = Math.max(tramos.length * ANCHO_POR_TRAMO_PX, 320);
+  const lineaBaseY = MARGEN_SUPERIOR_PX + ALTO_GRAFICO_PX;
 
   const puntos = tramos.map((tramo, i) => {
     const x = i * ANCHO_POR_TRAMO_PX + ANCHO_POR_TRAMO_PX / 2;
-    const y = ALTO_GRAFICO_PX - (tramo.cuenta / maxCuenta) * (ALTO_GRAFICO_PX - 8);
+    const y = MARGEN_SUPERIOR_PX + ALTO_GRAFICO_PX - (tramo.cuenta / maxCuenta) * (ALTO_GRAFICO_PX - 8);
     return { x, y, tramo };
   });
 
@@ -141,26 +148,53 @@ function GraficoTrafico({ tramos }: { tramos: TramoTrafico[] }) {
   const ultimoPunto = puntos.at(-1);
 
   return (
-    <svg width={anchoSvg} height={ALTO_SVG_PX} role="img" aria-label="Evolución de visitas en el tiempo">
-      <line x1={0} y1={ALTO_GRAFICO_PX} x2={anchoSvg} y2={ALTO_GRAFICO_PX} stroke="#00000012" strokeWidth={1} />
+    <svg width={anchoSvg} height={ALTO_SVG_PX} role="img" aria-label="Visitas por tramo, evolución en el tiempo">
+      <line x1={0} y1={lineaBaseY} x2={anchoSvg} y2={lineaBaseY} stroke="#00000012" strokeWidth={1} />
 
       <polyline points={puntosPolyline} fill="none" stroke={C.eucalipto} strokeWidth={2} />
 
-      {puntos.map((p, i) => (
-        <circle key={i} cx={p.x} cy={p.y} r={p.tramo.cuenta > 0 ? 2.5 : 0} fill={C.eucalipto} />
-      ))}
+      {puntos.map((p, i) => {
+        const esUltimo = i === puntos.length - 1;
+        if (esUltimo) return null; // el último punto se pinta aparte, con su etiqueta "ahora"
+        return (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r={p.tramo.cuenta > 0 ? 2.5 : 0} fill={C.eucalipto} />
+            {p.tramo.cuenta > 0 && (
+              <text
+                x={p.x}
+                y={Math.max(10, p.y - 7)}
+                textAnchor="middle"
+                fontSize={10}
+                fontWeight={600}
+                fill={C.eucalipto}
+              >
+                {p.tramo.cuenta}
+              </text>
+            )}
+          </g>
+        );
+      })}
 
-      {ultimoPunto && <circle cx={ultimoPunto.x} cy={ultimoPunto.y} r={4} fill="#C05621" />}
       {ultimoPunto && (
-        <text x={ultimoPunto.x} y={ALTO_GRAFICO_PX - 10} textAnchor="end" fontSize={11} fill="#C05621">
-          ahora
-        </text>
+        <g>
+          <circle cx={ultimoPunto.x} cy={ultimoPunto.y} r={4} fill="#C05621" />
+          <text
+            x={ultimoPunto.x}
+            y={Math.max(10, ultimoPunto.y - 9)}
+            textAnchor="end"
+            fontSize={10}
+            fontWeight={600}
+            fill="#C05621"
+          >
+            {ultimoPunto.tramo.cuenta} · ahora
+          </text>
+        </g>
       )}
 
       {puntos.map(
         (p, i) =>
           (p.tramo.inicio.getMinutes() === 0 || i === 0) && (
-            <text key={i} x={p.x} y={ALTO_GRAFICO_PX + 16} textAnchor="middle" fontSize={11} fill={C.muted}>
+            <text key={i} x={p.x} y={lineaBaseY + 16} textAnchor="middle" fontSize={11} fill={C.muted}>
               {p.tramo.inicio.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
             </text>
           )
