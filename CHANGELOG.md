@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-08-12 — "Finalizar" ahora muestra una preview real y permite añadir una foto de llegada
+
+**Tipo:** Feature
+
+Al finalizar el reto desde el panel admin, el botón "Finalizar" ya no pide
+confirmación con un aviso genérico del navegador: abre un panel donde se
+edita el mensaje de llegada, se puede adjuntar (o quitar) una foto opcional,
+y se ve exactamente cómo va a quedar la pantalla de llegada en la web
+pública antes de confirmar — mismo tratamiento visual, en directo mientras
+se escribe. La foto se comprime en el propio móvil antes de subirse, igual
+que ya hacían las fotos del feed "minuto a minuto".
+
+---
+
 ## 2026-08-12 — El gráfico de "Tráfico" ahora deja claro que son visitas y muestra la cifra de cada tramo
 
 **Tipo:** Mejora

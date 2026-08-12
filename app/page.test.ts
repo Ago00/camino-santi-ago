@@ -42,6 +42,11 @@ let intentoSinModoMock: Omit<IntentoMock, "modo" | "destino_lat" | "destino_lon"
 let posicionesMock: Posicion[] = [];
 const rangeMock = vi.fn(() => Promise.resolve({ data: posicionesMock, error: null }));
 
+// obtenerFotoLlegadaUrl (DT-024): consulta propia, deliberadamente separada
+// del select de modo/destino de arriba (ver comentario en app/page.tsx).
+let dataFotoLlegadaMock: { foto_llegada_url: string | null } | null = null;
+let errorFotoLlegadaMock: { message: string } | null = null;
+
 vi.mock("@/lib/supabase/public", () => ({
   getSupabasePublic: vi.fn(() => ({
     from: vi.fn((tabla: string) => {
@@ -50,9 +55,11 @@ vi.mock("@/lib/supabase/public", () => ({
           select: vi.fn((columnas: string) => ({
             eq: vi.fn().mockReturnThis(),
             maybeSingle: vi.fn().mockResolvedValue(
-              columnas.includes("modo")
-                ? { data: intentoConModoMock, error: errorConModoMock }
-                : { data: intentoSinModoMock, error: null }
+              columnas === "foto_llegada_url"
+                ? { data: dataFotoLlegadaMock, error: errorFotoLlegadaMock }
+                : columnas.includes("modo")
+                  ? { data: intentoConModoMock, error: errorConModoMock }
+                  : { data: intentoSinModoMock, error: null }
             ),
           })),
         };
@@ -102,14 +109,20 @@ function posicion(overrides: Partial<Posicion>): Posicion {
   };
 }
 
-const { obtenerIntentoActivo, calcularProgresoDelIntento, obtenerHistoricoPosicionesCacheado } =
-  await import("@/app/page");
+const {
+  obtenerIntentoActivo,
+  calcularProgresoDelIntento,
+  obtenerHistoricoPosicionesCacheado,
+  obtenerFotoLlegadaUrl,
+} = await import("@/app/page");
 
 beforeEach(() => {
   intentoConModoMock = null;
   errorConModoMock = null;
   intentoSinModoMock = null;
   posicionesMock = [];
+  dataFotoLlegadaMock = null;
+  errorFotoLlegadaMock = null;
   rangeMock.mockClear();
   limpiarCacheProgreso();
   limpiarCacheHistorico();
@@ -263,5 +276,41 @@ describe("obtenerHistoricoPosicionesCacheado() — fix post-revisión de Segurid
 
     expect(historico).toEqual(posicionesMock);
     expect(rangeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("obtenerFotoLlegadaUrl() (DT-024)", () => {
+  it("devuelve la URL de la foto cuando el intento tiene una", async () => {
+    dataFotoLlegadaMock = { foto_llegada_url: "https://example.com/llegada.jpg" };
+
+    const resultado = await obtenerFotoLlegadaUrl(1);
+
+    expect(resultado).toBe("https://example.com/llegada.jpg");
+  });
+
+  it("devuelve null cuando el intento no tiene foto de llegada", async () => {
+    dataFotoLlegadaMock = { foto_llegada_url: null };
+
+    const resultado = await obtenerFotoLlegadaUrl(1);
+
+    expect(resultado).toBeNull();
+  });
+
+  it("degrada a null (sin romper la pantalla de llegada) si la columna todavía no existe en producción (migración 0006 sin aplicar)", async () => {
+    errorFotoLlegadaMock = { message: "column intentos.foto_llegada_url does not exist" };
+    dataFotoLlegadaMock = null;
+
+    const resultado = await obtenerFotoLlegadaUrl(1);
+
+    expect(resultado).toBeNull();
+  });
+
+  it("degrada a null si no encuentra ninguna fila para ese id", async () => {
+    dataFotoLlegadaMock = null;
+    errorFotoLlegadaMock = null;
+
+    const resultado = await obtenerFotoLlegadaUrl(1);
+
+    expect(resultado).toBeNull();
   });
 });

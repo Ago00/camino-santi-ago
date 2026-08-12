@@ -113,12 +113,14 @@ vi.mock("@/lib/supabase/admin", () => ({
 // Solo se sustituye la subida: `ErrorDeSubidaDeFoto` se usa real, porque la
 // Server Action decide con `instanceof` qué mensaje puede enseñarse (DT-017).
 const subirFotoSpy = vi.fn().mockResolvedValue("https://example.com/foto.jpg");
+const subirFotoLlegadaSpy = vi.fn().mockResolvedValue("https://example.com/foto-llegada.jpg");
 vi.mock("@/lib/supabase/storage", async () => {
   const actual =
     await vi.importActual<typeof import("@/lib/supabase/storage")>("@/lib/supabase/storage");
   return {
     ...actual,
     subirFotoMinutoAMinuto: (...args: unknown[]) => subirFotoSpy(...args),
+    subirFotoLlegada: (...args: unknown[]) => subirFotoLlegadaSpy(...args),
   };
 });
 
@@ -159,6 +161,7 @@ beforeEach(() => {
   deleteSpy.mockClear();
   upsertSpy.mockClear();
   subirFotoSpy.mockClear();
+  subirFotoLlegadaSpy.mockClear();
   calcularProgresoActualMock.mockReset();
   // Valor por defecto del recálculo (DT-019): sin posición, mismo caso
   // límite legítimo que "todavía no hay ninguna posición registrada". Los
@@ -219,6 +222,18 @@ describe("Actividad — arranque desde cero (crearPrimerIntento)", () => {
   });
 });
 
+/** FormData de finalizarReto (DT-024): mensaje + foto opcional/quitarFoto. */
+function formDataFinalizar(
+  mensaje: string,
+  opciones?: { foto?: File; quitarFoto?: boolean }
+): FormData {
+  const formData = new FormData();
+  formData.set("mensaje", mensaje);
+  if (opciones?.foto) formData.set("foto", opciones.foto);
+  if (opciones?.quitarFoto) formData.set("quitarFoto", "true");
+  return formData;
+}
+
 describe("Actividad — transiciones de fase", () => {
   it("iniciarReto pasa de 'antes' a 'durante' fijando started_at (modo guiado)", async () => {
     intentoActivoMock = { id: 1, fase: "antes" };
@@ -273,9 +288,11 @@ describe("Actividad — transiciones de fase", () => {
     expect(updateSpy).not.toHaveBeenCalled();
   });
 
-  it("finalizarReto pasa de 'durante' a 'llegada' con el mensaje y ended_at", async () => {
+  it("finalizarReto pasa de 'durante' a 'llegada' con el mensaje y ended_at, sin tocar foto_llegada_url (sin foto adjunta ni quitarFoto)", async () => {
     intentoActivoMock = { id: 1, fase: "durante" };
-    await finalizarReto("  Gracias por acompañarme  ");
+    await expect(
+      finalizarReto(formDataFinalizar("  Gracias por acompañarme  "))
+    ).resolves.toEqual({ ok: true });
 
     expect(updateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -284,11 +301,62 @@ describe("Actividad — transiciones de fase", () => {
         mensaje_llegada: "Gracias por acompañarme",
       })
     );
+    const cambios = updateSpy.mock.calls[0][0];
+    expect(cambios).not.toHaveProperty("foto_llegada_url");
   });
 
-  it("finalizarReto rechaza un mensaje vacío o solo espacios", async () => {
+  it("finalizarReto devuelve el motivo sin actualizar si el mensaje está vacío o solo espacios", async () => {
     intentoActivoMock = { id: 1, fase: "durante" };
-    await expect(finalizarReto("   ")).rejects.toThrow(/vacío/i);
+    const resultado = await finalizarReto(formDataFinalizar("   "));
+    expect(resultado).toEqual({ ok: false, mensaje: expect.stringMatching(/vacío/i) });
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("finalizarReto devuelve el motivo sin actualizar si no hay cookie de sesión", async () => {
+    cookieSesionMock = undefined;
+    const resultado = await finalizarReto(formDataFinalizar("Gracias"));
+    expect(resultado).toEqual({ ok: false, mensaje: expect.stringMatching(/sesión/i) });
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("finalizarReto devuelve el motivo sin actualizar si el intento activo no está en fase 'durante'", async () => {
+    intentoActivoMock = { id: 1, fase: "antes" };
+    const resultado = await finalizarReto(formDataFinalizar("Gracias"));
+    expect(resultado).toEqual({ ok: false, mensaje: expect.stringMatching(/durante/i) });
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("finalizarReto sube la foto y guarda su URL en foto_llegada_url cuando se adjunta una nueva (reemplaza la anterior)", async () => {
+    intentoActivoMock = { id: 1, fase: "durante" };
+    const foto = new File([new Uint8Array(10)], "llegada.jpg", { type: "image/jpeg" });
+
+    await finalizarReto(formDataFinalizar("Gracias", { foto }));
+
+    expect(subirFotoLlegadaSpy).toHaveBeenCalledWith(foto);
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ foto_llegada_url: "https://example.com/foto-llegada.jpg" })
+    );
+  });
+
+  it("finalizarReto pone foto_llegada_url a null cuando se pide quitar la foto explícitamente", async () => {
+    intentoActivoMock = { id: 1, fase: "durante" };
+
+    await finalizarReto(formDataFinalizar("Gracias", { quitarFoto: true }));
+
+    expect(subirFotoLlegadaSpy).not.toHaveBeenCalled();
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({ foto_llegada_url: null }));
+  });
+
+  it("finalizarReto devuelve el mensaje del fallo de subida sin actualizar el intento", async () => {
+    intentoActivoMock = { id: 1, fase: "durante" };
+    subirFotoLlegadaSpy.mockRejectedValueOnce(
+      new ErrorDeSubidaDeFoto("La foto pesa 9 MB y el máximo son 4 MB.")
+    );
+    const foto = new File([new Uint8Array(10)], "llegada.jpg", { type: "image/jpeg" });
+
+    const resultado = await finalizarReto(formDataFinalizar("Gracias", { foto }));
+
+    expect(resultado).toEqual({ ok: false, mensaje: "La foto pesa 9 MB y el máximo son 4 MB." });
     expect(updateSpy).not.toHaveBeenCalled();
   });
 

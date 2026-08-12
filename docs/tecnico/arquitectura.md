@@ -37,6 +37,9 @@ camino-santi-ago/
 │   ├── publico/              # F3: hero, stats, formularios, hilo
 │   │   ├── RefrescoAlCambiarFase.tsx  # auto-refresco: polling 30 s a /api/fase, reload si cambia (DT-012)
 │   │   ├── MinutoAMinuto.tsx  # DT-013: feed en directo, paginado + poll opcional, clic → mapa
+│   │   ├── RecuadroLlegada.tsx  # DT-024: kicker+título+mensaje de la pantalla "llegada", extraído de
+│   │   │                        # ModoLlegada.tsx para compartirlo con la preview de ModalFinalizar.tsx
+│   │   ├── FotoLlegada.tsx      # DT-024: tarjeta de la foto opcional de llegada, mismo motivo
 │   │   ├── DistanciaRestante.tsx  # DT-016: cifra de distancia restante (modo libre), hermano de Mojon.tsx
 │   │   ├── ModoDuranteLibre.tsx   # DT-016: "durante" del modo libre (sin condicionales en ModoDurante.tsx);
 │   │   │                         # CURRENT.md/DT-020 añade Stats.tsx (tiempo en marcha/km/ritmo,
@@ -52,7 +55,10 @@ camino-santi-ago/
 │       │                              # error sin perder texto ni foto
 │       ├── EntradaMinutoAMinuto.tsx   # DT-013: fila con editar inline (solo texto) + eliminar
 │       ├── SeccionMinutoAMinuto.tsx   # DT-013: lista del intento activo (Server Component)
-│       ├── ActividadAcciones.tsx      # DT-016: selector de modo (guiado/libre) + destino antes de Iniciar
+│       ├── ActividadAcciones.tsx      # DT-016: selector de modo (guiado/libre) + destino antes de Iniciar;
+│       │                              # DT-024: "Finalizar" abre ModalFinalizar.tsx en vez de window.confirm()
+│       ├── ModalFinalizar.tsx         # DT-024: mensaje + foto opcional + preview real (RecuadroLlegada.tsx +
+│       │                              # FotoLlegada.tsx) antes de finalizar el reto
 │       ├── SeccionTrafico.tsx         # DT-022: pestaña "Tráfico" (Server Component, sin polling);
 │       │                              # rango desde intentos.started_at hasta ahora, granularidad vía ?gran=
 │       └── GraficoTraficoScroll.tsx   # DT-022: único fragmento "use client" de la pestaña —
@@ -122,7 +128,8 @@ camino-santi-ago/
 │   │   │                     # en bucle (PostgREST corta a 1000 filas sin Range explícito), tope de
 │   │   │                     # seguridad + log; usado por progreso/route.ts (rama guiado) y page.tsx
 │   │   └── storage.ts        # DT-013: subida de fotos a Storage (validación MIME/tamaño
-│   │                         # con los límites de lib/imagen/limites-subida.ts, DT-017)
+│   │                         # con los límites de lib/imagen/limites-subida.ts, DT-017);
+│   │                         # DT-024: subirFotoLlegada() sube al mismo bucket con prefijo "llegada-"
 │   ├── textos/               # F3
 │   │   ├── defaults.ts       # textos por defecto (override desde BD)
 │   │   └── obtener-textos.ts # server: fusiona defaults con la tabla `textos`
@@ -162,7 +169,7 @@ camino-santi-ago/
 | Constantes de dominio | `lib/traza/umbrales.ts` | Cada umbral con su porqué. |
 | Infraestructura BD | `lib/supabase/` | Solo clientes. Sin lógica de negocio. |
 | Endpoints | `app/api/` | Validación Zod en la frontera. Sin lógica de negocio. |
-| Server Actions | `app/admin/actions.ts` | Mutaciones del panel. Autenticadas con cookie. Los fallos esperados de `crearMinutoAMinuto` se devuelven (`ResultadoPublicacion`), no se lanzan: Next redacta en producción el mensaje de todo error lanzado en el servidor (DT-017). `crearMinutoAMinuto` recalcula el progreso con `lib/traza/progreso-actual.ts` cuando la caché compartida está vacía, en vez de guardar la posición a `null` (DT-019). |
+| Server Actions | `app/admin/actions.ts` | Mutaciones del panel. Autenticadas con cookie. Los fallos esperados de `crearMinutoAMinuto` y `finalizarReto` (DT-024) se devuelven (`ResultadoPublicacion`), no se lanzan: Next redacta en producción el mensaje de todo error lanzado en el servidor (DT-017). `crearMinutoAMinuto` recalcula el progreso con `lib/traza/progreso-actual.ts` cuando la caché compartida está vacía, en vez de guardar la posición a `null` (DT-019). |
 | UI | `app/` + `components/` | Sin lógica de negocio. Consume `lib/`. |
 
 ## La regla no negociable de las dos trazas

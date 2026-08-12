@@ -1,6 +1,9 @@
 /**
- * Subida de fotos del feed "minuto a minuto" a Supabase Storage
- * (bucket público `minuto-a-minuto`, ver supabase/migrations/0002_minuto_a_minuto.sql).
+ * Subida de fotos a Supabase Storage: las del feed "minuto a minuto"
+ * (`subirFotoMinutoAMinuto`) y la foto opcional de la pantalla de llegada
+ * (`subirFotoLlegada`, DT-024) — ambas al mismo bucket público
+ * `minuto-a-minuto` (ver supabase/migrations/0002_minuto_a_minuto.sql), con
+ * un prefijo distinto en el nombre del objeto para no colisionar.
  *
  * Solo se llama desde Server Actions (app/admin/actions.ts) con el cliente
  * service role, que bypassa RLS de Storage igual que bypassa RLS de BD — no
@@ -50,6 +53,27 @@ export class ErrorDeSubidaDeFoto extends Error {
  * sin contexto.
  */
 export async function subirFotoMinutoAMinuto(foto: File): Promise<string> {
+  return subirFotoAlBucket(foto, "");
+}
+
+/**
+ * Sube la foto opcional de la pantalla de llegada (DT-024) al MISMO bucket
+ * público `minuto-a-minuto` — no se crea un bucket nuevo, eso exige
+ * configuración manual en el dashboard de Supabase — con el prefijo
+ * `llegada-` en el nombre del objeto para no colisionar con las fotos del
+ * feed. Mismas reglas de validación (tipo MIME, tamaño) y mismo tipo de
+ * error que `subirFotoMinutoAMinuto`.
+ */
+export async function subirFotoLlegada(foto: File): Promise<string> {
+  return subirFotoAlBucket(foto, "llegada-");
+}
+
+/**
+ * Lógica compartida entre `subirFotoMinutoAMinuto` y `subirFotoLlegada`: solo
+ * cambia el prefijo del nombre del objeto en Storage — ambas suben al mismo
+ * bucket, con las mismas reglas de validación.
+ */
+async function subirFotoAlBucket(foto: File, prefijoNombre: string): Promise<string> {
   if (!esMimePermitido(foto.type)) {
     throw new ErrorDeSubidaDeFoto(
       `Formato de imagen no permitido (${foto.type || "desconocido"}). Usa JPEG, PNG o WebP.`
@@ -65,7 +89,7 @@ export async function subirFotoMinutoAMinuto(foto: File): Promise<string> {
   }
 
   const extension = EXTENSION_POR_MIME[foto.type];
-  const nombreUnico = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
+  const nombreUnico = `${prefijoNombre}${Date.now()}-${crypto.randomUUID()}.${extension}`;
 
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.storage.from(BUCKET).upload(nombreUnico, foto, {

@@ -33,6 +33,7 @@ pero solo uno activo a la vez.
 | `started_at` | timestamptz | Se fija al pasar a `durante` |
 | `ended_at` | timestamptz | Se fija al pasar a `llegada` |
 | `mensaje_llegada` | text | Editable desde el admin antes de finalizar |
+| `foto_llegada_url` | text | Foto opcional de llegada (DT-024, migración `0006_foto_llegada.sql`). URL pública del bucket `minuto-a-minuto` (prefijo `llegada-` en el nombre del objeto). `null` = sin foto |
 | `created_at` | timestamptz | Automático |
 
 **Invariante crítico:** `CREATE UNIQUE INDEX intentos_activo_unico ON intentos ((true)) WHERE NOT cerrado` — solo un intento abierto a la vez. La BD lo garantiza, no solo el código.
@@ -196,9 +197,12 @@ explícitas); las políticas de los ficheros son únicamente para el rol
 un bucket público, y todas las subidas pasan por el cliente service role.
 
 Las columnas nuevas de `intentos` (`modo`, `destino_lat`, `destino_lon`,
-`supabase/migrations/0003_modo_intento.sql`, DT-016) no cambian la política
+`supabase/migrations/0003_modo_intento.sql`, DT-016; `foto_llegada_url`,
+`supabase/migrations/0006_foto_llegada.sql`, DT-024) no cambian la política
 RLS existente de `intentos_select_activo` — siguen siendo columnas del mismo
-intento activo, ya visible en su totalidad para `anon`.
+intento activo, ya visible en su totalidad para `anon` (necesario para que
+`app/page.tsx`, `obtenerFotoLlegadaUrl`, pueda leer la foto con el cliente
+público).
 
 ---
 
@@ -208,8 +212,10 @@ intento activo, ya visible en su totalidad para `anon`.
 iniciales), `supabase/migrations/0002_minuto_a_minuto.sql` (tabla
 `minuto_a_minuto` + bucket de Storage, DT-013),
 `supabase/migrations/0003_modo_intento.sql` (columnas `modo`/`destino_lat`/
-`destino_lon` de `intentos`, DT-016) y
-`supabase/migrations/0004_visitas_web.sql` (tabla `visitas_web`, DT-022).
+`destino_lon` de `intentos`, DT-016),
+`supabase/migrations/0004_visitas_web.sql` (tabla `visitas_web`, DT-022) y
+`supabase/migrations/0006_foto_llegada.sql` (columna `foto_llegada_url` de
+`intentos`, DT-024).
 
 **Convención de carpeta:** `supabase/migrations/NNNN_slug.sql`, numeración
 secuencial de 4 dígitos — la misma que usa la CLI oficial de Supabase
