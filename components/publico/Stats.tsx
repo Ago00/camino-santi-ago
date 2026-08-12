@@ -1,5 +1,8 @@
 // Grid de 3 estadísticas: tiempo en marcha, km andados, ritmo medio.
 // Sigue fielmente el mockup (componente Stat de design-sandbox/app/camino/page.tsx).
+// Compartido por ModoDurante, ModoDuranteLibre, ModoLlegada y ModoLlegadaLibre.
+
+import type { Textos } from "@/lib/textos/obtener-textos";
 
 interface StatProps {
   icon: React.ReactNode;
@@ -28,14 +31,15 @@ interface StatsProps {
   tiempoEnMarcha: string; // "hh:mm"
   kmAndados: string; // ya formateado
   ritmoMedio: string; // ya formateado
+  textos: Textos;
 }
 
-export default function Stats({ tiempoEnMarcha, kmAndados, ritmoMedio }: StatsProps) {
+export default function Stats({ tiempoEnMarcha, kmAndados, ritmoMedio, textos }: StatsProps) {
   return (
     <div className="grid grid-cols-3 gap-3">
-      <Stat icon={<IconClock />} label="En marcha" value={tiempoEnMarcha} unit="h · m" />
-      <Stat icon={<IconRoute />} label="Caminados" value={kmAndados} unit="km" />
-      <Stat icon={<IconGauge />} label="Ritmo medio" value={ritmoMedio} unit="km/h" />
+      <Stat icon={<IconClock />} label={textos.stats_label_en_marcha} value={tiempoEnMarcha} unit="h · m" />
+      <Stat icon={<IconRoute />} label={textos.stats_label_caminados} value={kmAndados} unit="km" />
+      <Stat icon={<IconGauge />} label={textos.stats_label_ritmo_medio} value={ritmoMedio} unit="km/h" />
     </div>
   );
 }

@@ -97,6 +97,7 @@ export default function ModoLlegadaLibre({
           tiempoEnMarcha={tiempoEnMarcha}
           kmAndados={formatearKm(progreso.odometroKm)}
           ritmoMedio={ritmoMedio}
+          textos={textos}
         />
         <MinutoAMinuto
           polling={false}

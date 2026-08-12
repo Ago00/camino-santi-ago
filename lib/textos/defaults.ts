@@ -40,6 +40,11 @@ export const CLAVES_TEXTOS = [
   "perfil_label_descenso",
   "perfil_origen_nombre",
   "perfil_destino_nombre",
+  "durante_en_directo_kicker",
+  "durante_en_directo_titulo",
+  "stats_label_en_marcha",
+  "stats_label_caminados",
+  "stats_label_ritmo_medio",
 ] as const;
 
 export type ClaveTexto = (typeof CLAVES_TEXTOS)[number];
@@ -82,4 +87,9 @@ export const TEXTOS_POR_DEFECTO: Record<ClaveTexto, string> = {
   perfil_label_descenso: "descenso",
   perfil_origen_nombre: "O Porriño",
   perfil_destino_nombre: "Santiago",
+  durante_en_directo_kicker: "En directo · ahora mismo",
+  durante_en_directo_titulo: "Estoy caminando",
+  stats_label_en_marcha: "En marcha",
+  stats_label_caminados: "Caminados",
+  stats_label_ritmo_medio: "Ritmo medio",
 };

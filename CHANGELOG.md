@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-08-12 — Los textos de la pantalla "en directo" y de las estadísticas ya se pueden editar desde el panel
+
+**Tipo:** Mejora
+
+Ahora se pueden editar desde `/admin` el texto de la cinta "En directo · ahora
+mismo · Estoy caminando" que aparece mientras Santi está caminando, y las
+etiquetas de las tres estadísticas ("En marcha", "Caminados", "Ritmo medio")
+que se muestran en las cuatro pantallas de seguimiento (modo guiado y modo
+libre, durante y al llegar). Comportamiento idéntico al actual hasta que se
+editen desde el panel.
+
+---
+
 ## 2026-08-12 — Los textos de la pantalla "antes" y del progreso en directo ya se pueden editar desde el panel
 
 **Tipo:** Feature
