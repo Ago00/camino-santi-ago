@@ -1563,3 +1563,21 @@ de que una llamada a `calcularProgresoDelIntento` y una llamada directa
 posterior a `obtenerHistoricoPosicionesCacheado` comparten la misma caché,
 sin doble consulta a Supabase). Quality gates reverificadas en verde
 (348/348 tests) tras el fix.
+
+---
+
+## DT-022 — Pestaña "Tráfico" en el panel admin: tracking server-side en `proxy.ts`
+
+**Fecha:** 2026-08-12 · **Tarea:** Ver cuánta gente visita la web pública durante el reto · **Decisión de arquitectura**
+
+**Contexto.** Petición directa de Santi: quiere ver, desde el admin y mientras camina, cuánta gente entra a la web pública — con gráfico de evolución (curva, no barras, por densidad de puntos), granularidad seleccionable (5 min/30 min/1 h) sobre el rango completo transcurrido (sin recortar ventana), y desglose por página/origen. El rango es desde `intentos.started_at` (inicio del intento activo) hasta ahora — no por día de calendario, porque la marcha puede cruzar medianoche.
+
+**Decisión.**
+
+1. **Captura — tracking server-side en `proxy.ts`, no beacon cliente.** Se evaluaron dos opciones: (A) ampliar `proxy.ts` para interceptar también la web pública e insertar la visita server-side, o (B) un componente cliente con `navigator.sendBeacon` a un endpoint dedicado. Se descartó B: su ventaja típica (evitar contar prefetch de Next.js sobre `<Link>`) no aplica — la web pública de este proyecto es una única ruta (`/`), sin ningún `<Link>` en el código. Sin esa ventaja, B solo añade una pieza extra (endpoint + componente cliente) por evitar una latencia de insert que el proyecto ya acepta en `/api/track` al mismo volumen. `proxy.ts` amplía su `matcher` a `["/", "/admin/:path*"]` — literal, sin regex de exclusión de assets, porque la web pública no tiene más rutas que trackear. Se bifurca por `pathname`: `/admin/*` sigue con la lógica de sesión actual sin cambios; `/` lee/crea una cookie anónima (sin fingerprinting, sin datos personales) e inserta en `visitas_web` vía `getSupabaseAdmin()`, `await`, antes de responder. `proxy.ts` pasa de síncrono a `async`. Si el insert falla, se ignora en silencio — nunca debe romper la petición del visitante real (mismo criterio defensivo que `/api/track`).
+2. **Tabla nueva `visitas_web`** (`supabase/migrations/0004_visitas_web.sql`): ruta, timestamp, id de visitante (cookie), referer. Sin política RLS para `anon` — cero acceso público, igual que `intenciones`; solo `service role` lee/escribe. Añadida a `BaseDeDatos` en `lib/supabase/admin.ts` con el envoltorio `Row: Pick<T, keyof T>` (obligatorio, ver comentario en el propio fichero — sin él, `.insert()` resuelve a `never` en silencio).
+3. **Sin política de retención.** Igual que el resto de tablas del proyecto.
+4. **Pestaña "Tráfico" — un único Server Component** (`SeccionTrafico.tsx`, patrón `SeccionActividad`), sin `useState` ni fetch cliente. Lee todas las visitas del rango (`ts >= started_at` del intento activo) con `obtenerTodasLasFilas` (mismo helper de paginación que ya usa el histórico de posiciones). La granularidad (5 min/30 min/1 h) es un parámetro de URL (`?gran=`), mismo patrón que `?tab=`/`?filtroComentarios=` ya usado en el resto del panel — el servidor agrupa los mismos datos en bruto según el parámetro, sin generar ni guardar series distintas. Gráfico: SVG de curva (no barras) en contenedor con `overflow-x: auto`, ancho proporcional al nº de puntos. Único fragmento `"use client"`: el que hace scroll automático al extremo derecho al montar (leer el ancho del contenedor no se puede hacer server-side).
+5. **Sin intento activo** (fase `antes`, sin `started_at`): la pestaña debe manejarlo sin romper, mostrando un estado vacío explícito — no hay rango que acotar.
+
+**Deuda conocida de antemano:** igual que `0003_modo_intento.sql` (ver `DEBT.md`), la migración `0004_visitas_web.sql` no se aplica sola — Santi debe pegarla en el SQL Editor de Supabase antes de que la pestaña tenga datos reales. El Implementador debe dejar el mismo tipo de salvaguarda que ya existe en `/api/track` ante la posibilidad de que la tabla no exista todavía en producción en el momento del deploy (no debe romper la carga de `/` ni del admin).

@@ -52,7 +52,11 @@ camino-santi-ago/
 │       │                              # error sin perder texto ni foto
 │       ├── EntradaMinutoAMinuto.tsx   # DT-013: fila con editar inline (solo texto) + eliminar
 │       ├── SeccionMinutoAMinuto.tsx   # DT-013: lista del intento activo (Server Component)
-│       └── ActividadAcciones.tsx      # DT-016: selector de modo (guiado/libre) + destino antes de Iniciar
+│       ├── ActividadAcciones.tsx      # DT-016: selector de modo (guiado/libre) + destino antes de Iniciar
+│       ├── SeccionTrafico.tsx         # DT-022: pestaña "Tráfico" (Server Component, sin polling);
+│       │                              # rango desde intentos.started_at hasta ahora, granularidad vía ?gran=
+│       └── GraficoTraficoScroll.tsx   # DT-022: único fragmento "use client" de la pestaña —
+│                                      # scroll automático al extremo derecho del SVG al montar
 ├── lib/
 │   ├── types.ts              # tipos de dominio (contrato para todas las capas); ProgresoPublico
 │   │                          # es unión discriminada por `modo` desde DT-016 (ProgresoPublicoGuiado
@@ -124,13 +128,17 @@ camino-santi-ago/
 │   │   └── obtener-textos.ts # server: fusiona defaults con la tabla `textos`
 │   ├── auth/                 # F4
 │   │   └── admin-session.ts  # firma/verificación cookie HMAC
-│   └── admin/                 # F4
-│       └── navegacion.ts     # estado de navegación (?tab=, ?filtroComentarios=)
-│                              # y sus validadores — fuera de components/admin/
-│                              # porque esos ficheros son "use client" (ver
-│                              # comentario en el propio fichero)
-├── proxy.ts                  # F4: protege /admin/* (Next 16: "middleware" se
-│                             # renombró a "proxy", ver DT-010)
+│   ├── admin/                 # F4
+│   │   └── navegacion.ts     # estado de navegación (?tab=, ?filtroComentarios=,
+│   │                          # ?gran= DT-022) y sus validadores — fuera de
+│   │                          # components/admin/ porque esos ficheros son
+│   │                          # "use client" (ver comentario en el propio fichero)
+│   └── trafico/                # DT-022: dominio puro de la pestaña "Tráfico"
+│       ├── bucketing.ts        # agruparVisitasEnTramos() — sin I/O, sin Date.now() implícito
+│       └── desglose.ts         # agruparPorRuta()/agruparPorOrigen()
+├── proxy.ts                  # protege /admin/* (Next 16: "middleware" se
+│                             # renombró a "proxy", ver DT-010) y captura
+│                             # visitas a `/` para `visitas_web` (DT-022)
 ├── docs/
 │   ├── traza-camino-portugues.geojson  # fuente original (CC BY-SA 4.0 Xunta)
 │   ├── producto/

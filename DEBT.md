@@ -2,6 +2,67 @@
 
 ---
 
+## Recordatorio: aplicar `supabase/migrations/0004_visitas_web.sql` contra producción
+
+**Fecha:** 2026-08-12
+**Contexto:** Tarea "Pestaña Tráfico en el panel admin" (DT-022,
+`docs/tecnico/decisiones-tecnicas.md`). Igual que `0003_modo_intento.sql`
+(ver entrada de deuda "Recordatorio: aplicar `supabase/migrations/0003_modo_intento.sql`
+contra producción" más abajo en este mismo fichero), la migración
+`0004_visitas_web.sql` (tabla `visitas_web`, sin política RLS para `anon`)
+no se aplica sola contra Supabase — hace falta pegarla a mano en el editor
+SQL del proyecto (o `supabase db push`) antes de que exista la tabla en la
+base de datos real.
+**Problema:** Con el código de esta tarea desplegado y la migración sin
+aplicar, cualquier `INSERT` en `visitas_web` desde `proxy.ts` (captura de
+visitas a `/`) falla contra la BD real con un error de Postgres de "tabla no
+existe" (`relation "visitas_web" does not exist`, código `42P01`). Del mismo
+modo, cualquier `SELECT` desde `SeccionTrafico.tsx` (pestaña "Tráfico" del
+admin) falla con el mismo tipo de error.
+**Impacto (mientras la migración no esté aplicada):** Sin regresión visible.
+`proxy.ts` ignora en silencio cualquier fallo del insert (ver comentario de
+cabecera y tests de `proxy.test.ts`) — la web pública se sigue sirviendo con
+normalidad, solo que sin capturar visitas todavía. `SeccionTrafico.tsx`
+recibirá `data: null` de Supabase para el `SELECT` de `visitas_web` (el
+mismo patrón de degradación silenciosa que usa el resto del proyecto:
+`obtenerTodasLasFilas` ya trata cualquier error de página como "sin más
+filas que las ya obtenidas", devolviendo un array vacío) — la pestaña
+mostrará "Sin visitas todavía en este rango" en vez de datos reales, nunca
+un error visible para Santi.
+**Solución propuesta:** Aplicar `supabase/migrations/0004_visitas_web.sql`
+contra el proyecto Supabase de producción. Una vez aplicada, la pestaña
+"Tráfico" empieza a mostrar datos reales sin necesidad de ningún cambio de
+código adicional.
+**Prioridad:** Alta — hasta que se aplique, la pestaña "Tráfico" no tiene
+ningún dato que mostrar, aunque el resto de la web y del admin no se ven
+afectados.
+
+---
+
+## `docs/producto/` no refleja la nueva pestaña "Tráfico" del panel admin
+
+**Fecha:** 2026-08-12
+**Contexto:** Mismo patrón ya registrado dos veces en `docs/LESSONS.md`
+("Features cerradas por el pipeline técnico dejan `docs/producto/`
+desactualizado si nadie invoca al Agente de Producto al cierre"): esta tarea
+(DT-022, pestaña "Tráfico") añade una pestaña nueva de cara a Santi, con
+`CHANGELOG.md` y documentación técnica (`decisiones-tecnicas.md`,
+`arquitectura.md`, `modelo-datos.md`) al día, pero `docs/producto/funcionalidades.md`
+no se ha tocado — no tiene ninguna sección del panel admin (hueco
+preexistente, ya señalado en una entrada anterior de este mismo fichero
+sobre la pestaña "Mapa" de DT-021).
+**Problema:** Documentación de producto desactualizada/incompleta respecto
+al panel admin en general, no solo a esta pestaña.
+**Impacto:** Puramente documental. Cero efecto en comportamiento.
+**Solución propuesta:** El Agente de Producto añade una sección "Panel
+admin" a `funcionalidades.md` con todas las pestañas existentes (Actividad,
+Posición, Mapa, Intenciones, Comentarios, Minuto a minuto, Tráfico, Textos),
+no solo la de esta tarea — aprovechando que ya hay dos entradas de deuda
+pendientes por el mismo hueco.
+**Prioridad:** Baja.
+
+---
+
 ## `docs/producto/funcionalidades.md` no refleja el cambio de pintado del mapa (DT-021) ni la nueva pestaña "Mapa" del admin
 
 **Fecha:** 2026-08-12
@@ -9,6 +70,28 @@
 **Problema:** Documentación de producto desactualizada respecto al comportamiento real para la parte pública; ausente por completo para la parte admin.
 **Impacto:** Puramente documental. Cero efecto en comportamiento del sistema. `CHANGELOG.md` y la documentación técnica (`decisiones-tecnicas.md`, `arquitectura.md`) sí están al día.
 **Solución propuesta:** El Agente de Producto actualiza la entrada "Durante" de `funcionalidades.md` para describir el pintado del recorrido real (no la traza oficial) y el marcador ⛪ de destino, y valora si añadir una sección "Panel admin" con la pestaña "Mapa" (y, ya que se está, el resto de pestañas existentes que tampoco están documentadas desde el punto de vista de producto).
+**Prioridad:** Baja.
+
+---
+
+## Cookie `visitante_id` sin `httpOnly` (DT-022, pestaña "Tráfico")
+
+**Fecha:** 2026-08-12
+**Contexto:** Revisión de la tarea "Pestaña Tráfico en el panel admin" (DT-022). `proxy.ts` fija la cookie funcional `visitante_id` (`NOMBRE_COOKIE_VISITANTE`) con `secure: true, sameSite: "lax", path: "/", maxAge: ...` pero sin `httpOnly: true` — a diferencia de la cookie de sesión de admin (`NOMBRE_COOKIE_SESION`), que sí la lleva. Ningún código cliente de la web pública necesita leer o escribir `visitante_id`: solo la lee `proxy.ts` en servidor.
+**Problema:** Sin `httpOnly`, la cookie es legible y modificable desde JavaScript en el navegador (`document.cookie`). No expone datos personales (es un UUID aleatorio sin fingerprinting), pero permite que un script malicioso (vía un XSS futuro en la web pública) lea o fije un `visitante_id` arbitrario, ensuciando el conteo de "visitantes únicos" de la pestaña "Tráfico".
+**Impacto:** Bajo — no hay datos sensibles en juego, solo integridad de una métrica de analítica interna. No hay XSS conocido en el proyecto hoy.
+**Solución propuesta:** Añadir `httpOnly: true` a las opciones de `response.cookies.set(NOMBRE_COOKIE_VISITANTE, ...)` en `proxy.ts` — cambio de una línea, sin efecto en el comportamiento actual (nada la lee desde el cliente).
+**Prioridad:** Baja.
+
+---
+
+## Tipo `GranularidadTrafico` duplicado en `lib/trafico/bucketing.ts` y `lib/admin/navegacion.ts`
+
+**Fecha:** 2026-08-12
+**Contexto:** Revisión de la tarea "Pestaña Tráfico en el panel admin" (DT-022). `GranularidadTrafico` (`"5m" | "30m" | "1h"`) se define de forma independiente en dos ficheros: `lib/trafico/bucketing.ts` (dominio puro, usado por `agruparVisitasEnTramos`) y `lib/admin/navegacion.ts` (usado por `esGranularidadValida` y `app/admin/page.tsx`). Funciona hoy porque TypeScript compara ambos por estructura (misma unión de literales), pero son dos fuentes de verdad separadas para el mismo concepto de dominio.
+**Problema:** Si algún día se añade o quita una granularidad, hay que recordar tocar los dos ficheros; nada del compilador avisa si se desincronizan salvo un error de tipos indirecto en el punto de uso.
+**Impacto:** Bajo hoy (cero riesgo funcional real), pero es deuda de mantenibilidad — exactamente el tipo de duplicación que el framework pide evitar ("los tipos se definen donde tiene sentido semántico").
+**Solución propuesta:** `lib/admin/navegacion.ts` importa `type GranularidadTrafico` desde `lib/trafico/bucketing.ts` en vez de redefinirlo (es una importación de solo tipo, sin coste en runtime, y `bucketing.ts` no tiene la directiva `"use client"` que motivó sacar `navegacion.ts` de `components/admin/`).
 **Prioridad:** Baja.
 
 ---

@@ -101,6 +101,20 @@ export interface MinutoAMinuto {
   updated_at: string; // ISO 8601
 }
 
+/**
+ * Una visita a la web pública, capturada server-side en `proxy.ts` (DT-022).
+ * Cero datos personales: `visitante_id` es un id aleatorio de cookie
+ * funcional (sin fingerprinting), no ligado a ninguna identidad real.
+ */
+export interface VisitaWeb {
+  id: number;
+  ruta: string;
+  ts: string; // ISO 8601
+  visitante_id: string;
+  referer: string | null; // cabecera Referer de la petición; null = directo
+  created_at: string; // ISO 8601
+}
+
 // ---------------------------------------------------------------------------
 // Tipos del dominio de progreso (proyeccion.ts)
 // ---------------------------------------------------------------------------
