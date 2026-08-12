@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-08-12 — La pestaña "Tráfico" ahora distingue antes/durante/después y se puede resetear el contador
+
+**Tipo:** Feature
+
+La pestaña "Tráfico" del panel admin ya no se limita al rango del intento
+activo: ahora trae todo el histórico de visitas y lo reparte en tres
+pestañas — antes, durante y después del reto — para poder ver de un vistazo,
+por ejemplo, cuánta gente entró mientras Santi caminaba frente a cuánta
+entró después de llegar. Se abre en la pestaña que tiene sentido según el
+momento (durante si el reto está en marcha o ya llegó, antes si no ha
+empezado). También hay un botón "Reset" que adelanta el contador a ahora
+mismo sin borrar ningún dato — útil para "empezar a contar de cero" en un
+momento concreto sin perder el histórico completo.
+
+---
+
 ## 2026-08-12 — El gráfico de "Tráfico" ahora deja claro que son visitas y muestra la cifra de cada tramo
 
 **Tipo:** Mejora
