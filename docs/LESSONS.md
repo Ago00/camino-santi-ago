@@ -467,6 +467,51 @@ verificación visual en navegador real, aunque Reviewer y Seguridad hayan
 aprobado sobre código — ver también la lección de Tailwind más arriba, que
 ya establecía este principio para el proyecto en general.
 
+## Un fallback "sin límite" ante una migración no aplicada puede reintroducir el mismo vector de coste que una paginación completa ya está diseñada para evitar
+
+**Registrada:** 2026-08-12 (DT-023 — pestaña Tráfico, fases + reset)
+**Por quién:** Orquestador (bug reportado en producción, minutos después de fusionar)
+
+DT-023 acotaba las visitas traídas de `visitas_web` a `ts >= cuenta_desde`
+(un cutoff configurable, tabla `config_trafico`). El patrón ya establecido
+del proyecto ante una migración sin aplicar todavía (`0003`, `0004`) es
+"degradar sin romper" — aquí eso se tradujo en: si `config_trafico` no
+existe, tratarlo como "sin cutoff", con `new Date(0)` como valor del
+fallback. Sobre el papel es una degradación razonable (no rompe nada). En la
+práctica, con tráfico real ya acumulado, "sin cutoff" significa traer el
+histórico **completo** de la tabla sin ningún límite temporal — y
+`obtenerTodasLasFilas` (`lib/supabase/paginacion.ts`, DT-018) pagina en
+**hasta 50 llamadas secuenciales** (`await` uno detrás de otro, no en
+paralelo) de 1.000 filas cada una. Ese límite de 50 páginas existe
+precisamente para acotar el peor caso de una tabla que crece sin control —
+pero una tabla de verdad grande, incluso dentro de ese tope, puede agotar el
+timeout de una función serverless mucho antes de llegar a la página 50. La
+pestaña dejó de cargar en cuanto hubo tráfico de pruebas suficiente
+acumulado, minutos después de fusionar el PR — ni Reviewer ni Seguridad lo
+bloquearon (Seguridad sí lo señaló como observación de rendimiento, no como
+vulnerabilidad OWASP, así que no bloqueó).
+
+**Causa raíz del patrón:** un "fallback sin límite" y una "paginación con
+tope de páginas" son dos mecanismos pensados para riesgos distintos
+(correctitud ante ausencia de configuración vs. abuso/crecimiento
+descontrolado) que, combinados, pueden anular la protección real: el tope de
+páginas sigue existiendo, pero 50.000 filas de golpe, secuenciales, es
+tiempo suficiente para tumbar la respuesta igualmente. Un fallback nunca
+debería significar "sin ningún límite" cuando la propia consulta que
+protege ya asume que un límite existe en el caso normal.
+
+**Regla a partir de ahora:** cuando una consulta se acota por un valor que
+puede faltar (config sin aplicar, fila sin crear, migración pendiente), el
+fallback debe ser un límite **acotado y con sentido de negocio** (el inicio
+del intento relevante, una ventana fija de N días, lo que ya se usaba antes
+de la tarea que introdujo el cutoff configurable) — nunca "el principio de
+los tiempos". El Arquitecto debe hacer esta pregunta explícitamente para
+cualquier tarea que añada un cutoff/filtro configurable sobre una tabla que
+ya tiene tráfico real: "¿qué pasa si el valor de configuración todavía no
+existe — a qué volumen de datos vuelve la consulta?". El Reviewer debe
+tratar cualquier fallback de tipo "sin límite"/`new Date(0)`/`Infinity` como
+bloqueante en una consulta paginada, no como una degradación aceptable.
+
 <!-- Formato de nueva entrada:
 ## [Título]
 **Registrada:** YYYY-MM-DD

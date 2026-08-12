@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-08-12 — Arreglada la pestaña "Tráfico": había dejado de cargar
+
+**Tipo:** Fix
+
+Justo después de fusionar el cambio anterior (fases antes/durante/después),
+la pestaña "Tráfico" dejó de cargar en producción. La causa: mientras la
+migración que guarda el punto de "empezar a contar" no esté aplicada, la
+pestaña intentaba traer el histórico completo de visitas sin ningún límite
+— con tráfico real ya acumulado, eso podía tardar más de lo que aguanta la
+función del servidor. Ahora, en ese caso, se acota igual que antes de este
+cambio (desde que empezó el reto, o como mucho los últimos 3 días si el
+reto ni siquiera ha empezado todavía).
+
+---
+
 ## 2026-08-12 — La pestaña "Tráfico" ahora distingue antes/durante/después y se puede resetear el contador
 
 **Tipo:** Feature
