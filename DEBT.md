@@ -2,6 +2,43 @@
 
 ---
 
+## Recordatorio: aplicar `supabase/migrations/0005_config_trafico.sql` contra producción
+
+**Fecha:** 2026-08-12
+**Contexto:** Tarea "Fases de tráfico (antes/durante/después) + reset del
+contador" (DT-023, `docs/tecnico/decisiones-tecnicas.md`). Igual que
+`0003_modo_intento.sql` y `0004_visitas_web.sql` (ver entradas de deuda de
+este mismo fichero), la migración `0005_config_trafico.sql` (tabla
+`config_trafico`, fila única con `cuenta_desde`, sin política RLS para
+`anon`) no se aplica sola contra Supabase — hace falta pegarla a mano en el
+editor SQL del proyecto (o `supabase db push`) antes de que exista la tabla
+en la base de datos real.
+**Problema:** Con el código de esta tarea desplegado y la migración sin
+aplicar, cualquier `SELECT`/`UPDATE` contra `config_trafico` (lectura de
+`cuenta_desde` en `SeccionTrafico.tsx`, botón "Reset" →
+`resetearContadorTrafico` en `app/admin/actions.ts`) falla contra la BD real
+con un error de Postgres de "tabla no existe" (`relation "config_trafico"
+does not exist`, código `42P01`).
+**Impacto (mientras la migración no esté aplicada):** Sin regresión visible
+en la lectura: `SeccionTrafico.tsx` trata explícitamente ese error como "sin
+cutoff" (`obtenerCuentaDesde()` devuelve una fecha muy antigua sin loguear
+nada, ver comentario de cabecera de la función) — la pestaña "Tráfico" sigue
+funcionando exactamente igual que antes de esta tarea, con todo el histórico
+de `visitas_web` contando como "antes" (no hay intento con el que comparar
+fases todavía si tampoco existe ninguna fila de `intentos`, o se clasifica
+normalmente si sí la hay). El botón "Reset" sí falla de forma visible: la
+Server Action lanza `Error("No se pudo resetear el contador de tráfico.")`,
+que Next.js redacta en producción — Santi vería un error genérico al pulsar
+"Reset" hasta que la migración esté aplicada.
+**Solución propuesta:** Aplicar `supabase/migrations/0005_config_trafico.sql`
+contra el proyecto Supabase de producción. Una vez aplicada, tanto la lectura
+de fases como el botón "Reset" funcionan sin ningún cambio de código
+adicional.
+**Prioridad:** Alta — hasta que se aplique, el botón "Reset" no funciona
+(aunque el resto de la pestaña "Tráfico" y del admin no se ven afectados).
+
+---
+
 ## Recordatorio: aplicar `supabase/migrations/0004_visitas_web.sql` contra producción
 
 **Fecha:** 2026-08-12
