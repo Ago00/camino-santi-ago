@@ -205,6 +205,9 @@ export async function finalizarReto(formData: FormData): Promise<ResultadoPublic
   if (mensajeLimpio.length === 0) {
     return { ok: false, mensaje: "El mensaje de llegada no puede estar vacío." };
   }
+  if (mensajeLimpio.length > 1000) {
+    return { ok: false, mensaje: "El mensaje de llegada no puede superar 1000 caracteres." };
+  }
 
   const cambios: {
     fase: "llegada";

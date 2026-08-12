@@ -312,6 +312,13 @@ describe("Actividad — transiciones de fase", () => {
     expect(updateSpy).not.toHaveBeenCalled();
   });
 
+  it("finalizarReto devuelve el motivo sin actualizar si el mensaje supera 1000 caracteres", async () => {
+    intentoActivoMock = { id: 1, fase: "durante" };
+    const resultado = await finalizarReto(formDataFinalizar("a".repeat(1001)));
+    expect(resultado).toEqual({ ok: false, mensaje: expect.stringMatching(/1000 caracteres/i) });
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
   it("finalizarReto devuelve el motivo sin actualizar si no hay cookie de sesión", async () => {
     cookieSesionMock = undefined;
     const resultado = await finalizarReto(formDataFinalizar("Gracias"));

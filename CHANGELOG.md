@@ -2,6 +2,17 @@
 
 ---
 
+## 2026-08-12 — Fix de seguridad: límite de longitud del mensaje de llegada también en el servidor
+
+**Tipo:** Fix
+
+El mensaje de llegada solo se limitaba a 1000 caracteres en el navegador
+(fácilmente evitable). Ahora el servidor también lo rechaza si supera ese
+límite, igual que ya hacía con el resto de textos del panel — encontrado en
+la revisión de seguridad de la tarea anterior.
+
+---
+
 ## 2026-08-12 — "Finalizar" ahora muestra una preview real y permite añadir una foto de llegada
 
 **Tipo:** Feature
