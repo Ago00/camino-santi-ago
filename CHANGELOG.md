@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-08-12 — Nueva sección de presentación antes del formulario de comentarios
+
+**Tipo:** Feature
+
+En la pantalla previa al reto, antes del formulario de comentarios ahora
+aparece un kicker + título + texto de presentación, igual que ya tenía el
+formulario de intenciones justo encima ("Por qué lo hago" / "Por
+intenciones"). Editable desde `/admin` → Textos.
 ## 2026-08-12 — El gráfico de "Tráfico" ya no corta la hora de inicio ni el punto "ahora"
 
 **Tipo:** Fix
