@@ -99,12 +99,13 @@ export default function ModoLlegada({
           polling={false}
           entradasIniciales={entradasMinutoAMinuto}
           onSeleccionarPunto={setPuntoResaltado}
+          textos={textos}
         />
       </div>
 
       {/* tras llegar ya no se ofrecen intenciones; solo mensajes / felicitaciones */}
-      <ComentarioForm />
-      <MuroComentarios />
+      <ComentarioForm textos={textos} />
+      <MuroComentarios textos={textos} />
     </section>
   );
 }

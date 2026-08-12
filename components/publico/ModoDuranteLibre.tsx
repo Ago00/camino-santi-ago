@@ -117,12 +117,12 @@ export default function ModoDuranteLibre({
           ritmoMedio={ritmoMedio}
           textos={textos}
         />
-        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} />
+        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} />
       </div>
 
-      <IntencionForm />
-      <ComentarioForm />
-      <MuroComentarios />
+      <IntencionForm textos={textos} />
+      <ComentarioForm textos={textos} />
+      <MuroComentarios textos={textos} />
     </section>
   );
 }

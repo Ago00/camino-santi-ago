@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import type { Textos } from "@/lib/textos/obtener-textos";
 
 const PAGINA = 20;
 
@@ -21,7 +22,11 @@ interface RespuestaComentarios {
   siguienteOffset: number | null;
 }
 
-export default function MuroComentarios() {
+interface MuroComentariosProps {
+  textos: Textos;
+}
+
+export default function MuroComentarios({ textos }: MuroComentariosProps) {
   const [comentarios, setComentarios] = useState<ComentarioPublico[]>([]);
   const [siguienteOffset, setSiguienteOffset] = useState<number | null>(0);
   const [cargando, setCargando] = useState(false);
@@ -77,11 +82,11 @@ export default function MuroComentarios() {
           className="mx-auto flex items-center gap-1.5 rounded-full border px-4 py-2 text-[12.5px] font-medium disabled:opacity-60"
           style={{ borderColor: "#00000015", color: "#2F5D50", background: "#FBFAF7" }}
         >
-          <IconChevronDown size={13} /> {cargando ? "Cargando…" : "Cargar más comentarios"}
+          <IconChevronDown size={13} /> {cargando ? "Cargando…" : textos.muro_boton_cargar_mas}
         </button>
       ) : comentarios.length > 0 ? (
         <div className="pt-1 text-center text-[11.5px]" style={{ color: "#9AA29C" }}>
-          Eso es todo por ahora
+          {textos.muro_mensaje_fin}
         </div>
       ) : null}
     </div>

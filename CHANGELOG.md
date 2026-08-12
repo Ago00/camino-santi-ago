@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-08-12 — Los textos de los formularios de intención/comentario y de los feeds ya se pueden editar desde el panel
+
+**Tipo:** Feature
+
+Los textos del formulario "Deja una intención" (título, subtítulo,
+placeholders, etiqueta del checkbox de anónimo, botón), del formulario
+"¡Comenta!" (título, placeholders, etiquetas público/privado, botón), del
+muro de comentarios ("Cargar más comentarios" / "Eso es todo por ahora") y
+del feed "Minuto a minuto" (kicker, "Cargar más", mensaje de lista vacía)
+estaban fijos en el código. Ahora son editables desde `/admin` → Textos,
+como el resto de textos de la web pública. El mensaje de error de ambos
+formularios ("No se ha podido enviar. Inténtalo de nuevo.") comparte una
+única entrada editable, porque es el mismo texto en los dos sitios.
+
+---
+
 ## 2026-08-12 — Los textos de la pantalla "en directo" y de las estadísticas ya se pueden editar desde el panel
 
 **Tipo:** Mejora
