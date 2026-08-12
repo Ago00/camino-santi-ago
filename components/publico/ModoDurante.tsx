@@ -24,6 +24,7 @@ import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
 import { bandaHoraria } from "@/lib/cielo";
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoGuiado } from "@/lib/types";
+import type { Textos } from "@/lib/textos/obtener-textos";
 
 const C = { ink: "#1B211D", ember: "#D9773B" };
 const POLLING_MS = 30_000;
@@ -42,6 +43,13 @@ interface ModoDuranteProps {
   trazaCoords: [number, number][];
   /** Histórico completo de puntos GPS del intento, cargado server-side (DT-021). */
   puntosGpsIniciales: PuntoGps[];
+  /**
+   * Textos editables desde /admin (fontanería previa a repartir su uso real
+   * entre Mojon/Stats/CintaEnDirecto/formularios/MinutoAMinuto — cada uno lo
+   * consume en su propia tarea, este componente solo lo recibe y lo tiene
+   * disponible para pasarlo hacia abajo).
+   */
+  textos: Textos;
 }
 
 export default function ModoDurante({
@@ -49,6 +57,7 @@ export default function ModoDurante({
   iniciadoEn,
   trazaCoords,
   puntosGpsIniciales,
+  textos,
 }: ModoDuranteProps) {
   const [progreso, setProgreso] = useState(progresoInicial);
   const [puntosGps, setPuntosGps] = useState<PuntoGps[]>(puntosGpsIniciales);
