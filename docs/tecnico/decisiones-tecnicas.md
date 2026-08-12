@@ -1493,6 +1493,53 @@ vez server-side, igual que el resto de datos de esa pantalla. La entrada de
 de esta misma tarea, no como deuda pendiente). Quality gates
 (`typecheck`/`lint`/`test`) verificadas en verde tras el fix.
 
+### Nota de cierre (2026-08-12) — bug de bucle infinito encontrado en verificación visual post-merge del PR
+
+Con el PR ya abierto (#24) y Reviewer/Seguridad aprobados, el usuario pidió
+un ajuste cosmético menor (icono de la meta: silueta de la Catedral en vez
+de ⛪). Al verificar ese cambio en el navegador (`docs/LESSONS.md`: ninguna
+quality gate detecta problemas puramente visuales) se encontró que la web
+pública **entera** (pantallas "antes"/"durante"/"llegada") entraba en un
+bucle infinito de renderizado ("Maximum update depth exceeded") nada más
+cargar — un bug real ya presente en el código de este mismo DT-021, no
+introducido por el ajuste del icono (confirmado revirtiendo el icono a
+solas y reproduciendo el bucle igual).
+
+**Causa raíz.** `components/mapa/Mapa.tsx` desestructuraba `puntosGps = []`
+y `trazaOficialComparacion = []` directamente en los parámetros de la
+función. Un literal `[]` como valor por defecto crea un array **nuevo** en
+cada render cuando el caller no pasa la prop — y ningún caller público pasa
+`trazaOficialComparacion` (exclusiva del admin), y `ModoAntes.tsx` tampoco
+pasa `puntosGps`. Ambas props son dependencias del `useEffect` que recalcula
+el overlay del mapa (línea ~344) y ese efecto sí hace `setState`: array
+nuevo en cada render → efecto se dispara en cada render → `setState` →
+nuevo render → array nuevo otra vez. Bucle infinito, sin ningún error de
+compilación ni test que lo detectara — exactamente el mismo patrón de la
+lección de Tailwind/`postcss.config.mjs` en `docs/LESSONS.md`: todo verde,
+comportamiento roto, solo visible abriendo un navegador real.
+
+**Fix.** Dos constantes a nivel de módulo (`SIN_PUNTOS_GPS`,
+`SIN_TRAZA_OFICIAL_COMPARACION`), reutilizadas como valor por defecto en vez
+de un literal `[]` recreado en cada render — misma referencia entre
+renders mientras el caller no pase nada explícito, rompe el ciclo.
+Verificado en el navegador (Browser pane): sin el fix, `docs de consola`
+mostraban decenas de errores de bucle infinito nada más cargar `/`; con el
+fix, cero errores de ese tipo en una recarga limpia. Quality gates
+(`typecheck`/`lint`/`test`, 348/348) en verde tras el fix.
+
+**Por qué no se detectó en el pipeline normal.** Reviewer no tenía acceso a
+herramienta de navegador en su entorno delegado (lo señaló explícitamente en
+su informe) y confió en el reporte de tests del Implementador; Seguridad
+tampoco ejecuta el navegador (su foco es OWASP, no renderizado). Ninguna de
+las 348 pruebas unitarias/de integración monta el componente `Mapa` en un
+DOM real con React (usan mocks de Supabase, no renderizado de componentes
+cliente), así que un bug de re-render en bucle no tiene ningún test que lo
+capture. Queda como recordatorio para el Orquestador: en tareas que tocan
+`components/mapa/Mapa.tsx` (o cualquier componente cliente con `useEffect`
++ props de tipo array/objeto), la verificación visual en navegador antes de
+cerrar no es opcional aunque Reviewer/Seguridad hayan aprobado — ver
+`docs/LESSONS.md` para el patrón general ya registrado.
+
 **Bloqueante de Seguridad (2026-08-12) — coste/DoS (A04/A05), resuelto.**
 Seguridad revisó la implementación (con el fix de `ModoLlegada.tsx` ya
 incluido) y encontró que `ModoDuranteConectado` y `ModoLlegadaConectado`

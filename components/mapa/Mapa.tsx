@@ -51,6 +51,20 @@ const BOUNDS: [[number, number], [number, number]] = [
 // (admin, no-op en el mapa público) — azul acero, distinto del naranja
 // #D9773B ya asociado al recorrido real "andado".
 const COLOR_TRAZA_OFICIAL_COMPARACION = "#3A6EA5";
+
+// Referencias estables para los valores por defecto de props de tipo array:
+// un literal `[]` en la propia desestructuración crea un array NUEVO en cada
+// render, y como `puntosGps`/`trazaOficialComparacion` son dependencias del
+// useEffect de recalculo del overlay (más abajo) que sí hace setState, un
+// array "nuevo" en cada render dispara el efecto en cada render, que hace
+// setState, que dispara un render, que crea otro array nuevo — bucle
+// infinito ("Maximum update depth exceeded") en cualquier caller que no pase
+// estas props explícitamente (ModoAntes.tsx, y ningún caller público pasa
+// `trazaOficialComparacion`). Un array vacío a nivel de módulo, reutilizado
+// siempre que no llega ninguno explícito, mantiene la misma referencia entre
+// renders y rompe el ciclo.
+const SIN_PUNTOS_GPS: { lat: number; lon: number }[] = [];
+const SIN_TRAZA_OFICIAL_COMPARACION: [number, number][] = [];
 const COLOR_PUNTO_REFERENCIA = COLOR_TRAZA_OFICIAL_COMPARACION;
 
 const TINTES: Record<BandaHoraria, string> = {
@@ -130,10 +144,10 @@ export default function Mapa({
   modo = "directo",
   variante = "ruta",
   posicionActual = null,
-  puntosGps = [],
+  puntosGps = SIN_PUNTOS_GPS,
   ultimaSenalTexto = null,
   puntoResaltado = null,
-  trazaOficialComparacion = [],
+  trazaOficialComparacion = SIN_TRAZA_OFICIAL_COMPARACION,
   puntoReferencia = null,
 }: MapaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -454,9 +468,21 @@ export default function Mapa({
           <circle cx={inicioPx.x} cy={inicioPx.y} r={5} fill="#8A928C" stroke="#fff" strokeWidth={2} />
         )}
         {finPx && (
-          <text x={finPx.x} y={finPx.y + 7} textAnchor="middle" fontSize={22} fill="#C9A24B">
-            ⛪
-          </text>
+          // Silueta simplificada de la fachada del Obradoiro (dos torres
+          // barrocas) en vez de un emoji genérico de iglesia — pedido
+          // explícito de Santi. Mismo dorado que el resto del proyecto
+          // asocia a "meta" (#C9A24B), contorno blanco para legibilidad
+          // sobre cualquier fondo del mapa (mismo criterio que el resto de
+          // marcadores del overlay).
+          <g transform={`translate(${finPx.x}, ${finPx.y})`} stroke="#fff" strokeWidth={1} strokeLinejoin="round">
+            <rect x={-8} y={-16} width={5} height={15} fill="#C9A24B" />
+            <rect x={3} y={-16} width={5} height={15} fill="#C9A24B" />
+            <polygon points="-8,-16 -5.5,-21 -3,-16" fill="#C9A24B" />
+            <polygon points="3,-16 5.5,-21 8,-16" fill="#C9A24B" />
+            <rect x={-9} y={-3} width={18} height={11} rx={1} fill="#C9A24B" />
+            <circle cx={0} cy={0} r={2.2} fill="#fff" stroke="none" />
+            <path d="M -2.5,8 Q 0,3.5 2.5,8 Z" fill="#fff" stroke="none" />
+          </g>
         )}
         {/* Línea discontinua entre la posición real y el punto de referencia
             (DT-021, solo admin): antes que los marcadores, para que ambos
