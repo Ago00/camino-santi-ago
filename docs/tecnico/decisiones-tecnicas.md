@@ -1595,3 +1595,14 @@ sin doble consulta a Supabase). Quality gates reverificadas en verde
 5. **Compatibilidad con la migración sin aplicar**, mismo criterio que 0003/0004 (ver DEBT.md): si `config_trafico` no existe todavía, `obtenerCuentaDesde()` trata el error de Supabase como "sin cutoff" (fecha muy antigua) sin loguear nada — es un estado esperado, no un error real. El botón "Reset" sí falla de forma visible en ese caso (documentado en DEBT.md).
 
 **Deuda conocida de antemano:** igual que `0003_modo_intento.sql` (ver `DEBT.md`), la migración `0004_visitas_web.sql` no se aplica sola — Santi debe pegarla en el SQL Editor de Supabase antes de que la pestaña tenga datos reales. El Implementador debe dejar el mismo tipo de salvaguarda que ya existe en `/api/track` ante la posibilidad de que la tabla no exista todavía en producción en el momento del deploy (no debe romper la carga de `/` ni del admin).
+
+### Nota de cierre (2026-08-12) — bug real en producción: la pestaña dejaba de cargar
+
+Con la tarea ya fusionada, Santi reportó que la pestaña "Tráfico" había dejado de cargar en producción. Causa raíz: el punto 5 de esta decisión ("sin cutoff" cuando `config_trafico`/migración `0005` no está aplicada) usaba una fecha fija muy antigua (`new Date(0)`) como fallback — con tráfico real acumulado desde que DT-022 se desplegó, eso significa traer el histórico **completo** de `visitas_web` sin ningún límite temporal, en hasta 50 páginas **secuenciales** de 1.000 filas cada una (`obtenerTodasLasFilas`, `lib/supabase/paginacion.ts`) — de sobra para agotar el timeout de la función serverless antes de terminar de responder. Es exactamente el vector de coste que Seguridad ya había señalado como observación no bloqueante en su revisión de esta tarea (no es una vulnerabilidad OWASP, pero sí un problema real de disponibilidad).
+
+**Fix:** `obtenerCuentaDesde()` deja de caer a "desde siempre" cuando `config_trafico` no está disponible. En su lugar, mismo criterio en cascada:
+1. `config_trafico.cuenta_desde` si la migración ya está aplicada (comportamiento normal).
+2. `started_at` del intento relevante si existe — mismo límite que ya tenía DT-022 antes de esta tarea, ya probado en producción sin este problema.
+3. Solo si tampoco hay ningún intento (nunca se ha pulsado "Iniciar"), un tope fijo de `LIMITE_SIN_CONFIG_DIAS` días (3) hacia atrás desde `ahora` — nunca sin límite.
+
+Aplicar `supabase/migrations/0005_config_trafico.sql` contra producción sigue siendo la solución de fondo (cierra la deuda ya registrada); este fix es la salvaguarda para que la pestaña nunca vuelva a quedar inutilizable mientras esa migración no esté aplicada.

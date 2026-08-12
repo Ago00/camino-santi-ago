@@ -43,8 +43,15 @@ const ETIQUETAS_FASE: Record<FaseTraficoVisita, string> = {
   despues: "Después",
 };
 
-/** Sin cutoff: usado cuando `config_trafico` no existe todavía (migración sin aplicar) o no tiene fila. */
-const CUENTA_DESDE_FALLBACK = new Date(0);
+/**
+ * Tope de días hacia atrás cuando no hay `config_trafico` NI ningún intento
+ * del que colgar el corte (nunca se ha pulsado "Iniciar" todavía) — evita
+ * traer el histórico COMPLETO de `visitas_web` sin límite en ese caso (ver
+ * `obtenerCuentaDesde`). 3 días es de sobra para cualquier tráfico de
+ * pruebas antes del reto real, sin arriesgar el timeout de la función
+ * serverless con semanas de tráfico acumulado.
+ */
+const LIMITE_SIN_CONFIG_DIAS = 3;
 
 const ANCHO_POR_TRAMO_PX = 22;
 const ALTO_GRAFICO_PX = 140;
@@ -69,8 +76,6 @@ export default async function SeccionTrafico({ granularidad, faseQuery }: Seccio
   const supabase = getSupabaseAdmin();
   const ahora = new Date();
 
-  const cuentaDesde = await obtenerCuentaDesde();
-
   const { data: intentoActivo } = await supabase
     .from("intentos")
     .select("id, started_at, ended_at")
@@ -94,6 +99,8 @@ export default async function SeccionTrafico({ granularidad, faseQuery }: Seccio
         endedAt: intentoRelevante.ended_at ? new Date(intentoRelevante.ended_at) : null,
       }
     : null;
+
+  const cuentaDesde = await obtenerCuentaDesde(intentoParaFase, ahora);
 
   const visitas = await obtenerTodasLasFilas<VisitaWeb>((rangoDesde, rangoHasta) =>
     supabase
@@ -168,17 +175,25 @@ export default async function SeccionTrafico({ granularidad, faseQuery }: Seccio
 /**
  * Lee `config_trafico` (fila única, id=1). Si la tabla o la fila no existen
  * todavía (migración 0005 sin aplicar contra producción, mismo criterio que
- * 0003/0004 — ver DEBT.md), se trata como "sin cutoff": todo el histórico de
- * `visitas_web` cuenta, comportamiento idéntico al de antes de esta tarea.
- * Sin log — es un estado esperado mientras la migración no se aplique, no un
- * error real.
+ * 0003/0004 — ver DEBT.md), NO cae a "desde siempre": eso significaría traer
+ * el histórico COMPLETO de `visitas_web` sin límite temporal, con tráfico
+ * real acumulado, en 50 páginas secuenciales de 1.000 filas
+ * (`obtenerTodasLasFilas`) — de sobra para agotar el timeout de la función
+ * serverless (bug real: la pestaña dejó de cargar en producción justo por
+ * esto, ver nota de cierre de DT-023). En su lugar cae al mismo criterio que
+ * tenía DT-022 antes de esta tarea: acotado al inicio del intento relevante
+ * si existe. Solo si tampoco hay ningún intento (nunca se ha iniciado nada
+ * todavía) cae a los últimos `LIMITE_SIN_CONFIG_DIAS` días desde `ahora` —
+ * nunca "desde siempre" sin ningún límite. Sin log — es un estado esperado
+ * mientras la migración no se aplique, no un error real.
  */
-async function obtenerCuentaDesde(): Promise<Date> {
+async function obtenerCuentaDesde(intento: IntentoParaFase | null, ahora: Date): Promise<Date> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.from("config_trafico").select("cuenta_desde").eq("id", 1).maybeSingle();
 
-  if (error || !data) return CUENTA_DESDE_FALLBACK;
-  return new Date(data.cuenta_desde);
+  if (!error && data) return new Date(data.cuenta_desde);
+  if (intento?.startedAt) return intento.startedAt;
+  return new Date(ahora.getTime() - LIMITE_SIN_CONFIG_DIAS * 24 * 60 * 60 * 1000);
 }
 
 /**
