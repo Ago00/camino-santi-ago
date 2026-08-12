@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import type { Textos } from "@/lib/textos/obtener-textos";
 
 const PAGINA = 20;
 const POLLING_MS = 30_000;
@@ -39,12 +40,14 @@ interface MinutoAMinutoProps {
   /** Entradas ya cargadas server-side, para evitar un primer fetch en "llegada". Opcional. */
   entradasIniciales?: EntradaMinutoAMinutoPublica[];
   onSeleccionarPunto: (punto: PuntoResaltado | null) => void;
+  textos: Textos;
 }
 
 export default function MinutoAMinuto({
   polling,
   entradasIniciales,
   onSeleccionarPunto,
+  textos,
 }: MinutoAMinutoProps) {
   const [entradas, setEntradas] = useState<EntradaMinutoAMinutoPublica[]>(entradasIniciales ?? []);
   const [siguienteOffset, setSiguienteOffset] = useState<number | null>(
@@ -127,7 +130,7 @@ export default function MinutoAMinuto({
           </span>
         )}
         <div className="font-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: C.muted }}>
-          Minuto a minuto
+          {textos.minuto_a_minuto_kicker}
         </div>
       </div>
 
@@ -193,11 +196,11 @@ export default function MinutoAMinuto({
           className="mx-auto flex items-center gap-1.5 rounded-full border px-4 py-2 text-[12.5px] font-medium disabled:opacity-60"
           style={{ borderColor: "#00000015", color: "#2F5D50", background: "#FBFAF7" }}
         >
-          {cargando ? "Cargando…" : "Cargar más"}
+          {cargando ? "Cargando…" : textos.minuto_a_minuto_boton_cargar_mas}
         </button>
       ) : entradas.length === 0 ? (
         <div className="pt-1 text-center text-[11.5px]" style={{ color: "#9AA29C" }}>
-          Todavía no hay ninguna entrada
+          {textos.minuto_a_minuto_mensaje_vacio}
         </div>
       ) : null}
     </div>

@@ -132,12 +132,12 @@ export default function ModoDurante({
           kmAndados={formatearKm(progreso.odometroKm)}
           ritmoMedio={ritmoMedio}
         />
-        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} />
+        <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} />
       </div>
 
-      <IntencionForm />
-      <ComentarioForm />
-      <MuroComentarios />
+      <IntencionForm textos={textos} />
+      <ComentarioForm textos={textos} />
+      <MuroComentarios textos={textos} />
     </section>
   );
 }

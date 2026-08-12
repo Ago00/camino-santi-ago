@@ -107,11 +107,11 @@ export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
         </Hito>
 
         <Hito>
-          <IntencionForm />
+          <IntencionForm textos={textos} />
         </Hito>
 
         <Hito>
-          <ComentarioForm />
+          <ComentarioForm textos={textos} />
         </Hito>
 
         <Hito ultimo>

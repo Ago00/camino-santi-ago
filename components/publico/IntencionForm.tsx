@@ -5,12 +5,17 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import type { Textos } from "@/lib/textos/obtener-textos";
 
 const C = { violet: "#3B357A" };
 
 type Estado = "idle" | "enviando" | "enviado" | "error";
 
-export default function IntencionForm() {
+interface IntencionFormProps {
+  textos: Textos;
+}
+
+export default function IntencionForm({ textos }: IntencionFormProps) {
   const [anon, setAnon] = useState(false);
   const [texto, setTexto] = useState("");
   const [nombre, setNombre] = useState("");
@@ -42,18 +47,18 @@ export default function IntencionForm() {
       <div className="flex items-center gap-2">
         <IconLock size={15} style={{ color: C.violet }} />
         <h3 className="[font-family:var(--font-fraunces)] text-[19px] font-semibold" style={{ color: "#1B211D" }}>
-          Deja una intención
+          {textos.intencion_form_titulo}
         </h3>
       </div>
       <p className="mt-1 text-[13px]" style={{ color: "#7C857F" }}>
-        Solo la leeré yo. Camino por ella.
+        {textos.intencion_form_subtitulo}
       </p>
       <textarea
         rows={2}
         value={texto}
         onChange={(e) => setTexto(e.target.value)}
         maxLength={1000}
-        placeholder="Por quién o por qué quieres que camine…"
+        placeholder={textos.intencion_form_placeholder_texto}
         className="mt-3 w-full resize-none rounded-lg border bg-white px-3 py-2 text-[14px] outline-none placeholder:text-[#A8AEA8]"
         style={{ borderColor: "#00000015" }}
       />
@@ -68,7 +73,7 @@ export default function IntencionForm() {
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
             maxLength={80}
-            placeholder="Tu nombre"
+            placeholder={textos.intencion_form_placeholder_nombre}
             className="w-full rounded-lg border bg-white px-3 py-2 text-[14px] outline-none placeholder:text-[#A8AEA8]"
             style={{ borderColor: "#00000015" }}
           />
@@ -78,7 +83,7 @@ export default function IntencionForm() {
       <div className="mt-3 flex items-center justify-between">
         <label className="flex items-center gap-2 text-[13px]" style={{ color: "#5B6560" }}>
           <input type="checkbox" className="accent-[#3B357A]" checked={anon} onChange={(e) => setAnon(e.target.checked)} />
-          Enviarla de forma anónima
+          {textos.intencion_form_label_anonimo}
         </label>
         <button
           onClick={enviar}
@@ -86,18 +91,18 @@ export default function IntencionForm() {
           className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50"
           style={{ background: C.violet }}
         >
-          <IconSend size={14} /> {estado === "enviando" ? "Enviando…" : "Ofrecer"}
+          <IconSend size={14} /> {estado === "enviando" ? "Enviando…" : textos.intencion_form_boton_enviar}
         </button>
       </div>
 
       {estado === "enviado" && (
         <p className="mt-2 text-[12.5px]" style={{ color: "#2F5D50" }}>
-          Gracias, tu intención ha quedado guardada.
+          {textos.intencion_form_mensaje_exito}
         </p>
       )}
       {estado === "error" && (
         <p className="mt-2 text-[12.5px]" style={{ color: "#B03A2E" }}>
-          No se ha podido enviar. Inténtalo de nuevo.
+          {textos.mensaje_error_generico}
         </p>
       )}
     </div>
