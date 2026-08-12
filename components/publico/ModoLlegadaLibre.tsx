@@ -24,6 +24,7 @@ import MuroComentarios from "@/components/publico/MuroComentarios";
 import MinutoAMinuto, { type EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoLibre } from "@/lib/types";
+import type { Textos } from "@/lib/textos/obtener-textos";
 
 const C = { ink: "#1B211D", gold: "#C9A24B" };
 
@@ -42,6 +43,8 @@ interface ModoLlegadaLibreProps {
   /** Momento en que se cerró el intento (ended_at) — referencia final del
    * tiempo en marcha y del ritmo medio, congelados desde la llegada. */
   endedAt: string | null;
+  /** Solo se leen `llegada_libre_kicker`/`llegada_libre_titulo` — editables desde /admin. */
+  textos: Textos;
 }
 
 export default function ModoLlegadaLibre({
@@ -51,6 +54,7 @@ export default function ModoLlegadaLibre({
   entradasMinutoAMinuto,
   startedAt,
   endedAt,
+  textos,
 }: ModoLlegadaLibreProps) {
   const [puntoResaltado, setPuntoResaltado] = useState<{ lat: number; lon: number; hora: string } | null>(null);
 
@@ -67,10 +71,10 @@ export default function ModoLlegadaLibre({
         style={{ background: "linear-gradient(180deg,#F3E6C9,#EFE8DA)", border: `1px solid ${C.gold}44` }}
       >
         <div className="font-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: C.gold }}>
-          Intento completado
+          {textos.llegada_libre_kicker}
         </div>
         <h2 className="[font-family:var(--font-fraunces)] mt-1 text-[30px] font-semibold" style={{ color: C.ink }}>
-          ¡Ha llegado!
+          {textos.llegada_libre_titulo}
         </h2>
         <p className="mx-auto mt-4 max-w-xs text-[14px] leading-relaxed" style={{ color: "#3C433E" }}>
           {mensajeLlegada}

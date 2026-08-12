@@ -15,6 +15,10 @@ export const CLAVES_TEXTOS = [
   "por_intenciones",
   "cierre_antes",
   "mensaje_llegada_default",
+  "llegada_kicker",
+  "llegada_titulo",
+  "llegada_libre_kicker",
+  "llegada_libre_titulo",
 ] as const;
 
 export type ClaveTexto = (typeof CLAVES_TEXTOS)[number];
@@ -31,4 +35,8 @@ export const TEXTOS_POR_DEFECTO: Record<ClaveTexto, string> = {
     "Cuando empiece la marcha, aquí podrás seguirla en directo, kilómetro a kilómetro.",
   mensaje_llegada_default:
     "Gracias por acompañarme y por cada intención. Todo lo caminado queda aquí como recuerdo.",
+  llegada_kicker: "Camino completado",
+  llegada_titulo: "¡Ha llegado a Santiago!",
+  llegada_libre_kicker: "Intento completado",
+  llegada_libre_titulo: "¡Ha llegado!",
 };

@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-08-12 — Los textos de la pantalla de llegada ya se pueden editar desde el panel
+
+**Tipo:** Feature
+
+En la pantalla de "llegada", el título y la etiqueta de la cinta superior
+("Camino completado" / "¡Ha llegado a Santiago!" en modo guiado, "Intento
+completado" / "¡Ha llegado!" en modo libre) estaban fijos en el código. Ahora
+son editables desde `/admin` → Textos, como el resto de textos de la web
+pública. El mensaje de agradecimiento de debajo ya era editable desde antes.
+
+---
+
 ## 2026-08-12 — Icono de la meta y corrección de un bug que congelaba la web pública
 
 **Tipo:** Fix + ajuste visual
