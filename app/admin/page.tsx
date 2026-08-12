@@ -14,7 +14,12 @@
 
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { esFiltroComentarioValido, esTabValida, type TabAdmin } from "@/lib/admin/navegacion";
+import {
+  esFiltroComentarioValido,
+  esGranularidadValida,
+  esTabValida,
+  type TabAdmin,
+} from "@/lib/admin/navegacion";
 import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
 import TabsAdmin from "@/components/admin/TabsAdmin";
 import BotonCerrarSesion from "@/components/admin/BotonCerrarSesion";
@@ -24,6 +29,7 @@ import SeccionMapa from "@/components/admin/SeccionMapa";
 import SeccionIntenciones from "@/components/admin/SeccionIntenciones";
 import SeccionComentarios from "@/components/admin/SeccionComentarios";
 import SeccionMinutoAMinuto from "@/components/admin/SeccionMinutoAMinuto";
+import SeccionTrafico from "@/components/admin/SeccionTrafico";
 import SeccionTextos from "@/components/admin/SeccionTextos";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +54,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   const filtroComentarios = esFiltroComentarioValido(params.filtroComentarios)
     ? params.filtroComentarios
     : "todos";
+  const granularidad = esGranularidadValida(params.gran) ? params.gran : "30m";
 
   return (
     <div className="min-h-dvh w-full" style={{ background: C.paper, color: C.ink }}>
@@ -66,6 +73,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           {tab === "intenciones" && <SeccionIntenciones offset={intOffset} />}
           {tab === "comentarios" && <SeccionComentarios filtro={filtroComentarios} />}
           {tab === "minutoaminuto" && <SeccionMinutoAMinuto />}
+          {tab === "trafico" && <SeccionTrafico granularidad={granularidad} />}
           {tab === "textos" && <SeccionTextos />}
         </main>
       </div>

@@ -134,6 +134,33 @@ Supabase Storage. Todas las subidas pasan por `lib/supabase/storage.ts` con
 el cliente `service role` (bypassa RLS de Storage), nunca desde el cliente
 directamente.
 
+### `visitas_web`
+
+Una visita a la web pública, capturada server-side en `proxy.ts` (DT-022):
+alimenta la pestaña "Tráfico" del panel admin.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | bigint PK | Generado automáticamente |
+| `ruta` | text | Ruta de la petición (hoy siempre `/`, la web pública no tiene más rutas) |
+| `ts` | timestamptz | Momento de la visita |
+| `visitante_id` | text | Id anónimo de la cookie funcional (`proxy.ts`); sin fingerprinting, sin datos personales |
+| `referer` | text | Cabecera `Referer` de la petición; `null` = directo |
+| `created_at` | timestamptz | Automático |
+
+**Invariante de privacidad:** igual que `intenciones` — no existe ninguna
+política RLS de `anon` sobre esta tabla. Solo el service role (servidor)
+lee o escribe. La inserción va siempre desde `proxy.ts` con `getSupabaseAdmin()`,
+nunca desde el cliente anon directo.
+
+**Sin FK a `intentos`.** No hay relación explícita: la pestaña "Tráfico"
+acota el rango filtrando `ts >= intentos.started_at` del intento activo en
+el momento de la consulta, no con una columna `intento_id`. Las visitas
+capturadas antes de que exista ningún intento (o entre intentos) quedan en
+la tabla sin más — sin política de retención (igual que el resto de tablas
+del proyecto), coherente con que tampoco se filtran ni se resetean al
+"Reiniciar".
+
 ---
 
 ## Relaciones
@@ -143,7 +170,7 @@ intentos (1) ──< posiciones (N)          intento_id → intentos.id
 intentos (1) ──< minuto_a_minuto (N)     intento_id → intentos.id
 ```
 
-Las demás tablas (`intenciones`, `comentarios`, `textos`) son independientes.
+Las demás tablas (`intenciones`, `comentarios`, `textos`, `visitas_web`) son independientes.
 
 ---
 
@@ -157,13 +184,16 @@ Las demás tablas (`intenciones`, `comentarios`, `textos`) son independientes.
 | `comentarios` | SELECT `publico AND NOT oculto`; INSERT sin poder fijar `oculto` | ALL |
 | `textos` | SELECT | ALL |
 | `minuto_a_minuto` | SELECT solo entradas del intento activo (`NOT cerrado`) | ALL |
+| `visitas_web` | Ninguna política (cero acceso) | ALL |
 
-RLS se activa en las 5 tablas en `supabase/migrations/0001_esquema_inicial.sql`
-y en `minuto_a_minuto` en `supabase/migrations/0002_minuto_a_minuto.sql`
-(DT-013). El service role bypassa RLS por diseño de Supabase (no necesita
-políticas explícitas); las políticas de los ficheros son únicamente para el
-rol `anon`. Storage (bucket `minuto-a-minuto`) no tiene políticas propias:
-es un bucket público, y todas las subidas pasan por el cliente service role.
+RLS se activa en las 5 tablas iniciales en `supabase/migrations/0001_esquema_inicial.sql`,
+en `minuto_a_minuto` en `supabase/migrations/0002_minuto_a_minuto.sql`
+(DT-013), y en `visitas_web` en `supabase/migrations/0004_visitas_web.sql`
+(DT-022, mismo criterio de cero acceso público que `intenciones`). El
+service role bypassa RLS por diseño de Supabase (no necesita políticas
+explícitas); las políticas de los ficheros son únicamente para el rol
+`anon`. Storage (bucket `minuto-a-minuto`) no tiene políticas propias: es
+un bucket público, y todas las subidas pasan por el cliente service role.
 
 Las columnas nuevas de `intentos` (`modo`, `destino_lat`, `destino_lon`,
 `supabase/migrations/0003_modo_intento.sql`, DT-016) no cambian la política
@@ -176,9 +206,10 @@ intento activo, ya visible en su totalidad para `anon`.
 
 **Ubicación:** `supabase/migrations/0001_esquema_inicial.sql` (5 tablas
 iniciales), `supabase/migrations/0002_minuto_a_minuto.sql` (tabla
-`minuto_a_minuto` + bucket de Storage, DT-013) y
+`minuto_a_minuto` + bucket de Storage, DT-013),
 `supabase/migrations/0003_modo_intento.sql` (columnas `modo`/`destino_lat`/
-`destino_lon` de `intentos`, DT-016).
+`destino_lon` de `intentos`, DT-016) y
+`supabase/migrations/0004_visitas_web.sql` (tabla `visitas_web`, DT-022).
 
 **Convención de carpeta:** `supabase/migrations/NNNN_slug.sql`, numeración
 secuencial de 4 dígitos — la misma que usa la CLI oficial de Supabase
@@ -199,7 +230,7 @@ solo server-side) y `lib/supabase/public.ts` (`getSupabasePublic()`, anon key
 — sujeto a RLS). Ambos:
 
 - Comparten el tipo `BaseDeDatos` (definido en `admin.ts`, importado por
-  `public.ts`), espejo tipado de las 5 tablas de este documento.
+  `public.ts`), espejo tipado de las tablas de este documento.
 - Se construyen de forma perezosa: la primera llamada a `getSupabaseAdmin()`
   / `getSupabasePublic()` lee las env vars y lanza si faltan. Importar el
   módulo, o que `pnpm build` recorra el árbol de imports, nunca falla por

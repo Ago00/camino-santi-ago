@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-08-12 — Nueva pestaña "Tráfico" en el panel: cuánta gente visita la web durante el reto
+
+**Tipo:** Feature
+
+Nueva pestaña "Tráfico" en `/admin` para ver, mientras Santi camina, cuánta
+gente entra a la web pública: visitas totales y visitantes distintos desde
+que empezó el reto, un gráfico con la evolución en el tiempo (con selector
+de granularidad: cada 5 minutos, cada 30 minutos o cada hora) y un desglose
+por página y por origen (de dónde vino cada visitante). No requiere ninguna
+cookie de consentimiento ni recoge datos personales — solo cuenta visitas de
+forma anónima.
+
+---
+
 ## 2026-08-12 — Los textos de la pantalla de llegada ya se pueden editar desde el panel
 
 **Tipo:** Feature

@@ -1,7 +1,7 @@
 /**
  * Cliente Supabase con service_role key — exclusivamente server-side.
  *
- * Da acceso ALL a las 5 tablas (bypassa RLS), así que nunca debe importarse
+ * Da acceso ALL a todas las tablas (bypassa RLS), así que nunca debe importarse
  * desde código que se ejecute en el navegador. Se usa en route handlers y
  * server actions: `/api/track`, `/admin/actions.ts`, etc.
  *
@@ -25,7 +25,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Comentario, Intencion, Intento, MinutoAMinuto, Posicion, Texto } from "@/lib/types";
+import type { Comentario, Intencion, Intento, MinutoAMinuto, Posicion, Texto, VisitaWeb } from "@/lib/types";
 
 /**
  * Esquema de BD tipado para el cliente Supabase (espejo de lib/types.ts).
@@ -87,6 +87,12 @@ export interface BaseDeDatos {
         Row: Pick<MinutoAMinuto, keyof MinutoAMinuto>;
         Insert: Omit<MinutoAMinuto, "id" | "created_at" | "updated_at">;
         Update: Partial<MinutoAMinuto>;
+        Relationships: [];
+      };
+      visitas_web: {
+        Row: Pick<VisitaWeb, keyof VisitaWeb>;
+        Insert: Omit<VisitaWeb, "id" | "created_at">;
+        Update: Partial<VisitaWeb>;
         Relationships: [];
       };
     };
