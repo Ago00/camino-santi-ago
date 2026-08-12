@@ -1581,3 +1581,42 @@ sin doble consulta a Supabase). Quality gates reverificadas en verde
 5. **Sin intento activo** (fase `antes`, sin `started_at`): la pestaña debe manejarlo sin romper, mostrando un estado vacío explícito — no hay rango que acotar.
 
 **Deuda conocida de antemano:** igual que `0003_modo_intento.sql` (ver `DEBT.md`), la migración `0004_visitas_web.sql` no se aplica sola — Santi debe pegarla en el SQL Editor de Supabase antes de que la pestaña tenga datos reales. El Implementador debe dejar el mismo tipo de salvaguarda que ya existe en `/api/track` ante la posibilidad de que la tabla no exista todavía en producción en el momento del deploy (no debe romper la carga de `/` ni del admin).
+
+---
+
+## DT-023 — Tráfico por fases (antes/durante/después) + reset del contador: cutoff no destructivo
+
+**Fecha:** 2026-08-12 · **Tarea:** Desglosar "Tráfico" en pestañas antes/durante/después + poder resetear el contador · **Decisión de arquitectura**
+
+**Contexto.** Dos peticiones de Santi sobre DT-022: (a) ver el tráfico separado en pestañas por fase del reto (antes/durante/después), no solo el rango `durante`; (b) poder "resetear" el contador — está probando ahora mismo y no quiere que esas visitas de prueba cuenten cuando el reto sea real.
+
+**Decisión.**
+
+1. **Reset = cutoff no destructivo, no borrado.** Tabla nueva de una sola fila, `config_trafico` (`supabase/migrations/0005_config_trafico.sql`): `id` fijo (`1`, `check` que lo garantiza), `cuenta_desde timestamptz not null default '2020-01-01'` (fecha muy anterior a cualquier dato real — equivale a "sin cutoff" hasta que Santi pulse Reset). Sin política RLS para `anon`, mismo criterio que `visitas_web`. El botón "Reset" en el admin (Server Action `resetearContadorTrafico`) hace `update config_trafico set cuenta_desde = now()`. **Todas** las consultas de `visitas_web` en `SeccionTrafico.tsx` filtran `ts >= cuenta_desde` (además de lo que ya filtraban) — los datos viejos no se borran, solo dejan de contarse en cualquier vista del panel. Reversible en el sentido de que la fila sigue en la tabla; no hay forma de "deshacer" el propio cutoff desde la UI (no se ha pedido), pero el dato no se pierde a nivel de BD.
+2. **Fases sin tocar el esquema de `visitas_web` ni el coste de `proxy.ts`.** Se descartó capturar la fase en el momento de insertar (una lectura extra a `intentos` en cada petición pública, coste recurrente en cada visita real) a favor de clasificar en el momento de leer, usando límites ya existentes: con el intento relevante (activo, o el más reciente si no hay ninguno activo) y sus `started_at`/`ended_at`:
+   - **antes**: `cuenta_desde <= ts < started_at` (o `ts < now()` si `started_at` es `null`, el reto no ha empezado nunca).
+   - **durante**: `started_at <= ts < ended_at` (o `ts < now()` si sigue en marcha, `ended_at` es `null`).
+   - **después**: `ended_at <= ts` (solo si el intento está cerrado).
+   Una sola consulta a `visitas_web` (`ts >= cuenta_desde`, sin más filtro de rango) y el reparto en las tres fases es aritmética en memoria sobre las filas ya traídas — no hay tres queries ni tres rangos distintos que mantener sincronizados.
+3. **UI: pestañas dentro de la propia sección "Tráfico"**, no pestañas nuevas del admin (`?tab=trafico&fase=antes|durante|despues`, mismo patrón de query string que la granularidad `?gran=`). Cada pestaña reutiliza el mismo `GraficoTrafico`/`TablaDesglose` ya existentes, filtrando el array de visitas ya cargado por la fase seleccionada — no hay Server Component nuevo por fase.
+4. **Botón Reset con confirmación** (`window.confirm`, mismo patrón que Finalizar/Reiniciar en `ActividadAcciones.tsx`) — es una acción que oculta datos de un vistazo, aunque no los borre, y conviene que no se pulse sin querer.
+
+**Deuda conocida de antemano:** igual que las migraciones anteriores, `0005_config_trafico.sql` no se aplica sola contra producción — mismo tipo de salvaguarda defensiva que ya existe para `visitas_web`/`0004` ante la tabla no existiendo todavía (no debe romper la pestaña ni el resto del admin).
+
+---
+
+## DT-024 — Finalizar el reto: preview real de los textos + foto opcional de llegada
+
+**Fecha:** 2026-08-12 · **Tarea:** Al pulsar "Finalizar", mostrar una preview de lo que se va a publicar y permitir subir una foto opcional · **Decisión de arquitectura**
+
+**Contexto.** Hoy "Finalizar" (`ActividadAcciones.tsx`) solo pide confirmación con un `window.confirm` genérico y deja editar el mensaje de llegada en un `<textarea>` plano — sin ver cómo va a quedar de verdad. Santi quiere una preview real (kicker + título + mensaje, con el mismo estilo con el que se van a ver en la pantalla de llegada) y poder añadir una foto opcional que aparezca, en la pantalla de llegada pública, entre el recuadro superior (kicker/título/mensaje) y el mapa.
+
+**Decisión.**
+
+1. **Columna nueva `intentos.foto_llegada_url`** (`text`, nullable) en `supabase/migrations/0006_foto_llegada.sql`. Mismo patrón de Storage que `minuto_a_minuto.foto_url` (DT-013/DT-017): bucket público ya existente, subida desde el cliente vía Server Action, compresión adaptativa en el navegador reutilizando `lib/imagen/preparar-foto.ts` tal cual (sin duplicar esa lógica) antes de enviar el `FormData`.
+2. **`finalizarReto` (Server Action) gana un parámetro opcional para la foto** — sigue aceptando `null`/ausente para "sin foto" y una señal explícita de "quitar foto" distinta de "no tocar la foto" (para que Retomar → Finalizar de nuevo sin adjuntar nada no borre por accidente una foto ya subida antes, y para que sí se pueda quitar deliberadamente). Al reemplazar una foto existente, el objeto anterior en Storage queda huérfano — mismo criterio ya aceptado en el proyecto para `eliminarMinutoAMinuto` (DEBT.md), no se resuelve aquí.
+3. **El formulario de Finalizar deja de usar `window.confirm`.** Pasa a ser un modal/paso propio (Client Component) que muestra: el `<textarea>` del mensaje (como hoy), un campo de foto opcional (subir/quitar), y una preview que renderiza kicker + título + mensaje con el mismo componente/estilo visual que `ModoLlegada.tsx` usa de verdad — no un cuadro de texto plano aparte. El botón de confirmar dentro de ese modal es el que ejecuta `finalizarReto`.
+4. **`ModoLlegada.tsx` (pantalla pública) pinta la foto, si existe,** en una tarjeta entre el recuadro superior y el `<Mapa>` — mismo tratamiento visual (bordes redondeados, `object-cover`) que ya usan otras fotos del proyecto (`FotoQuienCamina` en `ModoAntes.tsx`, las fotos de `minuto_a_minuto`). Sin foto: no se renderiza nada ahí, sin hueco vacío.
+5. **Kicker/título de la preview vienen de `textos.llegada_kicker`/`textos.llegada_titulo`** (ya editables desde DT-021/PR de textos) — la preview no inventa un texto nuevo, muestra literalmente lo que ya se va a servir.
+
+**Deuda conocida de antemano:** mismo patrón que el resto de migraciones del proyecto — `0006_foto_llegada.sql` no se aplica sola contra producción, requiere el mismo tipo de salvaguarda defensiva ante la columna no existiendo todavía en el momento del deploy.
