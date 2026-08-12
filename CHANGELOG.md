@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-08-12 — "¡AUPA ATLETI!" al pinchar el peregrino
+
+**Tipo:** Feature
+
+Al pinchar el monigote que deambula por la web, además del enfado ya
+existente, ahora aparece un "¡AUPA ATLETI!" grande a pantalla completa,
+rojiblanco, con una entrada tipo estallido — como si el propio peregrino lo
+gritara.
 ## 2026-08-12 — Nueva sección de presentación antes del formulario de comentarios
 
 **Tipo:** Feature
