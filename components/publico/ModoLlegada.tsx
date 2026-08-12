@@ -19,6 +19,7 @@ import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
 import MinutoAMinuto, { type EntradaMinutoAMinutoPublica } from "@/components/publico/MinutoAMinuto";
 import type { ProgresoPublicoGuiado } from "@/lib/types";
+import type { Textos } from "@/lib/textos/obtener-textos";
 
 const C = { ink: "#1B211D", gold: "#C9A24B" };
 
@@ -41,6 +42,8 @@ interface ModoLlegadaProps {
    * ModoLlegadaLibre.tsx para el modo libre.
    */
   puntosGps: { lat: number; lon: number }[];
+  /** Solo se leen `llegada_kicker`/`llegada_titulo` — editables desde /admin. */
+  textos: Textos;
 }
 
 export default function ModoLlegada({
@@ -51,6 +54,7 @@ export default function ModoLlegada({
   trazaCoords,
   entradasMinutoAMinuto,
   puntosGps,
+  textos,
 }: ModoLlegadaProps) {
   const [puntoResaltado, setPuntoResaltado] = useState<{
     lat: number;
@@ -66,10 +70,10 @@ export default function ModoLlegada({
             <Logo />
           </div>
           <div className="mt-3 font-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: C.gold }}>
-            Camino completado
+            {textos.llegada_kicker}
           </div>
           <h2 className="[font-family:var(--font-fraunces)] mt-1 text-[30px] font-semibold" style={{ color: C.ink }}>
-            ¡Ha llegado a Santiago!
+            {textos.llegada_titulo}
           </h2>
           <p className="mx-auto mt-4 max-w-xs text-[14px] leading-relaxed" style={{ color: "#3C433E" }}>
             {mensajeLlegada}

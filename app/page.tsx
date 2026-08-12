@@ -12,7 +12,7 @@ import { cargarTrazaDeMapa } from "@/lib/traza/cargar-traza-mapa";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
 import { aProgresoPublico } from "@/lib/traza/progreso-publico";
 import { calcularProgresoLibre } from "@/lib/traza/progreso-libre";
-import { obtenerTextos } from "@/lib/textos/obtener-textos";
+import { obtenerTextos, type Textos } from "@/lib/textos/obtener-textos";
 import { TEXTOS_POR_DEFECTO } from "@/lib/textos/defaults";
 import { calcularRitmoMedioIntento } from "@/lib/ritmo";
 import type { Fase, ModoIntento, Posicion, ProgresoPublicoGuiado, ProgresoPublicoLibre } from "@/lib/types";
@@ -68,6 +68,7 @@ export default async function Home() {
               mensajeLlegada={intentoActivo.mensaje_llegada}
               startedAt={intentoActivo.started_at}
               endedAt={intentoActivo.ended_at}
+              textos={textos}
             />
           ) : (
             <ModoLlegadaConectado
@@ -76,6 +77,7 @@ export default async function Home() {
               endedAt={intentoActivo.ended_at}
               mensajeLlegada={intentoActivo.mensaje_llegada}
               trazaCoords={trazaCoords}
+              textos={textos}
             />
           )
         )}
@@ -119,12 +121,14 @@ async function ModoLlegadaConectado({
   endedAt,
   mensajeLlegada,
   trazaCoords,
+  textos,
 }: {
   intentoId: number;
   startedAt: string | null;
   endedAt: string | null;
   mensajeLlegada: string | null;
   trazaCoords: [number, number][];
+  textos: Textos;
 }) {
   const [progreso, entradasMinutoAMinuto, historico] = await Promise.all([
     calcularProgresoDelIntento(intentoId),
@@ -144,6 +148,7 @@ async function ModoLlegadaConectado({
       ritmoMedio={ritmoMedio}
       trazaCoords={trazaCoords}
       entradasMinutoAMinuto={entradasMinutoAMinuto}
+      textos={textos}
     />
   );
 }
@@ -169,12 +174,14 @@ async function ModoLlegadaLibreConectado({
   mensajeLlegada,
   startedAt,
   endedAt,
+  textos,
 }: {
   intentoId: number;
   destino: { lat: number; lon: number } | null;
   mensajeLlegada: string | null;
   startedAt: string | null;
   endedAt: string | null;
+  textos: Textos;
 }) {
   const [{ progreso, puntosGps }, entradasMinutoAMinuto] = await Promise.all([
     calcularProgresoLibreDelIntento(intentoId, destino),
@@ -189,6 +196,7 @@ async function ModoLlegadaLibreConectado({
       entradasMinutoAMinuto={entradasMinutoAMinuto}
       startedAt={startedAt}
       endedAt={endedAt}
+      textos={textos}
     />
   );
 }
