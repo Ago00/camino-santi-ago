@@ -2,6 +2,17 @@
 
 ---
 
+## `docs/producto/funcionalidades.md` no refleja el cambio de pintado del mapa (DT-021) ni la nueva pestaña "Mapa" del admin
+
+**Fecha:** 2026-08-12
+**Contexto:** Detectado por el Reviewer en la revisión de DT-021 ("Mapa público en modo guiado pinta la traza real, no la oficial; nueva vista de comparación en el admin"), aplicando la regla ya registrada en `docs/LESSONS.md` ("Features cerradas por el pipeline técnico dejan `docs/producto/` desactualizado si nadie invoca al Agente de Producto al cierre"). La entrada "Durante" de `funcionalidades.md` (línea ~15-16) sigue describiendo el comportamiento anterior a esta tarea: "Mapa en directo con la posición de Santi, la traza y el tramo ya andado encendido" — desde DT-021, en modo guiado el mapa ya no pinta la traza oficial partida en andado/restante, pinta el recorrido GPS real. Además, `funcionalidades.md` no tiene ninguna sección sobre el panel admin, así que la pestaña "Mapa" nueva (comparación traza oficial vs. real + punto de referencia) tampoco queda documentada allí — este segundo punto es un hueco preexistente al panel admin en general, no introducido por esta tarea.
+**Problema:** Documentación de producto desactualizada respecto al comportamiento real para la parte pública; ausente por completo para la parte admin.
+**Impacto:** Puramente documental. Cero efecto en comportamiento del sistema. `CHANGELOG.md` y la documentación técnica (`decisiones-tecnicas.md`, `arquitectura.md`) sí están al día.
+**Solución propuesta:** El Agente de Producto actualiza la entrada "Durante" de `funcionalidades.md` para describir el pintado del recorrido real (no la traza oficial) y el marcador ⛪ de destino, y valora si añadir una sección "Panel admin" con la pestaña "Mapa" (y, ya que se está, el resto de pestañas existentes que tampoco están documentadas desde el punto de vista de producto).
+**Prioridad:** Baja.
+
+---
+
 ## `GET /api/progreso` no podía reflejar `odometroKm` real en modo libre durante el polling en directo
 
 **Fecha:** 2026-08-09 · **Resuelta:** 2026-08-09, misma tarea (decisión del Orquestador)
@@ -63,7 +74,8 @@ posiciones) para que una regresión futura a este atajo no pase desapercibida.
 
 ## `calcularProgresoLibreDelIntento` (modo libre, `app/page.tsx`) sigue sin caché tras el endurecimiento S1/S2 de DT-018
 
-**Fecha:** 2026-08-09
+**Fecha:** 2026-08-09 · **Resuelta:** 2026-08-12, tarea DT-021 (fix de Seguridad,
+ver `docs/tecnico/decisiones-tecnicas.md`)
 **Contexto:** Detectado por el Reviewer en la Ronda 2 de revisión de DT-018
 (endurecimiento post-Seguridad, S1 + S2). Seguridad encontró que
 `app/page.tsx` invocaba el cálculo de progreso en cada visita sin caché ni
@@ -99,9 +111,19 @@ condición `cache.valor.modo === "libre"` simétrica a la ya existente para
 "guiado") a `calcularProgresoLibreDelIntento`. Barato de implementar (mismo
 código, ~10 líneas) y cierra la ambigüedad del texto literal del issue 2 de
 Seguridad sin depender de una interpretación de alcance.
-**Prioridad:** Media — trasladado explícitamente a Seguridad en la Ronda 2
-para que decida si lo exige antes de aprobar (ver `docs/tareas/CURRENT.md`,
-Historial de revisión, Ronda 2).
+**Prioridad:** Cerrada. Seguridad, al revisar DT-021 ("Mapa público en modo
+NO libre pinta solo la traza real; panel admin ve ambas trazas +
+referencia"), marcó como bloqueante el mismo hueco para modo guiado — DT-021
+había introducido una segunda consulta sin caché (`obtenerHistoricoPosiciones`
+para pintar el recorrido real en el mapa) en `ModoDuranteConectado`/
+`ModoLlegadaConectado`, reabriendo para guiado el vector que S2 ya había
+cerrado. El fix aplicado (`lib/historico-cache.ts`, mismo TTL de 20 s que
+`lib/progreso-cache.ts`, reutilizado entre `calcularProgresoDelIntento`,
+`ModoDuranteConectado`, `ModoLlegadaConectado` y `calcularProgresoLibreDelIntento`)
+cierra el vector para ambos modos con el mismo código — se aprovechó para
+cerrar también esta entrada, ya que era el mismo fix, no solo lo exigido por
+Seguridad para guiado. Tests en `lib/historico-cache.test.ts` y
+`app/page.test.ts`.
 
 ---
 

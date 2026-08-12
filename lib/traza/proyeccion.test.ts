@@ -536,3 +536,76 @@ describe("calcularProgreso — anclaje al primer punto del intento (DT-005)", ()
     expect(Number.isNaN(result.porcentaje)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// puntoProyectado (DT-021): punto de la traza oficial usado por el cálculo,
+// expuesto para que el admin pueda pintar la línea de referencia entre la
+// posición real y el punto que realmente determina kmRestantes/estado.
+// ---------------------------------------------------------------------------
+
+describe("calcularProgreso — puntoProyectado (DT-021)", () => {
+  it("es null con histórico vacío (progresoEnCero)", () => {
+    const result = calcularProgreso([], TRAZA);
+
+    expect(result.puntoProyectado).toBeNull();
+  });
+
+  it("refleja el primer punto (el único aceptado) cuando el segundo se rechaza por velocidad imposible", () => {
+    // El primer punto del histórico siempre se procesa (no hay punto previo
+    // con el que comparar velocidad) — solo el segundo se descarta.
+    const historico = [
+      posicion({ lat: 0, lon: 0, ts: "2026-07-30T08:00:00Z" }),
+      posicion({ lat: 0.45049, lon: 0, ts: "2026-07-30T08:10:00Z" }), // velocidad imposible
+    ];
+
+    const result = calcularProgreso(historico, TRAZA);
+
+    expect(result.puntosDescartados).toBe(1);
+    expect(result.puntoProyectado).not.toBeNull();
+    expect(result.puntoProyectado!.lat).toBeCloseTo(0, 3);
+    expect(result.puntoProyectado!.lon).toBeCloseTo(0, 3);
+  });
+
+  it("propaga el punto snapeado de la traza (no la posición GPS bruta) para un único punto en el inicio", () => {
+    const historico = [
+      posicion({ lat: 0, lon: 0, ts: "2026-07-30T08:00:00Z" }),
+    ];
+
+    const result = calcularProgreso(historico, TRAZA);
+
+    expect(result.puntoProyectado).not.toBeNull();
+    expect(result.puntoProyectado!.lat).toBeCloseTo(0, 3);
+    expect(result.puntoProyectado!.lon).toBeCloseTo(0, 3);
+  });
+
+  it("refleja el punto de la traza más cercano a la última posición válida, no a las anteriores", () => {
+    // Anda desde el inicio hasta la mitad (~50 km, lat ≈ 0.45049 sobre la
+    // traza recta en lon=0).
+    const historico = [
+      posicion({ lat: 0, lon: 0, ts: "2026-07-30T08:00:00Z" }),
+      posicion({ lat: 0.45049, lon: 0, ts: "2026-07-30T16:00:00Z" }),
+    ];
+
+    const result = calcularProgreso(historico, TRAZA);
+
+    expect(result.puntoProyectado).not.toBeNull();
+    expect(result.puntoProyectado!.lat).toBeCloseTo(0.45049, 2);
+    expect(result.puntoProyectado!.lon).toBeCloseTo(0, 2);
+  });
+
+  it("con un desvío lateral, el punto proyectado cae sobre la traza, no sobre la posición GPS real", () => {
+    // ~80 m de desvío lateral (mismo caso que "desvío pequeño" de arriba):
+    // el punto proyectado debe seguir teniendo lon ≈ 0 (sobre la traza),
+    // muy distinto de la posición real (lon = 0.00072).
+    const historico = [
+      posicion({ lat: 0, lon: 0, ts: "2026-07-30T08:00:00Z" }),
+      posicion({ lat: 0.22, lon: 0.00072, ts: "2026-07-30T12:00:00Z" }),
+    ];
+
+    const result = calcularProgreso(historico, TRAZA);
+
+    expect(result.puntoProyectado).not.toBeNull();
+    expect(result.puntoProyectado!.lon).toBeCloseTo(0, 3);
+    expect(result.puntoProyectado!.lat).toBeCloseTo(0.22, 2);
+  });
+});

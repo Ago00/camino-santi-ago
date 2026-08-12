@@ -33,6 +33,14 @@ interface ModoLlegadaProps {
   ritmoMedio: string;
   trazaCoords: [number, number][];
   entradasMinutoAMinuto: EntradaMinutoAMinutoPublica[];
+  /**
+   * Histórico completo de puntos GPS del intento (DT-021, nota de cierre):
+   * esta pantalla ya está "congelada" (sin polling, ver comentario de
+   * cabecera), así que se carga una sola vez server-side
+   * (ModoLlegadaConectado, app/page.tsx) — mismo dato que ya recibe
+   * ModoLlegadaLibre.tsx para el modo libre.
+   */
+  puntosGps: { lat: number; lon: number }[];
 }
 
 export default function ModoLlegada({
@@ -42,6 +50,7 @@ export default function ModoLlegada({
   ritmoMedio,
   trazaCoords,
   entradasMinutoAMinuto,
+  puntosGps,
 }: ModoLlegadaProps) {
   const [puntoResaltado, setPuntoResaltado] = useState<{
     lat: number;
@@ -72,9 +81,11 @@ export default function ModoLlegada({
         <div className="relative overflow-hidden rounded-2xl border shadow-sm" style={{ borderColor: "#00000012" }}>
           <Mapa
             trazaCoords={trazaCoords}
+            variante="ruta"
             hora="dia"
             modo="directo"
             posicionActual={progreso.ultimaPosicion}
+            puntosGps={puntosGps}
             ultimaSenalTexto={null}
             puntoResaltado={puntoResaltado}
           />

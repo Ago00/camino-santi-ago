@@ -168,6 +168,10 @@ function calcularProgresoSinVentana(
     separacionM,
     ultimaPosicion: ultimaPosicionValida,
     puntosDescartados,
+    // No se compara puntoProyectado en esta réplica de referencia (DT-018 es
+    // anterior a DT-021): los tests de equivalencia de este fichero solo
+    // verifican porcentaje/kmAvanzados/odometroKm/estado, ver más abajo.
+    puntoProyectado: null,
   };
 }
 
@@ -181,6 +185,7 @@ function progresoEnCeroReferencia(longitudTotalKm: number): Progreso {
     separacionM: 0,
     ultimaPosicion: null,
     puntosDescartados: 0,
+    puntoProyectado: null,
   };
 }
 

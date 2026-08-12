@@ -2,6 +2,38 @@
 
 ---
 
+## 2026-08-11 — El mapa en modo guiado ya muestra el camino realmente andado; el panel admin gana una pestaña "Mapa" de comparación
+
+**Tipo:** Feature
+
+Durante el reto en modo guiado, el mapa público ya no dibuja de fondo la ruta
+oficial completa: dibuja el recorrido GPS real de Santi, tal y como ya
+hacía el modo libre. El marcador de Santiago cambia de estrella (★) a una
+catedral (⛪).
+
+El cálculo de la distancia restante, la barra de progreso y el mojón no
+cambian en absoluto — siguen midiéndose sobre la ruta oficial completa,
+igual que siempre; solo cambia lo que se dibuja en el mapa.
+
+El panel admin gana una pestaña nueva, "Mapa", donde sí se ven las dos
+trazas a la vez: la ruta oficial completa y el recorrido real, con una línea
+discontinua que conecta la posición actual con el punto exacto de la ruta
+oficial que usa el cálculo de kilómetros restantes — útil para comprobar de
+un vistazo si el número que ve el público tiene sentido. Si el intento activo
+es en modo libre, la pestaña avisa de que no hay ruta oficial de referencia.
+
+La pantalla de llegada a Santiago (modo guiado) también se ha actualizado
+para mostrar el recorrido real completo en el mapa, igual que la pantalla
+"durante" — antes de este ajuste se quedaba sin ninguna ruta dibujada.
+
+De paso, se ha reforzado el rendimiento de la web pública: mostrar el
+recorrido real añadía una consulta extra a cada visita a la página. Ahora esa
+consulta se reutiliza durante 20 segundos entre visitas (igual que ya pasaba
+con el cálculo de progreso), tanto en modo guiado como en modo libre, para no
+sobrecargar la base de datos si la web recibe muchas visitas seguidas.
+
+---
+
 ## 2026-08-09 — El modo libre gana tiempo en marcha, ritmo medio y km caminados
 
 **Tipo:** Feature

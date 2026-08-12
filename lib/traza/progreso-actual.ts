@@ -117,8 +117,14 @@ export async function calcularProgresoActual(): Promise<ProgresoPublico> {
  * por `ts` (DT-018) — usado por ambos modos desde CURRENT.md/DT-020 (antes,
  * modo libre solo pedía la última posición; ver docstring de arriba y la
  * nota de cierre de DT-018).
+ *
+ * Exportada (DT-021): `lib/traza/datos-mapa-admin.ts` la reutiliza con
+ * `getSupabaseAdmin()` en vez de `getSupabasePublic()` — ambos clientes
+ * comparten exactamente el mismo tipo `SupabaseClient<BaseDeDatos>`
+ * (lib/supabase/admin.ts), así que la función acepta cualquiera de los dos
+ * sin necesitar una segunda implementación ni una duplicación con `fs`.
  */
-async function obtenerHistoricoCompleto(
+export async function obtenerHistoricoCompleto(
   supabase: ReturnType<typeof getSupabasePublic>,
   intentoId: number
 ): Promise<Posicion[]> {

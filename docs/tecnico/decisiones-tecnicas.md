@@ -1402,3 +1402,117 @@ notas de cierre de DT-017/DT-018).
    revise, no que el Implementador lo decida en solitario. Detalle completo,
    impacto y solución propuesta en `DEBT.md` ("`GET /api/progreso` no puede
    reflejar `odometroKm` real en modo libre durante el polling en directo").
+
+---
+
+## DT-021 — Mapa público en modo guiado pinta la traza real, no la oficial; nueva vista de comparación en el admin
+
+**Fecha:** 2026-08-11 · **Tarea:** Mapa público pinta solo lo avanzado; panel admin ve ambas trazas + referencia · **Decisión de arquitectura**
+
+**Contexto.** Petición directa de Santi: en modo guiado (`variante="ruta"` de
+`components/mapa/Mapa.tsx`), el mapa público pintaba siempre la traza oficial
+completa (`trazaCoords`), partida en "andado"/"restante" en el vértice más
+cercano a la posición actual — nunca el recorrido GPS real. El cálculo de
+distancia restante/ETA (server-side, `lib/traza/proyeccion.ts`) no se toca en
+absoluto; esto es solo un cambio de **pintado**.
+
+**Decisión.**
+
+1. **Público, modo guiado:** la variante `"ruta"` deja de recortar
+   `trazaCoords` y pinta `puntosGps` (histórico real), mismo mecanismo que ya
+   usa la variante `"libre"`. Para ello el modo guiado público pasa a cargar
+   el histórico completo server-side y a acumularlo en cada poll de 30 s —
+   réplica exacta del patrón ya validado en producción por
+   `ModoDuranteLibre.tsx`. Marcador de destino: ⛪ (antes ★, decisión de
+   Santi).
+2. **Dato nuevo expuesto solo al admin:** `Progreso`
+   (`lib/traza/proyeccion.ts`/`lib/types.ts`) gana `puntoProyectado: {lat,
+   lon} | null` — el punto que Turf ya calculaba internamente en
+   `proyectarPunto` y hasta ahora se descartaba. Cero cambios a la fórmula de
+   cálculo existente. **Nunca** se añade a `ProgresoPublicoGuiado`: el
+   público sigue sin ver el punto de referencia en la traza oficial.
+3. **Admin — pestaña "Mapa" nueva:** función server-side dedicada
+   (reutiliza `obtenerHistoricoCompleto`, `cargarTrazaDeCalculo`,
+   `cargarTrazaDeMapa`, `calcularProgreso` — no pasa por `aProgresoPublico`)
+   que sirve un Server Component estático (mismo patrón que
+   `SeccionPosicion.tsx`, sin polling). Pinta traza real completa + traza
+   oficial completa (colores distintos) + marcador en el último punto real +
+   marcador en `puntoProyectado` + línea discontinua entre ambos. Si el
+   intento activo es modo libre, aviso ("sin traza oficial") + solo la
+   polilínea real, sin línea de referencia (no aplica el concepto).
+4. **`components/mapa/Mapa.tsx`:** se extiende con props aditivas
+   (`trazaOficialComparacion?`, `puntoReferencia?`), usadas solo por el
+   admin — el público nunca las pasa, comportamiento sin cambios salvo lo
+   descrito en el punto 1. Se descarta un componente de mapa aparte para el
+   admin (ver alternativas) por duplicar infraestructura ya resuelta
+   (worker de MapLibre, patrón de overlay SVG con refs anti-stale —
+   `docs/LESSONS.md`).
+
+**Alternativas valoradas (punto 4):** un `MapaComparacion.tsx` independiente
+para el admin — descartado: reimplementar el init de MapLibre + overlay SVG
++ `map.project()` es exactamente el tipo de código ya resuelto una vez (y
+documentado como frágil en `LESSONS.md`) que no conviene duplicar; el riesgo
+de divergencia entre dos mapas a medio plazo pesa más que mantener
+`Mapa.tsx` con dos props opcionales más.
+
+**Por qué el punto proyectado real y no una aproximación visual.** Santi
+pidió explícitamente que el punto de referencia de la línea discontinua sea
+el mismo que usa el cálculo real de distancia restante, no un vértice más
+cercano aproximado — evita que la línea del admin sugiera una referencia
+distinta de la que realmente determina los km restantes mostrados en
+público.
+
+### Nota de cierre (2026-08-12) — ampliación de alcance: `ModoLlegada.tsx`
+
+El Implementador señaló un bloqueo mayor durante la ejecución: `ModoLlegada.tsx`
+(pantalla de "llegada", modo guiado) usa `Mapa` con la misma combinación
+`variante="ruta"` + `modo="directo"` que `ModoDurante.tsx`, pero no estaba en
+el alcance original de los 8 puntos aprobados — no se le pasaba histórico
+GPS. Con el cambio de pintado aplicado a esa combinación, la pantalla de
+llegada se quedaba sin ninguna polilínea (solo el marcador ⛪), una regresión
+visual real no contemplada en el análisis. Correctamente escalado por el
+Implementador en vez de decidido en solitario (framework, sección 10).
+
+**Decisión (Orquestador, con el usuario):** ampliar el alcance de DT-021 en
+el momento para incluir `ModoLlegada.tsx`, con el mismo patrón ya validado
+en producción por `ModoLlegadaLibre.tsx`: `app/page.tsx`
+(`ModoLlegadaConectado`) carga `obtenerHistoricoPosiciones` y lo pasa como
+`puntosGps`; `ModoLlegada.tsx` reenvía esa prop a `Mapa`. Se prefiere cerrar
+esto en la misma tarea, sin dejarlo en `DEBT.md`, porque es una regresión
+visible el día del reto (el escenario que la propia web pública existe para
+cubrir), y el fix es mecánico y de bajo riesgo (mismo patrón ya en
+producción, dos ficheros).
+
+**Resuelto (2026-08-12, Implementador).** Aplicado el fix descrito arriba:
+`ModoLlegadaConectado` (`app/page.tsx`) carga `obtenerHistoricoPosiciones`
+en paralelo con lo que ya cargaba y lo pasa como `puntosGps`;
+`ModoLlegada.tsx` acepta esa prop y la reenvía a `<Mapa variante="ruta">`.
+Sin polling (la pantalla ya está congelada por diseño) — se carga una única
+vez server-side, igual que el resto de datos de esa pantalla. La entrada de
+`DEBT.md` sobre este gap se ha retirado (ya no aplica: quedó cerrado dentro
+de esta misma tarea, no como deuda pendiente). Quality gates
+(`typecheck`/`lint`/`test`) verificadas en verde tras el fix.
+
+**Bloqueante de Seguridad (2026-08-12) — coste/DoS (A04/A05), resuelto.**
+Seguridad revisó la implementación (con el fix de `ModoLlegada.tsx` ya
+incluido) y encontró que `ModoDuranteConectado` y `ModoLlegadaConectado`
+(`app/page.tsx`) llamaban a `obtenerHistoricoPosiciones` sin ninguna caché
+en cada visita a `/` en modo guiado — antes de esta tarea, con la caché de
+`progreso` caliente (`lib/progreso-cache.ts`, TTL 20 s, S2 de DT-018), una
+visita a `/` en modo guiado no generaba ninguna consulta a Supabase; DT-021
+reabría ese vector de coste porque `/` no tiene rate limiting propio
+(DT-011 solo cubre `/api/progreso`). Bloqueante para modo guiado (regresión
+de esta tarea); el mismo hueco ya existía para modo libre desde antes
+(`DEBT.md`, prioridad Media, no bloqueante por no ser una regresión).
+**Fix aplicado:** `lib/historico-cache.ts`, mismo patrón y mismo `CACHE_TTL_MS`
+(20 s) que `lib/progreso-cache.ts` — un único slot en memoria de proceso,
+válido por el mismo invariante (un solo intento activo a la vez). Reutilizado
+por `calcularProgresoDelIntento`, `ModoDuranteConectado`,
+`ModoLlegadaConectado` y, de paso, también por `calcularProgresoLibreDelIntento`
+(modo libre) — mismo código, cierra también la entrada de deuda ya
+registrada para libre en `DEBT.md` sin coste adicional. Tests nuevos en
+`lib/historico-cache.test.ts` y `app/page.test.ts` (incluye un test explícito
+de que una llamada a `calcularProgresoDelIntento` y una llamada directa
+posterior a `obtenerHistoricoPosicionesCacheado` comparten la misma caché,
+sin doble consulta a Supabase). Quality gates reverificadas en verde
+(348/348 tests) tras el fix.

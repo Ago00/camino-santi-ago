@@ -6,6 +6,7 @@
 import { getSupabasePublic } from "@/lib/supabase/public";
 import { obtenerTodasLasFilas } from "@/lib/supabase/paginacion";
 import { CACHE_TTL_MS, guardarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
+import { guardarCacheHistorico, obtenerCacheHistorico } from "@/lib/historico-cache";
 import { cargarTrazaDeCalculo } from "@/lib/traza/cargar-traza";
 import { cargarTrazaDeMapa } from "@/lib/traza/cargar-traza-mapa";
 import { calcularProgreso } from "@/lib/traza/proyeccion";
@@ -92,8 +93,24 @@ async function ModoDuranteConectado({
   startedAt: string | null;
   trazaCoords: [number, number][];
 }) {
-  const progresoInicial = await calcularProgresoDelIntento(intentoId);
-  return <ModoDurante progresoInicial={progresoInicial} iniciadoEn={startedAt} trazaCoords={trazaCoords} />;
+  // DT-021: el mapa público en modo guiado pinta el recorrido GPS real, no la
+  // traza oficial — el histórico completo se carga aquí (mismo
+  // obtenerHistoricoPosiciones que ya usa el modo libre, cacheado, ver nota
+  // de cierre de DT-021 sobre el fix de Seguridad) y se pasa al componente,
+  // que lo amplía en cada poll (mismo patrón que ModoDuranteLibre.tsx).
+  const [progresoInicial, historico] = await Promise.all([
+    calcularProgresoDelIntento(intentoId),
+    obtenerHistoricoPosicionesCacheado(intentoId),
+  ]);
+  const puntosGpsIniciales = historico.map((p) => ({ lat: p.lat, lon: p.lon }));
+  return (
+    <ModoDurante
+      progresoInicial={progresoInicial}
+      iniciadoEn={startedAt}
+      trazaCoords={trazaCoords}
+      puntosGpsIniciales={puntosGpsIniciales}
+    />
+  );
 }
 
 async function ModoLlegadaConectado({
@@ -109,18 +126,21 @@ async function ModoLlegadaConectado({
   mensajeLlegada: string | null;
   trazaCoords: [number, number][];
 }) {
-  const [progreso, entradasMinutoAMinuto] = await Promise.all([
+  const [progreso, entradasMinutoAMinuto, historico] = await Promise.all([
     calcularProgresoDelIntento(intentoId),
     cargarEntradasMinutoAMinuto(intentoId),
+    obtenerHistoricoPosicionesCacheado(intentoId),
   ]);
   const tiempoTotal = formatearTiempoTotal(startedAt, endedAt);
   const ritmoMedio = calcularRitmoMedioIntento(progreso.odometroKm, startedAt, endedAt);
+  const puntosGps = historico.map((p) => ({ lat: p.lat, lon: p.lon }));
 
   return (
     <ModoLlegada
       progreso={progreso}
       mensajeLlegada={mensajeLlegada ?? TEXTOS_POR_DEFECTO.mensaje_llegada_default}
       tiempoTotal={tiempoTotal}
+      puntosGps={puntosGps}
       ritmoMedio={ritmoMedio}
       trazaCoords={trazaCoords}
       entradasMinutoAMinuto={entradasMinutoAMinuto}
@@ -262,6 +282,31 @@ async function obtenerHistoricoPosiciones(intentoId: number): Promise<Posicion[]
 }
 
 /**
+ * Fix post-revisión de Seguridad de DT-021 (`lib/historico-cache.ts`, mismo
+ * TTL de 20 s que `lib/progreso-cache.ts`): reutiliza el mismo histórico
+ * completo entre `calcularProgresoDelIntento`, `ModoDuranteConectado`,
+ * `ModoLlegadaConectado` y `calcularProgresoLibreDelIntento` en vez de que
+ * cada uno vuelva a pagar `obtenerHistoricoPosiciones` (fetch paginado, hasta
+ * 50 páginas × 1.000 filas) en la misma visita a `/` — sin esto, DT-021
+ * reabría para modo guiado el vector de coste que S2 (DT-018) ya había
+ * cerrado, porque `/` no tiene rate limiting propio (DT-011 solo cubre
+ * `/api/progreso`). Mismo invariante que justifica compartir
+ * `lib/progreso-cache.ts`: solo hay un intento activo a la vez
+ * (docs/tecnico/arquitectura.md), así que no hace falta cachear por
+ * `intentoId`.
+ */
+export async function obtenerHistoricoPosicionesCacheado(intentoId: number): Promise<Posicion[]> {
+  const cache = obtenerCacheHistorico();
+  if (cache && Date.now() - cache.timestamp < CACHE_TTL_MS) {
+    return cache.valor;
+  }
+
+  const historico = await obtenerHistoricoPosiciones(intentoId);
+  guardarCacheHistorico(historico);
+  return historico;
+}
+
+/**
  * S2 (endurecimiento post-revisión de Seguridad de DT-018, ver nota de
  * cierre en docs/tecnico/decisiones-tecnicas.md): reutiliza la misma caché
  * compartida que ya usa `GET /api/progreso` (`lib/progreso-cache.ts`, TTL
@@ -281,7 +326,7 @@ export async function calcularProgresoDelIntento(intentoId: number): Promise<Pro
     return cache.valor;
   }
 
-  const historico = await obtenerHistoricoPosiciones(intentoId);
+  const historico = await obtenerHistoricoPosicionesCacheado(intentoId);
   const traza = cargarTrazaDeCalculo();
   const progreso = aProgresoPublico(calcularProgreso(historico, traza));
 
@@ -302,7 +347,11 @@ async function calcularProgresoLibreDelIntento(
   intentoId: number,
   destino: { lat: number; lon: number } | null
 ): Promise<{ progreso: ProgresoPublicoLibre; puntosGps: { lat: number; lon: number }[] }> {
-  const historico = await obtenerHistoricoPosiciones(intentoId);
+  // Fix de Seguridad de DT-021 (ver obtenerHistoricoPosicionesCacheado más
+  // arriba): cierra de paso la deuda ya registrada en DEBT.md ("no tenía
+  // caché tras el endurecimiento S1/S2 de DT-018") — mismo TTL de 20 s,
+  // mismo código que ahora comparte modo guiado.
+  const historico = await obtenerHistoricoPosicionesCacheado(intentoId);
   const progreso = calcularProgresoLibre(historico, destino);
   const puntosGps = historico.map((p) => ({ lat: p.lat, lon: p.lon }));
   return { progreso, puntosGps };

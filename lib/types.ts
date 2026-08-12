@@ -126,6 +126,12 @@ export type EstadoRuta = "en-ruta" | "desvio-menor" | "desvio-mayor";
  *   la ruta si Santi está desviado (eso lo indica `separacionM`/`estado`).
  *   Puede no sumar 100 con `kmAvanzados`; es correcto — mide cosas distintas.
  * - `puntosDescartados` cuenta rechazos por velocidad imposible en esta sesión.
+ * - `puntoProyectado` (DT-021): el punto de la traza OFICIAL sobre el que
+ *   Turf snapea la última posición válida — el mismo que determina
+ *   `kmRestantes`/`separacionM`/`estado`. Interno al servidor: nunca sale
+ *   hacia el público (`lib/traza/progreso-publico.ts` no lo copia a
+ *   `ProgresoPublicoGuiado`), solo lo consume el admin para pintar la línea
+ *   de referencia entre la posición real y el punto de cálculo.
  */
 export interface Progreso {
   porcentaje: number; // 0-100, monótono
@@ -136,6 +142,7 @@ export interface Progreso {
   separacionM: number; // distancia perpendicular a la traza en metros
   ultimaPosicion: Posicion | null;
   puntosDescartados: number; // rechazados por velocidad implícita imposible
+  puntoProyectado: { lat: number; lon: number } | null;
 }
 
 /**

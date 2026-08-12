@@ -18,11 +18,20 @@
 // pantalla completa. Modo "resumen": pinta la ruta entera sin marcador de
 // posición (para el modo "antes", antes de que el reto empiece).
 //
-// Prop `variante` (DT-016): "ruta" (por defecto, comportamiento original sin
-// cambios) pinta la traza oficial de fondo + el corte de color andado/
-// restante. "libre" (modo de intento libre) omite ambas cosas y en su lugar
-// dibuja solo la polilínea de los puntos GPS recibidos (prop `puntosGps`),
-// sin inicio/fin de traza oficial (no aplican: el destino es arbitrario).
+// Prop `variante` (DT-016, redefinida en DT-021): "ruta" (por defecto) pinta
+// el recorrido GPS real (prop `puntosGps`, igual que "libre") + el marcador
+// de fin de ruta (⛪, DT-021) — el público en modo guiado ya no ve la traza
+// oficial completa, solo lo que Santi ha andado de verdad. "libre" (modo de
+// intento libre) pinta también `puntosGps` pero sin marcador de fin (destino
+// arbitrario, sin sentido marcarlo). Ninguna de las dos variantes pinta ya
+// inicio/corte de color sobre la traza oficial en el mapa público.
+//
+// Props `trazaOficialComparacion`/`puntoReferencia` (DT-021): exclusivas del
+// panel admin (pestaña "Mapa", components/admin/SeccionMapa.tsx). Pintan la
+// traza oficial completa (comparación) y el punto de la traza que usa
+// realmente el cálculo de distancia restante (con línea discontinua a la
+// posición real) — el público nunca las pasa, así que su ausencia no cambia
+// nada del comportamiento descrito arriba.
 
 "use client";
 
@@ -37,6 +46,12 @@ const BOUNDS: [[number, number], [number, number]] = [
   [-8.72, 42.12],
   [-8.5, 42.9],
 ];
+
+// DT-021: color de la traza oficial de comparación y del punto de referencia
+// (admin, no-op en el mapa público) — azul acero, distinto del naranja
+// #D9773B ya asociado al recorrido real "andado".
+const COLOR_TRAZA_OFICIAL_COMPARACION = "#3A6EA5";
+const COLOR_PUNTO_REFERENCIA = COLOR_TRAZA_OFICIAL_COMPARACION;
 
 const TINTES: Record<BandaHoraria, string> = {
   dia: "transparent",
@@ -62,23 +77,27 @@ interface PuntoPx {
 
 interface MapaProps {
   /** Coordenadas [lon, lat] de la traza de pintado, cargadas server-side.
-   *  Ignoradas cuando `variante === "libre"` (puede pasarse `[]`). */
+   *  Ignoradas por el overlay principal desde DT-021 (ambas variantes pintan
+   *  `puntosGps`) — se sigue recibiendo para el modo "resumen" (modo
+   *  "antes") y para `trazaOficialComparacion`, que reutiliza el mismo
+   *  formato. */
   trazaCoords: [number, number][];
   /** Banda horaria actual (tinte cosmético). Solo aplica en modo "directo". */
   hora: BandaHoraria;
   /** "resumen": ruta entera, sin marcador de posición (modo "antes"). */
   modo?: ModoMapa;
   /**
-   * "ruta" (por defecto): comportamiento original, traza oficial de fondo +
-   * corte de color andado/restante. "libre" (DT-016): sin traza de fondo,
-   * solo la polilínea de `puntosGps`.
+   * "ruta" (por defecto, DT-021): recorrido GPS real (`puntosGps`) + marcador
+   * de fin de ruta (⛪). "libre" (DT-016): recorrido GPS real sin marcador de
+   * fin (destino arbitrario). Ambas pintan `puntosGps`, nunca la traza
+   * oficial completa — ver `trazaOficialComparacion` para eso.
    */
   variante?: VarianteMapa;
   /** Posición actual (solo se pinta en modo "directo"). */
   posicionActual?: { lat: number; lon: number } | null;
   /**
-   * Puntos GPS recibidos del intento en modo libre (DT-016), en el orden en
-   * que llegaron. Solo se usa cuando `variante === "libre"`.
+   * Puntos GPS recibidos del intento, en el orden en que llegaron. Se usa en
+   * ambas variantes desde DT-021.
    */
   puntosGps?: { lat: number; lon: number }[];
   /** Texto de "última señal hace…", ya formateado. Solo modo "directo". */
@@ -90,6 +109,19 @@ interface MapaProps {
    * del mapa — prop aditiva.
    */
   puntoResaltado?: { lat: number; lon: number; hora: string } | null;
+  /**
+   * Traza oficial completa, solo para comparación visual (DT-021) — exclusiva
+   * del panel admin. Ausente/`undefined`: no se pinta nada (no-op), el
+   * público nunca la pasa.
+   */
+  trazaOficialComparacion?: [number, number][];
+  /**
+   * Punto de la traza oficial que usa realmente el cálculo de distancia
+   * restante (`Progreso.puntoProyectado`, DT-021) — exclusivo del admin.
+   * Se pinta con marcador propio + línea discontinua hasta `posicionActual`.
+   * Ausente/`null`/`undefined`: no se pinta nada (no-op).
+   */
+  puntoReferencia?: { lat: number; lon: number } | null;
 }
 
 export default function Mapa({
@@ -101,6 +133,8 @@ export default function Mapa({
   puntosGps = [],
   ultimaSenalTexto = null,
   puntoResaltado = null,
+  trazaOficialComparacion = [],
+  puntoReferencia = null,
 }: MapaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("maplibre-gl").Map | null>(null);
@@ -117,6 +151,8 @@ export default function Mapa({
   const trazaCoordsRef = useRef(trazaCoords);
   const puntosGpsRef = useRef(puntosGps);
   const puntoResaltadoRef = useRef(puntoResaltado);
+  const trazaOficialComparacionRef = useRef(trazaOficialComparacion);
+  const puntoReferenciaRef = useRef(puntoReferencia);
   useEffect(() => {
     posicionRef.current = posicionActual;
     modoRef.current = modo;
@@ -124,7 +160,18 @@ export default function Mapa({
     trazaCoordsRef.current = trazaCoords;
     puntosGpsRef.current = puntosGps;
     puntoResaltadoRef.current = puntoResaltado;
-  }, [posicionActual, modo, variante, trazaCoords, puntosGps, puntoResaltado]);
+    trazaOficialComparacionRef.current = trazaOficialComparacion;
+    puntoReferenciaRef.current = puntoReferencia;
+  }, [
+    posicionActual,
+    modo,
+    variante,
+    trazaCoords,
+    puntosGps,
+    puntoResaltado,
+    trazaOficialComparacion,
+    puntoReferencia,
+  ]);
 
   const [inicioPx, setInicioPx] = useState<PuntoPx | null>(null);
   const [finPx, setFinPx] = useState<PuntoPx | null>(null);
@@ -132,6 +179,8 @@ export default function Mapa({
   const [trazaAndadaPx, setTrazaAndadaPx] = useState<PuntoPx[]>([]);
   const [trazaRestantePx, setTrazaRestantePx] = useState<PuntoPx[]>([]);
   const [puntoResaltadoPx, setPuntoResaltadoPx] = useState<PuntoPx | null>(null);
+  const [trazaOficialComparacionPx, setTrazaOficialComparacionPx] = useState<PuntoPx[]>([]);
+  const [puntoReferenciaPx, setPuntoReferenciaPx] = useState<PuntoPx | null>(null);
 
   const recalcularOverlay = useCallback(() => {
     const map = mapRef.current;
@@ -142,10 +191,21 @@ export default function Mapa({
       return { x: p.x, y: p.y };
     };
 
-    // Variante "libre" (DT-016): sin traza oficial de fondo ni corte de
-    // color andado/restante — solo la polilínea de los puntos GPS recibidos
-    // (reutiliza el bucket "andada", que ya se pinta en naranja cuando
-    // modo === "directo") y el marcador de posición actual/resaltado.
+    // Overlays exclusivos del admin (DT-021): no-op cuando no se pasan las
+    // props (el público nunca las pasa) — se recalculan siempre, con
+    // independencia de la variante, para no dejar un valor stale de un
+    // render anterior.
+    const comparacion = trazaOficialComparacionRef.current;
+    setTrazaOficialComparacionPx(
+      comparacion.length > 1 ? comparacion.map(proyectar) : []
+    );
+    const referencia = puntoReferenciaRef.current;
+    setPuntoReferenciaPx(referencia ? proyectar([referencia.lon, referencia.lat]) : null);
+
+    // Variante "libre" (DT-016): sin traza oficial de fondo ni marcador de
+    // fin de ruta — solo la polilínea de los puntos GPS recibidos (reutiliza
+    // el bucket "andada", que ya se pinta en naranja cuando modo === "directo")
+    // y el marcador de posición actual/resaltado.
     if (varianteRef.current === "libre") {
       const puntos = puntosGpsRef.current;
       setInicioPx(null);
@@ -161,27 +221,39 @@ export default function Mapa({
       return;
     }
 
-    const traza = trazaCoordsRef.current;
-    if (traza.length === 0) return;
+    // Variante "ruta", modo "resumen" (pantalla "antes del reto"): sin
+    // recorrido real que mostrar todavía — se sigue pintando la traza
+    // oficial completa, comportamiento sin cambios respecto a antes de
+    // DT-021.
+    if (modoRef.current !== "directo") {
+      const traza = trazaCoordsRef.current;
+      if (traza.length === 0) return;
 
-    setInicioPx(proyectar(traza[0]));
-    setFinPx(proyectar(traza[traza.length - 1]));
-
-    const pos = posicionRef.current;
-    if (modoRef.current === "directo" && pos) {
-      setPosicionPx(proyectar([pos.lon, pos.lat]));
-
-      // Tramo andado / restante: separamos la traza en el índice del punto
-      // más cercano a la posición actual (aproximación por distancia
-      // euclídea en lon/lat, suficiente para el overlay visual).
-      const idxCorte = indiceMasCercano(traza, pos);
-      setTrazaAndadaPx(traza.slice(0, idxCorte + 1).map(proyectar));
-      setTrazaRestantePx(traza.slice(idxCorte).map(proyectar));
-    } else {
+      setInicioPx(proyectar(traza[0]));
+      setFinPx(proyectar(traza[traza.length - 1]));
       setPosicionPx(null);
       setTrazaAndadaPx([]);
       setTrazaRestantePx(traza.map(proyectar));
+
+      const punto = puntoResaltadoRef.current;
+      setPuntoResaltadoPx(punto ? proyectar([punto.lon, punto.lat]) : null);
+      return;
     }
+
+    // Variante "ruta", modo "directo" (durante/llegada, DT-021): recorrido
+    // GPS real en vez de la traza oficial, manteniendo el marcador de fin de
+    // ruta (⛪) sobre el último punto de `trazaCoords`. Sin marcador de
+    // inicio (igual que "libre": ya no hay traza oficial completa pintada).
+    const puntos = puntosGpsRef.current;
+    setInicioPx(null);
+    setTrazaRestantePx([]);
+    setTrazaAndadaPx(puntos.map((p) => proyectar([p.lon, p.lat])));
+
+    const traza = trazaCoordsRef.current;
+    setFinPx(traza.length > 0 ? proyectar(traza[traza.length - 1]) : null);
+
+    const pos = posicionRef.current;
+    setPosicionPx(pos ? proyectar([pos.lon, pos.lat]) : null);
 
     const punto = puntoResaltadoRef.current;
     setPuntoResaltadoPx(punto ? proyectar([punto.lon, punto.lat]) : null);
@@ -271,7 +343,17 @@ export default function Mapa({
   // (aunque el mapa no se mueva).
   useEffect(() => {
     if (listo) recalcularOverlay();
-  }, [listo, posicionActual, modo, variante, puntosGps, puntoResaltado, recalcularOverlay]);
+  }, [
+    listo,
+    posicionActual,
+    modo,
+    variante,
+    puntosGps,
+    puntoResaltado,
+    trazaOficialComparacion,
+    puntoReferencia,
+    recalcularOverlay,
+  ]);
 
   // Ampliar/plegar.
   useEffect(() => {
@@ -310,6 +392,20 @@ export default function Mapa({
         className="pointer-events-none absolute inset-0 h-full w-full"
         aria-hidden
       >
+        {/* Traza oficial de comparación (DT-021, solo admin): se pinta antes
+            que el resto para quedar por debajo del recorrido real. */}
+        {trazaOficialComparacionPx.length > 1 && (
+          <polyline
+            points={trazaOficialComparacionPx.map((p) => `${p.x},${p.y}`).join(" ")}
+            fill="none"
+            stroke={COLOR_TRAZA_OFICIAL_COMPARACION}
+            strokeWidth={4}
+            strokeOpacity={0.75}
+            strokeDasharray="2,7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
         {trazaRestantePx.length > 1 && (
           <>
             <polyline
@@ -358,9 +454,34 @@ export default function Mapa({
           <circle cx={inicioPx.x} cy={inicioPx.y} r={5} fill="#8A928C" stroke="#fff" strokeWidth={2} />
         )}
         {finPx && (
-          <text x={finPx.x} y={finPx.y + 6} textAnchor="middle" fontSize={20} fill="#C9A24B">
-            ★
+          <text x={finPx.x} y={finPx.y + 7} textAnchor="middle" fontSize={22} fill="#C9A24B">
+            ⛪
           </text>
+        )}
+        {/* Línea discontinua entre la posición real y el punto de referencia
+            (DT-021, solo admin): antes que los marcadores, para que ambos
+            queden por encima de la línea. */}
+        {posicionPx && puntoReferenciaPx && (
+          <line
+            x1={posicionPx.x}
+            y1={posicionPx.y}
+            x2={puntoReferenciaPx.x}
+            y2={puntoReferenciaPx.y}
+            stroke={COLOR_PUNTO_REFERENCIA}
+            strokeWidth={2}
+            strokeDasharray="5,5"
+            strokeLinecap="round"
+          />
+        )}
+        {puntoReferenciaPx && (
+          <circle
+            cx={puntoReferenciaPx.x}
+            cy={puntoReferenciaPx.y}
+            r={7}
+            fill={COLOR_PUNTO_REFERENCIA}
+            stroke="#fff"
+            strokeWidth={2}
+          />
         )}
         {enDirecto && posicionPx && (
           <g>
@@ -447,22 +568,4 @@ export default function Mapa({
       )}
     </div>
   );
-}
-
-/** Índice del vértice de la traza más cercano a `pos` (distancia euclídea en grados). */
-function indiceMasCercano(
-  coordenadas: [number, number][],
-  pos: { lat: number; lon: number }
-): number {
-  let mejorIdx = 0;
-  let mejorDist = Infinity;
-  for (let i = 0; i < coordenadas.length; i++) {
-    const [lon, lat] = coordenadas[i];
-    const dist = (lon - pos.lon) ** 2 + (lat - pos.lat) ** 2;
-    if (dist < mejorDist) {
-      mejorDist = dist;
-      mejorIdx = i;
-    }
-  }
-  return mejorIdx;
 }
