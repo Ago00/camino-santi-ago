@@ -65,6 +65,9 @@ export const CLAVES_TEXTOS = [
   "minuto_a_minuto_kicker",
   "minuto_a_minuto_boton_cargar_mas",
   "minuto_a_minuto_mensaje_vacio",
+  "comentarios_seccion_kicker",
+  "comentarios_seccion_titulo",
+  "comentarios_seccion_descripcion",
 ] as const;
 
 export type ClaveTexto = (typeof CLAVES_TEXTOS)[number];
@@ -132,4 +135,7 @@ export const TEXTOS_POR_DEFECTO: Record<ClaveTexto, string> = {
   minuto_a_minuto_kicker: "Minuto a minuto",
   minuto_a_minuto_boton_cargar_mas: "Cargar más",
   minuto_a_minuto_mensaje_vacio: "Todavía no hay ninguna entrada",
+  comentarios_seccion_kicker: "Anímate",
+  comentarios_seccion_titulo: "Déjame un comentario",
+  comentarios_seccion_descripcion: "Escribe aquí lo que quieras — ánimo, una broma, lo que sea.",
 };

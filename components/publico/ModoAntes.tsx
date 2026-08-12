@@ -111,6 +111,12 @@ export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
         </Hito>
 
         <Hito>
+          <SeccionTexto titulo={textos.comentarios_seccion_titulo} kicker={textos.comentarios_seccion_kicker}>
+            {textos.comentarios_seccion_descripcion}
+          </SeccionTexto>
+        </Hito>
+
+        <Hito>
           <ComentarioForm textos={textos} />
         </Hito>
 
