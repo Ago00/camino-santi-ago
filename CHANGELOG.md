@@ -7,8 +7,10 @@
 **Tipo:** Fix + ajuste visual
 
 El marcador de la meta en el mapa pasa de un emoji genérico de iglesia (⛪) a
-un icono propio con la silueta de las dos torres de la fachada del Obradoiro
-— la Catedral de Santiago.
+una bandera a cuadros (🏁) — símbolo universal de meta. Se probaron antes dos
+versiones con la silueta de la Catedral (un icono sencillo y luego uno con
+más detalle y el color real de granito de la fachada), pero ninguna convenció
+visualmente, así que se optó por lo simple.
 
 Al verificar visualmente este cambio se encontró un bug serio ya presente en
 el ajuste del mapa del día anterior (ver entrada de abajo): la web pública

@@ -468,21 +468,14 @@ export default function Mapa({
           <circle cx={inicioPx.x} cy={inicioPx.y} r={5} fill="#8A928C" stroke="#fff" strokeWidth={2} />
         )}
         {finPx && (
-          // Silueta simplificada de la fachada del Obradoiro (dos torres
-          // barrocas) en vez de un emoji genérico de iglesia — pedido
-          // explícito de Santi. Mismo dorado que el resto del proyecto
-          // asocia a "meta" (#C9A24B), contorno blanco para legibilidad
-          // sobre cualquier fondo del mapa (mismo criterio que el resto de
-          // marcadores del overlay).
-          <g transform={`translate(${finPx.x}, ${finPx.y})`} stroke="#fff" strokeWidth={1} strokeLinejoin="round">
-            <rect x={-8} y={-16} width={5} height={15} fill="#C9A24B" />
-            <rect x={3} y={-16} width={5} height={15} fill="#C9A24B" />
-            <polygon points="-8,-16 -5.5,-21 -3,-16" fill="#C9A24B" />
-            <polygon points="3,-16 5.5,-21 8,-16" fill="#C9A24B" />
-            <rect x={-9} y={-3} width={18} height={11} rx={1} fill="#C9A24B" />
-            <circle cx={0} cy={0} r={2.2} fill="#fff" stroke="none" />
-            <path d="M -2.5,8 Q 0,3.5 2.5,8 Z" fill="#fff" stroke="none" />
-          </g>
+          // Marcador de meta: bandera a cuadros, símbolo universal de fin
+          // de recorrido — Santi descartó dos intentos de silueta de la
+          // Catedral (emoji ⛪ genérico y luego un icono SVG propio, ver
+          // historial de DT-021) por no convencerle visualmente. Mismo
+          // patrón que el resto de marcadores de texto del overlay.
+          <text x={finPx.x} y={finPx.y + 7} textAnchor="middle" fontSize={22}>
+            🏁
+          </text>
         )}
         {/* Línea discontinua entre la posición real y el punto de referencia
             (DT-021, solo admin): antes que los marcadores, para que ambos
