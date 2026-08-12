@@ -2,6 +2,17 @@
 
 ---
 
+## `docs/producto/funcionalidades.md` no refleja el modal "Finalizar" con preview real ni la foto de llegada opcional (DT-024)
+
+**Fecha:** 2026-08-12
+**Contexto:** Revisión de la tarea "Modal Finalizar con preview real y foto de llegada opcional" (DT-024). Mismo patrón ya registrado varias veces en `docs/LESSONS.md` ("Features cerradas por el pipeline técnico dejan `docs/producto/` desactualizado si nadie invoca al Agente de Producto al cierre"): esta tarea cambia de forma visible cómo Santi finaliza el reto (modal con preview real en vez de `window.confirm()`, más una foto de llegada opcional), con `CHANGELOG.md` y documentación técnica (`decisiones-tecnicas.md`, `arquitectura.md`, `modelo-datos.md`) al día, pero `docs/producto/funcionalidades.md` (línea ~69-71, entrada "Finalizar") sigue describiendo solo "cierra el reto con un mensaje de llegada, editable antes de enviar... Pide confirmación" — sin mencionar el modal, la preview real ni la foto opcional.
+**Problema:** Documentación de producto desactualizada respecto al comportamiento real de "Finalizar".
+**Impacto:** Puramente documental. Cero efecto en comportamiento.
+**Solución propuesta:** El Agente de Producto actualiza la entrada "Finalizar" de `funcionalidades.md` para describir el modal, la preview real (mismo marcado que la pantalla de llegada pública) y la foto opcional (adjuntar/reemplazar/quitar).
+**Prioridad:** Baja.
+
+---
+
 ## Recordatorio: aplicar `supabase/migrations/0006_foto_llegada.sql` contra producción
 
 **Fecha:** 2026-08-12
