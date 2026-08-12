@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-08-12 — El gráfico de "Tráfico" ahora deja claro que son visitas y muestra la cifra de cada tramo
+
+**Tipo:** Mejora
+
+En la pestaña "Tráfico" del panel, el gráfico de la evolución en el tiempo
+antes era solo una curva sin ninguna cifra visible. Ahora tiene una etiqueta
+("Visitas por tramo") encima, y cada punto muestra el número de visitas de
+ese tramo — no hace falta pasar el ratón ni adivinar por la altura de la
+línea.
+
+---
+
 ## 2026-08-12 — Los textos de los formularios de intención/comentario y de los feeds ya se pueden editar desde el panel
 
 **Tipo:** Feature
