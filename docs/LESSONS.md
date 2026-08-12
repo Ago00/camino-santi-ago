@@ -425,6 +425,48 @@ solo en el artefacto de tarea, que es efímero por diseño. El Reviewer lo
 comprueba explícitamente en toda tarea cuyo `CURRENT.md` incluya "decisiones de
 implementación que conviene revisar".
 
+## Un literal `[]`/`{}` como valor por defecto de una prop, si esa prop es dependencia de un `useEffect` que hace `setState`, produce un bucle infinito silencioso
+
+**Registrada:** 2026-08-12 (DT-021 — mapa: traza real vs. oficial)
+**Por quién:** Orquestador (verificación visual manual, fuera del pipeline estándar de Reviewer/Seguridad)
+
+`components/mapa/Mapa.tsx` desestructuraba `puntosGps = []` y
+`trazaOficialComparacion = []` directamente en los parámetros del
+componente. Cualquier caller que no pasara esas props explícitamente (la
+mayoría — `ModoAntes.tsx`, y ningún caller público pasa
+`trazaOficialComparacion`) recibía un array **nuevo** en cada render, porque
+un literal como valor por defecto se re-evalúa en cada llamada a la función
+del componente. Ambas props eran dependencias de un `useEffect` que sí hace
+`setState` (recalcula el overlay del mapa) — array nuevo en cada render →
+el efecto se dispara en cada render → `setState` → nuevo render → array
+nuevo otra vez. Resultado: la web pública entera entraba en un bucle
+infinito de renderizado ("Maximum update depth exceeded") nada más cargar.
+
+**Por qué nadie lo vio antes de producción.** Pasó por Clarificador,
+Arquitecto, Implementador, Reviewer (dos rondas) y Seguridad (dos rondas)
+sin que nadie lo detectara: ninguno de los 348 tests monta el componente
+`Mapa` en un DOM real (los tests del proyecto son de dominio/integración con
+Supabase mockado, no renderizado de componentes cliente con React Testing
+Library o similar), y Reviewer explícitamente no tuvo acceso a herramienta
+de navegador en su entorno delegado. `tsc`/`eslint`/`vitest` quedan todos en
+silencio ante este patrón — es el mismo tipo de fallo que la lección de
+Tailwind/`postcss.config.mjs`: todo verde, comportamiento roto, solo visible
+abriendo un navegador real. Se encontró por casualidad, al verificar
+visualmente un cambio cosmético no relacionado (el icono de la meta).
+
+**Regla a partir de ahora:** cualquier prop de tipo array/objeto con valor
+por defecto debe usar una constante estable a nivel de módulo
+(`const SIN_X: T[] = []`), nunca un literal `[]`/`{}` inline en la
+desestructuración de parámetros — sobre todo si esa prop entra en el array
+de dependencias de un `useEffect`/`useMemo`/`useCallback`. El Reviewer debe
+señalar como bloqueante cualquier literal `[]`/`{}` usado como valor por
+defecto de una prop en un componente cliente, sin esperar a que aparezca
+como bug en producción. Y, más en general: task-si-toca-`components/mapa/`-
+o-cualquier-componente-cliente-con-`useEffect` no se cierra sin al menos una
+verificación visual en navegador real, aunque Reviewer y Seguridad hayan
+aprobado sobre código — ver también la lección de Tailwind más arriba, que
+ya establecía este principio para el proyecto en general.
+
 <!-- Formato de nueva entrada:
 ## [Título]
 **Registrada:** YYYY-MM-DD
