@@ -53,7 +53,15 @@ const ETIQUETAS_FASE: Record<FaseTraficoVisita, string> = {
  */
 const LIMITE_SIN_CONFIG_DIAS = 3;
 
-const ANCHO_POR_TRAMO_PX = 22;
+// Ancho por tramo: fijo a ANCHO_MAXIMO_TRAMO_PX cuando hay pocos puntos (para
+// que se lean bien), pero se comprime hacia ANCHO_MINIMO_TRAMO_PX cuando hay
+// muchos — con granularidades finas (5 min) sobre rangos largos, un ancho fijo
+// generaba SVGs de miles de px y una barra de scroll horizontal enorme para
+// desplazarse por ellos. `ANCHO_OBJETIVO_PX` es aproximadamente el ancho útil
+// del contenedor en móvil sin necesitar scroll.
+const ANCHO_OBJETIVO_PX = 320;
+const ANCHO_MAXIMO_TRAMO_PX = 22;
+const ANCHO_MINIMO_TRAMO_PX = 4;
 const ALTO_GRAFICO_PX = 140;
 const MARGEN_SUPERIOR_PX = 16; // hueco arriba para la cifra de cada punto
 const ALTO_SVG_PX = ALTO_GRAFICO_PX + MARGEN_SUPERIOR_PX + 36; // + hueco debajo para las etiquetas de hora
@@ -271,12 +279,18 @@ function SelectorGranularidad({ activa, fase }: { activa: GranularidadTrafico; f
 
 function GraficoTrafico({ tramos }: { tramos: TramoTrafico[] }) {
   const maxCuenta = Math.max(...tramos.map((t) => t.cuenta), 1);
-  const anchoContenido = Math.max(tramos.length * ANCHO_POR_TRAMO_PX, 320 - MARGEN_HORIZONTAL_PX * 2);
+  const anchoPorTramo =
+    tramos.length > 0
+      ? Math.min(ANCHO_MAXIMO_TRAMO_PX, Math.max(ANCHO_MINIMO_TRAMO_PX, ANCHO_OBJETIVO_PX / tramos.length))
+      : ANCHO_MAXIMO_TRAMO_PX;
+  // Con tramos muy juntos las cifras por punto se solaparían entre sí.
+  const caenLasCifras = anchoPorTramo >= 14;
+  const anchoContenido = Math.max(tramos.length * anchoPorTramo, 320 - MARGEN_HORIZONTAL_PX * 2);
   const anchoSvg = anchoContenido + MARGEN_HORIZONTAL_PX * 2;
   const lineaBaseY = MARGEN_SUPERIOR_PX + ALTO_GRAFICO_PX;
 
   const puntos = tramos.map((tramo, i) => {
-    const x = MARGEN_HORIZONTAL_PX + i * ANCHO_POR_TRAMO_PX + ANCHO_POR_TRAMO_PX / 2;
+    const x = MARGEN_HORIZONTAL_PX + i * anchoPorTramo + anchoPorTramo / 2;
     const y = MARGEN_SUPERIOR_PX + ALTO_GRAFICO_PX - (tramo.cuenta / maxCuenta) * (ALTO_GRAFICO_PX - 8);
     return { x, y, tramo };
   });
@@ -296,7 +310,7 @@ function GraficoTrafico({ tramos }: { tramos: TramoTrafico[] }) {
         return (
           <g key={i}>
             <circle cx={p.x} cy={p.y} r={p.tramo.cuenta > 0 ? 2.5 : 0} fill={C.eucalipto} />
-            {p.tramo.cuenta > 0 && (
+            {caenLasCifras && p.tramo.cuenta > 0 && (
               <text
                 x={p.x}
                 y={Math.max(10, p.y - 7)}
