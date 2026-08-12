@@ -32,6 +32,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# worktrees temporales de agentes (Agent tool, isolation: "worktree")
+/.claude/worktrees/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
