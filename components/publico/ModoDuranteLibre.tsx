@@ -110,11 +110,12 @@ export default function ModoDuranteLibre({
             puntoResaltado={puntoResaltado}
           />
         </div>
-        <DistanciaRestante km={progreso.distanciaRestanteKm} />
+        <DistanciaRestante km={progreso.distanciaRestanteKm} textos={textos} />
         <Stats
           tiempoEnMarcha={tiempoEnMarcha}
           kmAndados={formatearKm(progreso.odometroKm)}
           ritmoMedio={ritmoMedio}
+          textos={textos}
         />
         <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} />
       </div>

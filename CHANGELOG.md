@@ -18,6 +18,33 @@ formularios ("No se ha podido enviar. Inténtalo de nuevo.") comparte una
 
 ---
 
+## 2026-08-12 — Los textos de la pantalla "en directo" y de las estadísticas ya se pueden editar desde el panel
+
+**Tipo:** Mejora
+
+Ahora se pueden editar desde `/admin` el texto de la cinta "En directo · ahora
+mismo · Estoy caminando" que aparece mientras Santi está caminando, y las
+etiquetas de las tres estadísticas ("En marcha", "Caminados", "Ritmo medio")
+que se muestran en las cuatro pantallas de seguimiento (modo guiado y modo
+libre, durante y al llegar). Comportamiento idéntico al actual hasta que se
+editen desde el panel.
+
+---
+
+## 2026-08-12 — Los textos de la pantalla "antes" y del progreso en directo ya se pueden editar desde el panel
+
+**Tipo:** Feature
+
+Nuevos textos editables desde `/admin` en la pantalla previa al reto (badge de
+la ruta, kickers y títulos de cada bloque, nombre y subtítulo bajo la foto de
+quien camina) y en los indicadores de progreso que se ven mientras el reto
+está en marcha (el mojón kilométrico, la distancia restante en modo libre y
+las etiquetas del perfil de elevación). El título de marca "Camino de
+Santi·ago" y su subtítulo se mantienen fijos, sin editar, por su tratamiento
+visual especial.
+
+---
+
 ## 2026-08-12 — Nueva pestaña "Tráfico" en el panel: cuánta gente visita la web durante el reto
 
 **Tipo:** Feature

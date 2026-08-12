@@ -111,7 +111,7 @@ export default function ModoDurante({
 
   return (
     <section className="space-y-5 pt-5">
-      <CintaEnDirecto />
+      <CintaEnDirecto textos={textos} />
 
       <div className="space-y-3">
         <div className="relative overflow-hidden rounded-2xl border shadow-sm" style={{ borderColor: "#00000012" }}>
@@ -126,11 +126,12 @@ export default function ModoDurante({
             puntoResaltado={puntoResaltado}
           />
         </div>
-        <Mojon kmRestantes={formatearKm(progreso.kmRestantes)} pct={progreso.porcentaje} />
+        <Mojon kmRestantes={formatearKm(progreso.kmRestantes)} pct={progreso.porcentaje} textos={textos} />
         <Stats
           tiempoEnMarcha={tiempoEnMarcha}
           kmAndados={formatearKm(progreso.odometroKm)}
           ritmoMedio={ritmoMedio}
+          textos={textos}
         />
         <MinutoAMinuto polling onSeleccionarPunto={setPuntoResaltado} textos={textos} />
       </div>
@@ -142,7 +143,7 @@ export default function ModoDurante({
   );
 }
 
-function CintaEnDirecto() {
+function CintaEnDirecto({ textos }: { textos: Textos }) {
   return (
     <div className="relative w-full overflow-hidden rounded-2xl p-4 shadow-md" style={{ background: "linear-gradient(120deg,#1B211D 0%,#2B2018 100%)" }}>
       <motion.div
@@ -158,8 +159,8 @@ function CintaEnDirecto() {
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: C.ember }} />
         </span>
         <div className="flex-1">
-          <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/70">En directo · ahora mismo</div>
-          <div className="[font-family:var(--font-fraunces)] text-[19px] font-semibold text-white">Estoy caminando</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/70">{textos.durante_en_directo_kicker}</div>
+          <div className="[font-family:var(--font-fraunces)] text-[19px] font-semibold text-white">{textos.durante_en_directo_titulo}</div>
         </div>
       </div>
     </div>

@@ -57,7 +57,7 @@ export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
             …y este camino, ¡no lo <span style={{ color: C.eucalipto, fontWeight: 600 }}>hago</span> solo!
           </motion.p>
           <motion.span variants={rise} className="mt-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.15em]" style={{ borderColor: "#00000018", color: "#6A726C" }}>
-            O Porriño → Santiago · ~100 km
+            {textos.ruta_badge}
           </motion.span>
         </motion.div>
       </div>
@@ -67,33 +67,33 @@ export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
         <motion.div className="pointer-events-none absolute left-[15px] top-2 w-[2px] rounded-full" style={{ height: fill, background: `linear-gradient(${C.ember}, ${C.gold})` }} />
 
         <Hito>
-          <SeccionTexto titulo={textos.reto_titulo} kicker="La salida · km 0">
+          <SeccionTexto titulo={textos.reto_titulo} kicker={textos.hito_salida_kicker}>
             {textos.reto_descripcion}
           </SeccionTexto>
         </Hito>
 
         <Hito>
           <div>
-            <Kicker>El recorrido</Kicker>
+            <Kicker>{textos.recorrido_kicker}</Kicker>
             <h2 className="[font-family:var(--font-fraunces)] mt-1 text-[26px] font-semibold leading-tight" style={{ color: C.ink }}>
-              De O Porriño a Santiago
+              {textos.recorrido_titulo}
             </h2>
             <p className="mt-2 text-[15px] leading-relaxed" style={{ color: "#3C433E" }}>
-              100 km por el Camino Portugués. Este es el trazado completo — cuando arranque, lo verás pintarse en directo.
+              {textos.recorrido_descripcion}
             </p>
             <div className="mt-3 overflow-hidden rounded-2xl border shadow-sm" style={{ borderColor: "#00000012" }}>
               <Mapa trazaCoords={trazaCoords} hora="dia" modo="resumen" />
             </div>
             <div className="mt-4">
-              <PerfilElevacion />
+              <PerfilElevacion textos={textos} />
             </div>
           </div>
         </Hito>
 
         <Hito>
           <div>
-            <Kicker>Quién camina</Kicker>
-            <FotoQuienCamina />
+            <Kicker>{textos.quien_camina_kicker}</Kicker>
+            <FotoQuienCamina textos={textos} />
             <p className="mt-3 text-[14.5px] leading-relaxed" style={{ color: "#3C433E" }}>
               {textos.quien_camina}
             </p>
@@ -101,7 +101,7 @@ export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
         </Hito>
 
         <Hito>
-          <SeccionTexto titulo="Por intenciones" kicker="Por qué lo hago">
+          <SeccionTexto titulo={textos.por_intenciones_titulo} kicker={textos.por_intenciones_kicker}>
             {textos.por_intenciones}
           </SeccionTexto>
         </Hito>
@@ -117,7 +117,7 @@ export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
         <Hito ultimo>
           <div className="rounded-2xl border p-5 text-center" style={{ borderColor: `${C.gold}44`, background: "linear-gradient(180deg,#FBF7EC,#F4F3EF)" }}>
             <div className="[font-family:var(--font-fraunces)] text-[20px] font-semibold" style={{ color: C.ink }}>
-              Santiago te espera
+              {textos.cierre_antes_titulo}
             </div>
             <p className="mx-auto mt-1 max-w-xs text-[13.5px]" style={{ color: "#6A726C" }}>
               {textos.cierre_antes}
@@ -185,7 +185,7 @@ function Kicker({ children }: { children: React.ReactNode }) {
 // Con FOTO_SANTI sin definir muestra un placeholder de silueta genérica;
 // cuando se defina con una ruta de /public, muestra la foto real con
 // object-cover — mismo patrón que FOTO_PEREGRINO en PeregrinoLibre.tsx.
-function FotoQuienCamina() {
+function FotoQuienCamina({ textos }: { textos: Textos }) {
   return (
     <div
       className="mt-2 overflow-hidden rounded-2xl shadow-lg"
@@ -195,14 +195,14 @@ function FotoQuienCamina() {
         <GranitoTextura opacity={0.16} />
         {FOTO_SANTI ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={FOTO_SANTI} alt="Santi" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={FOTO_SANTI} alt={textos.quien_camina_nombre} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <PlaceholderSilueta />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
         <div className="absolute bottom-0 p-4" style={{ textShadow: "0 1px 6px #0009" }}>
-          <div className="[font-family:var(--font-fraunces)] text-[20px] font-semibold text-white">Santi</div>
-          <div className="text-[12px] text-white/80">Peregrino de una noche</div>
+          <div className="[font-family:var(--font-fraunces)] text-[20px] font-semibold text-white">{textos.quien_camina_nombre}</div>
+          <div className="text-[12px] text-white/80">{textos.quien_camina_subtitulo}</div>
         </div>
       </div>
     </div>
