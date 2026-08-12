@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-08-12 — Icono de la meta y corrección de un bug que congelaba la web pública
+
+**Tipo:** Fix + ajuste visual
+
+El marcador de la meta en el mapa pasa de un emoji genérico de iglesia (⛪) a
+un icono propio con la silueta de las dos torres de la fachada del Obradoiro
+— la Catedral de Santiago.
+
+Al verificar visualmente este cambio se encontró un bug serio ya presente en
+el ajuste del mapa del día anterior (ver entrada de abajo): la web pública
+(pantallas "antes", "durante" y "llegada") entraba en un bucle infinito de
+renderizado en el navegador nada más cargar, aunque ningún test automático lo
+detectaba. La causa: dos de las props nuevas del mapa no se pasaban desde la
+mayoría de pantallas y tomaban un valor por defecto que se recreaba en cada
+render, lo que disparaba el bucle. Corregido reutilizando siempre el mismo
+valor por defecto en vez de crear uno nuevo cada vez.
+
+---
+
 ## 2026-08-11 — El mapa en modo guiado ya muestra el camino realmente andado; el panel admin gana una pestaña "Mapa" de comparación
 
 **Tipo:** Feature
