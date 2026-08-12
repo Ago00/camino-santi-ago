@@ -10,6 +10,17 @@ En la pantalla previa al reto, antes del formulario de comentarios ahora
 aparece un kicker + título + texto de presentación, igual que ya tenía el
 formulario de intenciones justo encima ("Por qué lo hago" / "Por
 intenciones"). Editable desde `/admin` → Textos.
+## 2026-08-12 — El gráfico de "Tráfico" ya no corta la hora de inicio ni el punto "ahora"
+
+**Tipo:** Fix
+
+En el gráfico de la pestaña "Tráfico", la etiqueta de la primera hora
+(izquierda) y, cuando el último tramo caía justo en una hora en punto, la
+zona del punto "ahora" (derecha) se recortaban a la mitad — un SVG oculta
+por defecto cualquier trazo que se salga de su ancho, y esas etiquetas iban
+centradas justo sobre el primer y el último punto, sin margen a los lados.
+Añadido un margen horizontal al gráfico para que ninguna etiqueta quede
+cortada, sea cual sea el número de tramos.
 
 ---
 

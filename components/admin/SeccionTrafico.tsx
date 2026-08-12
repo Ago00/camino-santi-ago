@@ -26,6 +26,14 @@ const ANCHO_POR_TRAMO_PX = 22;
 const ALTO_GRAFICO_PX = 140;
 const MARGEN_SUPERIOR_PX = 16; // hueco arriba para la cifra de cada punto
 const ALTO_SVG_PX = ALTO_GRAFICO_PX + MARGEN_SUPERIOR_PX + 36; // + hueco debajo para las etiquetas de hora
+// Un <svg> recorta por defecto cualquier trazo fuera de [0,width]x[0,height]
+// (a diferencia de un <div> normal). Las etiquetas de hora van centradas
+// (textAnchor="middle") justo sobre el primer y el último punto — sin este
+// margen, la mitad de esas etiquetas queda fuera del ancho del SVG y se
+// recorta silenciosamente (bug real reportado: "la hora de inicio se corta
+// y el 'ahora' también" — el último tramo puede coincidir con una hora en
+// punto y sufrir el mismo recorte por el lado derecho).
+const MARGEN_HORIZONTAL_PX = 22;
 
 interface SeccionTraficoProps {
   granularidad: GranularidadTrafico;
@@ -135,11 +143,12 @@ function SelectorGranularidad({ activa }: { activa: GranularidadTrafico }) {
 
 function GraficoTrafico({ tramos }: { tramos: TramoTrafico[] }) {
   const maxCuenta = Math.max(...tramos.map((t) => t.cuenta), 1);
-  const anchoSvg = Math.max(tramos.length * ANCHO_POR_TRAMO_PX, 320);
+  const anchoContenido = Math.max(tramos.length * ANCHO_POR_TRAMO_PX, 320 - MARGEN_HORIZONTAL_PX * 2);
+  const anchoSvg = anchoContenido + MARGEN_HORIZONTAL_PX * 2;
   const lineaBaseY = MARGEN_SUPERIOR_PX + ALTO_GRAFICO_PX;
 
   const puntos = tramos.map((tramo, i) => {
-    const x = i * ANCHO_POR_TRAMO_PX + ANCHO_POR_TRAMO_PX / 2;
+    const x = MARGEN_HORIZONTAL_PX + i * ANCHO_POR_TRAMO_PX + ANCHO_POR_TRAMO_PX / 2;
     const y = MARGEN_SUPERIOR_PX + ALTO_GRAFICO_PX - (tramo.cuenta / maxCuenta) * (ALTO_GRAFICO_PX - 8);
     return { x, y, tramo };
   });
