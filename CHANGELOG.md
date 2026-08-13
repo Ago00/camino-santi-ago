@@ -15,6 +15,18 @@ que se rellene desde el admin.
 
 ---
 
+## 2026-08-12 — Fix: gráfico de Tráfico comprimido según densidad de puntos
+
+**Tipo:** Fix
+
+El ancho de cada tramo del gráfico era fijo (22px), así que con granularidades
+finas (5 min) sobre rangos largos el SVG podía llegar a miles de px de ancho
+y la barra de scroll horizontal se volvía enorme. Ahora el ancho por tramo se
+adapta al número de tramos (entre 4px y 22px), y las cifras por punto solo se
+pintan cuando hay espacio suficiente para no solaparse.
+
+---
+
 ## 2026-08-12 — Fix de seguridad: límite de longitud del mensaje de llegada también en el servidor
 
 **Tipo:** Fix
