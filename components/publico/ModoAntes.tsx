@@ -11,6 +11,7 @@ import Mapa from "@/components/mapa/Mapa";
 import PerfilElevacion from "@/components/publico/PerfilElevacion";
 import IntencionForm from "@/components/publico/IntencionForm";
 import ComentarioForm from "@/components/publico/ComentarioForm";
+import EnlaceInstagram from "@/components/publico/EnlaceInstagram";
 import type { Textos } from "@/lib/textos/obtener-textos";
 
 const C = { ink: "#1B211D", gold: "#C9A24B", eucalipto: "#2F5D50", ember: "#D9773B" };
@@ -128,18 +129,7 @@ export default function ModoAntes({ textos, trazaCoords }: ModoAntesProps) {
             <p className="mx-auto mt-1 max-w-xs text-[13.5px]" style={{ color: "#6A726C" }}>
               {textos.cierre_antes}
             </p>
-            {textos.cierre_antes_instagram_url.trim() !== "" && (
-              <a
-                href={textos.cierre_antes_instagram_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-4 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors hover:bg-black/5"
-                style={{ borderColor: `${C.gold}66`, color: C.ink }}
-              >
-                <IconoInstagram />
-                Sígueme en Instagram
-              </a>
-            )}
+            <EnlaceInstagram url={textos.cierre_antes_instagram_url} className="mt-4" />
           </div>
         </Hito>
       </div>
@@ -246,16 +236,6 @@ function GranitoTextura({ opacity = 0.12 }: { opacity?: number }) {
         <feColorMatrix type="saturate" values="0" />
       </filter>
       <rect width="100%" height="100%" filter="url(#grano)" />
-    </svg>
-  );
-}
-
-function IconoInstagram() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="5" />
-      <circle cx="12" cy="12" r="4" />
-      <circle cx="17.5" cy="6.5" r="0.9" fill="currentColor" stroke="none" />
     </svg>
   );
 }
