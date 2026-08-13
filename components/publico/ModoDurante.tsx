@@ -21,6 +21,7 @@ import IntencionForm from "@/components/publico/IntencionForm";
 import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
 import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
+import EnlaceInstagram from "@/components/publico/EnlaceInstagram";
 import { bandaHoraria } from "@/lib/cielo";
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoGuiado } from "@/lib/types";
@@ -162,6 +163,7 @@ function CintaEnDirecto({ textos }: { textos: Textos }) {
           <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/70">{textos.durante_en_directo_kicker}</div>
           <div className="[font-family:var(--font-fraunces)] text-[19px] font-semibold text-white">{textos.durante_en_directo_titulo}</div>
         </div>
+        <EnlaceInstagram url={textos.cierre_antes_instagram_url} tono="oscuro" />
       </div>
     </div>
   );

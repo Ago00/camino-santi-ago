@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-08-13 — Feature: enlace a Instagram también en las pantallas "Durante"
+
+**Tipo:** Feature
+
+El enlace a Instagram (mismo campo `cierre_antes_instagram_url` ya usado en
+el cierre de "Antes") ahora también aparece mientras el reto está en marcha:
+en modo guiado, dentro de la cinta "En directo"; en modo libre (sin esa
+cinta), como un badge compacto arriba del mapa. Se extrajo un componente
+compartido `EnlaceInstagram` (antes duplicado solo en "Antes") con dos tonos
+según el fondo donde se pinte. Sigue sin mostrarse nada si el campo está
+vacío.
+
+---
+
 ## 2026-08-13 — Feature: enlace a Instagram en el cierre de "Antes"
 
 **Tipo:** Feature

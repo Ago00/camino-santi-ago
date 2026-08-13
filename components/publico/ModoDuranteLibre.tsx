@@ -25,6 +25,7 @@ import IntencionForm from "@/components/publico/IntencionForm";
 import ComentarioForm from "@/components/publico/ComentarioForm";
 import MuroComentarios from "@/components/publico/MuroComentarios";
 import MinutoAMinuto from "@/components/publico/MinutoAMinuto";
+import EnlaceInstagram from "@/components/publico/EnlaceInstagram";
 import { bandaHoraria } from "@/lib/cielo";
 import { calcularRitmoMedioIntento, calcularTiempoEnMarchaIntento } from "@/lib/ritmo";
 import type { ProgresoPublicoLibre } from "@/lib/types";
@@ -99,6 +100,12 @@ export default function ModoDuranteLibre({
 
   return (
     <section className="space-y-5 pt-5">
+      {textos.cierre_antes_instagram_url.trim() !== "" && (
+        <div className="flex justify-center">
+          <EnlaceInstagram url={textos.cierre_antes_instagram_url} />
+        </div>
+      )}
+
       <div className="space-y-3">
         <div className="relative overflow-hidden rounded-2xl border shadow-sm" style={{ borderColor: "#00000012" }}>
           <Mapa
