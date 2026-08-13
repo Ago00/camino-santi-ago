@@ -28,6 +28,7 @@ export const CLAVES_TEXTOS = [
   "por_intenciones_kicker",
   "por_intenciones_titulo",
   "cierre_antes_titulo",
+  "cierre_antes_instagram_url",
   "quien_camina_nombre",
   "quien_camina_subtitulo",
   "mojon_destino_kicker",
@@ -98,6 +99,9 @@ export const TEXTOS_POR_DEFECTO: Record<ClaveTexto, string> = {
   por_intenciones_kicker: "Por qué lo hago",
   por_intenciones_titulo: "Por intenciones",
   cierre_antes_titulo: "Santiago te espera",
+  // URL completa del perfil de Instagram (ej. https://instagram.com/tu_usuario).
+  // Vacío = no se pinta el enlace (ver ModoAntes.tsx).
+  cierre_antes_instagram_url: "",
   quien_camina_nombre: "Santi",
   quien_camina_subtitulo: "Peregrino de una noche",
   mojon_destino_kicker: "Santiago",

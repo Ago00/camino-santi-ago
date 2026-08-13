@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-08-13 — Feature: enlace a Instagram en el cierre de "Antes"
+
+**Tipo:** Feature
+
+Nuevo campo editable `cierre_antes_instagram_url` (panel admin → Textos):
+si se rellena con una URL, se pinta un enlace con icono "Sígueme en
+Instagram" bajo el texto de cierre del modo "Antes", con estilo real de
+enlace (antes solo se podía pegar texto plano en `cierre_antes`, sin que
+funcionara como hipervínculo). Vacío por defecto — no se pinta nada hasta
+que se rellene desde el admin.
+
+---
+
 ## 2026-08-12 — Fix de seguridad: límite de longitud del mensaje de llegada también en el servidor
 
 **Tipo:** Fix
