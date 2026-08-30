@@ -22,7 +22,7 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { subirFotoMinutoAMinuto, subirFotoLlegada, ErrorDeSubidaDeFoto } from "@/lib/supabase/storage";
 import { verificarSesion, NOMBRE_COOKIE_SESION } from "@/lib/auth/admin-session";
-import { guardarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
+import { guardarCacheProgreso, limpiarCacheProgreso, obtenerCacheProgreso } from "@/lib/progreso-cache";
 import { calcularProgresoActual } from "@/lib/traza/progreso-actual";
 import type { ResultadoPublicacion } from "@/lib/types";
 import type { ClaveTexto } from "@/lib/textos/defaults";
@@ -251,6 +251,10 @@ export async function finalizarReto(formData: FormData): Promise<ResultadoPublic
   const { error } = await supabase.from("intentos").update(cambios).eq("id", intentoActivo.id);
 
   if (error) return { ok: false, mensaje: "No se pudo finalizar el reto." };
+  // Entra en fase "llegada": /api/progreso pasa a un TTL de horas
+  // (CACHE_TTL_LLEGADA_MS), así que hay que forzar un recálculo fresco ahora
+  // en vez de arrastrar hasta 20 s de caché de la fase "durante" anterior.
+  limpiarCacheProgreso();
   revalidarAdmin();
   return { ok: true };
 }
@@ -282,6 +286,10 @@ export async function retomarReto(): Promise<void> {
     .eq("id", intentoActivo.id);
 
   if (error) throw new Error("No se pudo retomar el reto.");
+  // Sale de fase "llegada": el TTL largo (CACHE_TTL_LLEGADA_MS) ya no
+  // aplica, y arrastrar el snapshot de "llegada" durante horas mostraría
+  // progreso desactualizado mientras el reto está otra vez "durante".
+  limpiarCacheProgreso();
   revalidarAdmin();
 }
 
@@ -315,6 +323,9 @@ export async function reiniciarReto(): Promise<void> {
   const { error: errorCreacion } = await supabase.from("intentos").insert({ fase: "antes" });
   if (errorCreacion) throw new Error("No se pudo abrir un nuevo intento.");
 
+  // El intento nuevo empieza en "antes": sin esto, un progreso de "llegada"
+  // cacheado con TTL largo seguiría sirviéndose para el intento ya cerrado.
+  limpiarCacheProgreso();
   revalidarAdmin();
 }
 
@@ -328,6 +339,10 @@ export async function descartarPosicion(id: number): Promise<void> {
 
   const { error } = await supabase.from("posiciones").update({ descartado: true }).eq("id", id);
   if (error) throw new Error("No se pudo descartar la posición.");
+  // Cambia el histórico que usa /api/progreso para calcular — con el TTL
+  // largo de fase "llegada" (CACHE_TTL_LLEGADA_MS), sin esto la corrección
+  // no se vería hasta horas después.
+  limpiarCacheProgreso();
   revalidarAdmin();
 }
 

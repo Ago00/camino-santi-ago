@@ -18,9 +18,8 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
+import { obtenerFaseActual } from "@/lib/fase-actual";
 import { consumir, obtenerIpCliente } from "@/lib/rate-limit";
-import { getSupabasePublic } from "@/lib/supabase/public";
-import type { Fase } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -35,15 +34,4 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const fase = await obtenerFaseActual();
 
   return NextResponse.json({ fase });
-}
-
-async function obtenerFaseActual(): Promise<Fase> {
-  const supabase = getSupabasePublic();
-  const { data: intentoActivo } = await supabase
-    .from("intentos")
-    .select("fase")
-    .eq("cerrado", false)
-    .maybeSingle();
-
-  return intentoActivo?.fase ?? "antes";
 }

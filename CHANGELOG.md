@@ -2,6 +2,29 @@
 
 ---
 
+## 2026-08-30 — Fix: `/api/progreso` recalculaba el histórico completo cada 20 s también en fase "llegada"
+
+**Tipo:** Fix
+
+Desde que el reto llegó a "llegada" (14 de agosto), el intento nunca se
+marcó `cerrado`, así que `GET /api/progreso` seguía recalculando el
+histórico completo de `posiciones` (miles de filas, sin límite de
+PostgREST) cada vez que su caché de 20 s expiraba — sin que hubiera ningún
+dato nuevo que mostrar, porque nadie sigue mandando GPS. Eso generó un
+consumo de egress en Supabase muy por encima de lo esperado.
+
+Ahora `/api/progreso` consulta primero la fase (consulta mínima, nueva en
+`lib/fase-actual.ts`, compartida con `/api/fase`) y, si es `"llegada"`,
+confía en su caché hasta `CACHE_TTL_LLEGADA_MS` (6 h) en vez de 20 s — el
+resultado en fase "llegada" es inmutable, así que no hace falta recalcular.
+Las acciones de admin que sí pueden invalidar ese resultado (`retomarReto`,
+`reiniciarReto`, `descartarPosicion`, `finalizarReto`) llaman a
+`limpiarCacheProgreso()` explícitamente, así que una acción real nunca se
+queda esperando el TTL largo. No cambia nada de lo que se ve en la web
+pública — solo cuánto se recalcula.
+
+---
+
 ## 2026-08-13 — Feature: enlace a Instagram también en las pantallas "Durante"
 
 **Tipo:** Feature

@@ -22,12 +22,22 @@
  * la posición que la web pública está mostrando realmente (campo
  * `ultimaPosicion`, presente en ambas ramas de la unión).
  *
+ * En fase "llegada" el TTL sube a `CACHE_TTL_LLEGADA_MS` (varias horas): el
+ * histórico ya no cambia, así que recalcular sobre el histórico completo de
+ * `posiciones` (`obtenerTodasLasFilas`, sin límite de PostgREST) en cada
+ * expiración de 20 s solo generaba egress sin ningún cambio real que
+ * mostrar. La fase se resuelve con una consulta mínima aparte
+ * (`obtenerFaseActual`, `lib/fase-actual.ts`) antes de decidir el TTL, para
+ * no tener que pagar el histórico completo solo para saber qué TTL aplicar.
+ *
  * Rate limiting por IP (DT-011): 60 req/min. Responde 429 sin cuerpo al
  * exceder el límite, antes de consultar la caché o recalcular.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
+import { obtenerFaseActual } from "@/lib/fase-actual";
 import {
+  CACHE_TTL_LLEGADA_MS,
   CACHE_TTL_MS,
   guardarCacheProgreso,
   limpiarCacheProgreso,
@@ -48,8 +58,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return new NextResponse(null, { status: 429 });
   }
 
+  const fase = await obtenerFaseActual();
+  const ttl = fase === "llegada" ? CACHE_TTL_LLEGADA_MS : CACHE_TTL_MS;
+
   const cache = obtenerCacheProgreso();
-  if (cache && Date.now() - cache.timestamp < CACHE_TTL_MS) {
+  if (cache && Date.now() - cache.timestamp < ttl) {
     return NextResponse.json(cache.valor);
   }
 

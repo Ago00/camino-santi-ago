@@ -18,6 +18,17 @@ import type { ProgresoPublico } from "@/lib/types";
 
 export const CACHE_TTL_MS = 20_000;
 
+/**
+ * TTL usado en fase "llegada": el histórico ya no cambia (nadie sigue
+ * mandando GPS), así que no tiene sentido recalcular sobre el histórico
+ * completo de `posiciones` cada 20 s indefinidamente. Las acciones de admin
+ * que sí pueden invalidar ese resultado (retomar el reto, reiniciar,
+ * descartar una posición) llaman a `limpiarCacheProgreso()` explícitamente
+ * (app/admin/actions.ts), así que este TTL puede ser generoso sin arriesgar
+ * mostrar un dato desactualizado tras esas acciones.
+ */
+export const CACHE_TTL_LLEGADA_MS = 6 * 60 * 60 * 1000;
+
 export interface EntradaCacheProgreso {
   timestamp: number;
   valor: ProgresoPublico;
